@@ -168,7 +168,8 @@ The game has object names but no text describing a room. Proposal: a hand-writte
 - Can start any time after phase 1; listed late because nothing depends on it.
 
 **Later, after the slice is judged**
-- Grog and the jail lock (when assembling a crew): grog eats through each mug, so it has to be poured from mug to mug while walking from the SCUMM Bar to the jail, across several rooms. A two-step action is not enough. Candidates: let an action carry a longer list of steps, or slow the melt timer (ideally as an operator setting). Measure the real timer first.
+- Timing assumption (from Samuel, 2026-11-14): Neuro herself can react in about 250 ms, far faster than the GPT stand-in (about 2.4 s per decision). So time-critical moments should be handled with a timely `actions/force` at `high` priority (second highest; `critical` cuts her off mid-sentence) rather than by slowing the game. GPT failing a timing puzzle is therefore weak evidence; judge those by whether the right force went out at the right moment.
+- Grog and the jail lock (when assembling a crew): grog eats through each mug, so it has to be poured from mug to mug while walking from the SCUMM Bar to the jail, across several rooms. A two-step action is not enough. First choice: a `high` priority force each time a mug starts to melt, naming the pour as the thing to do. Fallbacks: a longer list of steps in one action, or slowing the melt timer as an operator setting. Measure the real timer first.
 - Remaining rooms' descriptions; Mêlée map screen; insult sword fighting (it is dialogue choices, so mostly a context problem); timed puzzles (grog mugs, underwater); forest and cave mazes; saves and resume; hint or unstuck mechanism; Monkey Island 2.
 
 ## Risks
