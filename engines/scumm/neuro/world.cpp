@@ -580,9 +580,10 @@ void NeuroBridge::pollWorld() {
 	for (const auto &item : world.inventory)
 		carried.push_back(item.name);
 	_journal.observed(world.room, carried);
-	// Goals and nudges wait until the whole conversation or scene is over
-	if (!world.inDialogue)
-		sendJournalNews();
+	// Goals and nudges wait for a pause: the end of the conversation, or the
+	// moment she is asked to pick her next line (the prompt for that follows
+	// below), never between lines spoken one after another
+	sendJournalNews();
 
 	if (world.room != _described.room) {
 		// The opening explanation has scrolled out of her context by now
