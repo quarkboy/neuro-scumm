@@ -2,6 +2,8 @@
 
 Status: phases 0 (mostly), 1, 2 and 3 done; phase 4 (vertical slice with an LLM) in progress. 2026-11-14.
 
+For the rest of the game (what to build, in what order, and how each step is tested) see [ROADMAP.md](ROADMAP.md).
+
 ## Decisions so far
 
 | Topic | Decision |
