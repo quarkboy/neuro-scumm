@@ -23,6 +23,7 @@
 #define SCUMM_NEURO_NEURO_H
 
 #include "common/array.h"
+#include "common/hashmap.h"
 #include "common/rect.h"
 #include "common/formats/json.h"
 #include "common/str.h"
@@ -100,6 +101,9 @@ public:
 	void onTalkStarted(int actor, const byte *text);
 	void onTalkStopped();
 
+	/** A script gave an actor a name. */
+	void onActorNamed(int actor);
+
 	/** While a simulated click is in progress, points the mouse at its target. */
 	void overridePointer();
 
@@ -114,6 +118,7 @@ private:
 	uint32 _registeredAt = 0;
 	void handleMessage(const Common::String &text);
 	void handleAction(const Common::String &id, const Common::String &name, const Common::String &data);
+	void handleDebugAction(const Common::String &id, const Common::String &name, const Common::String &data);
 
 	void actionInteract(const Common::String &id, const Common::JSONValue *args);
 	void actionSkipCutscene(const Common::String &id);
@@ -160,6 +165,10 @@ private:
 	WebSocketClient _ws;
 	NeuroData _data;
 
+	// The costume each actor wore when it was named. Scripts reuse actors
+	// for other characters without renaming them, which leaves a wrong name.
+	Common::HashMap<int, int> _namedCostume;
+
 	/** forList: for the list of characters in the room, as opposed to naming a speaker. */
 	Common::String actorName(int actor, bool forList = false);
 	void debugDump();
@@ -193,12 +202,26 @@ private:
 	// What her last action was aimed at; only these are worth a note when their look changes
 	int _lastTargets[2] = {0, 0};
 	uint32 _controlSince = 0;
+	uint32 _speechBlockSince = 0;
 	uint32 _nextWorldPoll = 0;
 
 	// Servers that predate the speech commands get dialogue as batched context instead
 	bool _dialogueAsContext = false;
 	Common::String _pendingDialogue;
 	Common::String _lastLine;
+
+	// Background chatter (barking dogs, a muttering crowd) repeats forever
+	struct HeardLine {
+		Common::String text;
+		uint32 time;
+	};
+	Common::Array<HeardLine> _recentLines;
+
+	// Speakers nobody has named are told apart by number within a room
+	int _strangerRoom = 0;
+	Common::Array<int> _strangers;
+	uint32 _lastActionAt = 0;
+	uint32 _pendingSince = 0;
 	Common::String _lastLineText;
 	uint _lastLineOffset = 0;
 	uint32 _lastTalkTime = 0;

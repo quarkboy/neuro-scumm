@@ -122,8 +122,12 @@ void NeuroBridge::update() {
 	updateClick();
 	updateQueuedCommand();
 
-	if (!_pendingDialogue.empty() && !_speechOpen && g_system->getMillis() - _lastTalkTime > 1000)
-		flushDialogue();
+	if (!_pendingDialogue.empty()) {
+		const uint32 now = g_system->getMillis();
+		// Normally wait for a pause, but do not let endless chatter hold lines back
+		if ((!_speechOpen && now - _lastTalkTime > 1000) || now - _pendingSince > 5000)
+			flushDialogue();
+	}
 
 	pollWorld();
 }
@@ -135,7 +139,15 @@ void NeuroBridge::flushDialogue() {
 	_pendingDialogue.clear();
 	_lastLineText.clear();
 	_lastLineOffset = 0;
-	sendContext(text, false);
+	// Mid-scene she is only listening; once she can act again a line may
+	// be her cue. In a conversation the choice of lines prompts her instead.
+	bool cue = playerHasControl();
+	if (cue) {
+		NeuroWorld world;
+		collectWorld(world);
+		cue = !world.inDialogue;
+	}
+	sendContext(text, !cue);
 }
 
 void NeuroBridge::onConnected() {
@@ -166,6 +178,16 @@ static Common::JSONValue *stringSchema() {
 
 void NeuroBridge::registerActions(bool interactOnly) {
 	_registeredAt = g_system->getMillis();
+
+	// Older servers keep the first definition of an action instead of
+	// replacing it, so drop the old one before sending a new one.
+	if (interactOnly) {
+		Common::JSONArray names;
+		names.push_back(new Common::JSONValue("interact"));
+		Common::JSONObject data;
+		data.setVal("action_names", new Common::JSONValue(names));
+		send("actions/unregister", &data);
+	}
 
 	Common::JSONObject wait;
 	wait.setVal("name", new Common::JSONValue("wait"));
@@ -321,18 +343,7 @@ void NeuroBridge::handleMessage(const Common::String &text) {
 	delete root;
 }
 
-void NeuroBridge::handleAction(const Common::String &id, const Common::String &name, const Common::String &data) {
-	// Any action answers an outstanding force
-	_forceActive = false;
-	_lastActivity = g_system->getMillis();
-
-	if (name == "choose_dialogue") {
-		Common::JSONValue *args = data.empty() ? nullptr : Common::JSON::parse(data);
-		actionChooseDialogue(id, args);
-		delete args;
-		return;
-	}
-
+void NeuroBridge::handleDebugAction(const Common::String &id, const Common::String &name, const Common::String &data) {
 	// Development aid, deliberately not registered: saves a screenshot
 	// to ScummVM's screenshot directory.
 	if (name == "debug_screenshot") {
@@ -346,13 +357,6 @@ void NeuroBridge::handleAction(const Common::String &id, const Common::String &n
 		sendActionResult(id, true);
 		return;
 	}
-	if (name == "debug_click") {
-		int x = 0, y = 0;
-		sscanf(data.c_str(), "%d,%d", &x, &y);
-		sendActionResult(id, true);
-		clickInRoom(x, y);
-		return;
-	}
 	if (name == "debug_room") {
 		const int room = atoi(data.c_str());
 		sendActionResult(id, true);
@@ -362,6 +366,35 @@ void NeuroBridge::handleAction(const Common::String &id, const Common::String &n
 		return;
 	}
 
+	sendActionResult(id, false, "Unknown debug action.");
+}
+
+void NeuroBridge::handleAction(const Common::String &id, const Common::String &name, const Common::String &data) {
+	// Development aids are not her actions
+	if (name.hasPrefix("debug_") && name != "debug_click") {
+		handleDebugAction(id, name, data);
+		return;
+	}
+
+	// Any action answers an outstanding force
+	_forceActive = false;
+	_lastActivity = g_system->getMillis();
+	_lastActionAt = _lastActivity;
+
+	if (name == "choose_dialogue") {
+		Common::JSONValue *args = data.empty() ? nullptr : Common::JSON::parse(data);
+		actionChooseDialogue(id, args);
+		delete args;
+		return;
+	}
+
+	if (name == "debug_click") {
+		int x = 0, y = 0;
+		sscanf(data.c_str(), "%d,%d", &x, &y);
+		sendActionResult(id, true);
+		clickInRoom(x, y);
+		return;
+	}
 	if (name == "wait") {
 		sendActionResult(id, true);
 		return;

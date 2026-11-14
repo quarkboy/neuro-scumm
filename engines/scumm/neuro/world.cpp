@@ -258,11 +258,31 @@ Common::String NeuroBridge::actorName(int actor, bool forList) {
 			return forList ? Common::String() : name.substr(1);
 		return name;
 	}
+
+	// Trust the game's name only while the actor still looks like who was named
+	const int costume = _vm->_actors[actor]->_costume;
+	if (!_namedCostume.contains(actor) || _namedCostume[actor] < 0) {
+		if (costume)
+			_namedCostume[actor] = costume;
+	} else if (_namedCostume[actor] != costume) {
+		return Common::String();
+	}
 	return cleanText(_vm->_actors[actor]->getActorName(), true);
+}
+
+void NeuroBridge::onActorNamed(int actor) {
+	_namedCostume[actor] = -1;
 }
 
 void NeuroBridge::debugDump() {
 	debug("NEURODUMP room %d (resource %d) width %d", _vm->_currentRoom, _vm->_roomResource, _vm->_roomWidth);
+	NeuroWorld world;
+	collectWorld(world);
+	debug("NEURODUMP state: inDialogue %d verbs %u standard %u forceAge %u pending %u controlSince %u", world.inDialogue, world.verbs.size(),
+		_standardVerbs.size(), g_system->getMillis() - _forceSentAt, _pendingDialogue.size(), _controlSince);
+	debug("NEURODUMP state: control %d userPut %d cursor %d sentences %d speechOpen %d moving %d forceActive %d idle %u ms click %d queue %u",
+		playerHasControl(), _vm->_userPut, _vm->_cursor.state, _vm->_sentenceNum, _speechOpen,
+		_vm->_actors[_vm->VAR(_vm->VAR_EGO)]->_moving, _forceActive, g_system->getMillis() - _lastActivity, (int)_clickPhase, _queue.size());
 	for (int i = 1; i < _vm->_numLocalObjects; i++) {
 		const ObjectData &od = _vm->_objs[i];
 		if (od.obj_nr < 1)
@@ -393,7 +413,7 @@ Common::String NeuroBridge::describeChanges(const NeuroWorld &before, const Neur
 			i++;
 			continue;
 		}
-		text += Common::String::format("The %s is now %s.\n", changed[i].name.c_str(), label.c_str());
+		text += Common::String::format("Now %s: %s\n", label.c_str(), changed[i].name.c_str());
 		changed.remove_at(i);
 	}
 	if (!changed.empty())
@@ -418,10 +438,23 @@ void NeuroBridge::pollWorld() {
 
 	// Only report once things have settled: mid-cutscene and mid-action
 	// states are noise.
-	if (!playerHasControl() || _speechOpen || _vm->_sentenceNum > 0) {
+	if (!playerHasControl() || _vm->_sentenceNum > 0) {
 		_controlSince = 0;
+		_speechBlockSince = 0;
 		_lastActivity = now;
 		return;
+	}
+	// Wait for whoever is talking to finish, unless the talking never stops
+	if (_speechOpen) {
+		if (!_speechBlockSince)
+			_speechBlockSince = now;
+		if (now - _speechBlockSince < 4000) {
+			_controlSince = 0;
+			_lastActivity = now;
+			return;
+		}
+	} else if (now - _lastTalkTime > 1500) {
+		_speechBlockSince = 0;
 	}
 	// Still carrying out the last action
 	if (_vm->_actors[_vm->VAR(_vm->VAR_EGO)]->_moving)
@@ -465,12 +498,25 @@ void NeuroBridge::onTalkStarted(int actor, const byte *text) {
 
 	Common::String speaker = actorName(actor);
 	if (speaker.empty()) {
-		if (actor == _vm->VAR(_vm->VAR_EGO))
+		if (actor == _vm->VAR(_vm->VAR_EGO)) {
 			speaker = "Guybrush";
-		else if (actor > 0 && actor < 0x80)
-			speaker = "Someone";
-		else
+		} else if (actor > 0 && actor < 0x80) {
+			// Keep unnamed speakers apart so a conversation can be followed
+			if (_strangerRoom != _vm->_currentRoom) {
+				_strangerRoom = _vm->_currentRoom;
+				_strangers.clear();
+			}
+			uint index = 0;
+			while (index < _strangers.size() && _strangers[index] != actor)
+				index++;
+			if (index == _strangers.size()) {
+				_strangers.push_back(actor);
+				debug(1, "Neuro: Unnamed speaker: actor %d in room %d", actor, _vm->_currentRoom);
+			}
+			speaker = Common::String::format("Stranger %u", index + 1);
+		} else {
 			speaker = "Narrator";
+		}
 	}
 
 	// Crowds shout the same line once per member; report it once
@@ -478,6 +524,25 @@ void NeuroBridge::onTalkStarted(int actor, const byte *text) {
 	if (spoken == _lastLine && g_system->getMillis() - _lastTalkTime < 5000)
 		return;
 	_lastLine = spoken;
+
+	// A line she has heard recently that is not a reaction to something she did is background noise
+	const uint32 now = g_system->getMillis();
+	bool heard = false;
+	for (uint i = 0; i < _recentLines.size();) {
+		if (now - _recentLines[i].time > 60000) {
+			_recentLines.remove_at(i);
+			continue;
+		}
+		if (_recentLines[i].text == spoken) {
+			heard = true;
+			_recentLines[i].time = now;
+		}
+		i++;
+	}
+	if (!heard)
+		_recentLines.push_back({spoken, now});
+	else if (now - _lastActionAt > 10000)
+		return;
 
 	_speechOpen = true;
 	if (_dialogueAsContext) {
@@ -487,6 +552,8 @@ void NeuroBridge::onTalkStarted(int actor, const byte *text) {
 			_pendingDialogue = _pendingDialogue.substr(0, _lastLineOffset);
 		_lastLineText = line;
 		_lastLineOffset = _pendingDialogue.size();
+		if (_pendingDialogue.empty())
+			_pendingSince = g_system->getMillis();
 		_pendingDialogue += Common::String::format("%s: \"%s\"\n", speaker.c_str(), line.c_str());
 		return;
 	}

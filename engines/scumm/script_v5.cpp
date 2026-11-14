@@ -25,6 +25,9 @@
 #include "scumm/resource.h"
 #include "scumm/scumm_v3.h"
 #include "scumm/scumm_v5.h"
+#ifdef ENABLE_NEURO
+#include "scumm/neuro/neuro.h"
+#endif
 #include "scumm/sound.h"
 #include "scumm/players/player_towns.h"
 #include "scumm/util.h"
@@ -593,6 +596,10 @@ void ScummEngine_v5::o5_actorOps() {
 			break;
 		case 13:		// SO_ACTOR_NAME
 			loadPtrToResource(rtActorName, a->_number, nullptr);
+#ifdef ENABLE_NEURO
+			if (_neuro)
+				_neuro->onActorNamed(a->_number);
+#endif
 			break;
 		case 14:		// SO_INIT_ANIMATION
 			a->_initFrame = getVarOrDirectByte(PARAM_1);
