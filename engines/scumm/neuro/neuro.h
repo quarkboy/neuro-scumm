@@ -34,6 +34,8 @@ class ScummEngine;
 
 struct NeuroThing {
 	int id = 0;
+	int x = 0;
+	int state = 0;
 	Common::String name;
 };
 
@@ -46,6 +48,9 @@ struct NeuroWorld {
 	NeuroThingList actors;
 	NeuroThingList inventory;
 	NeuroThingList verbs;
+
+	/** The verb area shows lines to say instead of verbs. */
+	bool inDialogue = false;
 };
 
 /**
@@ -69,6 +74,9 @@ public:
 	void onTalkStarted(int actor, const byte *text);
 	void onTalkStopped();
 
+	/** While a simulated click is in progress, points the mouse at its target. */
+	void overridePointer();
+
 	/** What Neuro would be told on entering the current room. */
 	Common::String describeWorld();
 
@@ -79,6 +87,21 @@ private:
 	void registerActions();
 	void handleMessage(const Common::String &text);
 	void handleAction(const Common::String &id, const Common::String &name, const Common::String &data);
+
+	void actionInteract(const Common::String &id, const Common::JSONValue *args);
+	void actionSkipCutscene(const Common::String &id);
+	void actionChooseDialogue(const Common::String &id, const Common::JSONValue *args);
+
+	void sendForce(const Common::String &state, const Common::String &query, const char *actionName);
+	void updateForces(const NeuroWorld &world);
+
+	/** Finds a point in room coordinates where a click lands on the given object or actor. */
+	bool findClickPoint(int thing, int &x, int &y) const;
+	void clickInRoom(int x, int y);
+	void updateClick();
+
+	/** Finds a thing by the name Neuro used for it; returns nullptr and fills error if there is no single match. */
+	const NeuroThing *findThing(const NeuroThingList &things, const Common::String &name) const;
 
 	bool playerHasControl() const;
 	void pollWorld();
@@ -100,9 +123,38 @@ private:
 	bool _wasConnected = false;
 	uint32 _nextConnectAttempt = 0;
 
+	// A simulated click takes a few frames: the game's own hover script
+	// has to see the pointer over the target before the button goes down.
+	enum ClickPhase {
+		kClickIdle,
+		kClickHover,
+		kClickPress,
+		kClickRelease
+	};
+	ClickPhase _clickPhase = kClickIdle;
+	int _clickFrames = 0;
+	int _clickX = 0, _clickY = 0;
+
 	NeuroWorld _described;
+
+	// The game's normal verbs, learned the first time they are on screen
+	NeuroThingList _standardVerbs;
+
+	// Only one force may be outstanding at a time
+	bool _forceActive = false;
+	uint32 _forceSentAt = 0;
+	uint32 _lastActivity = 0;
+	uint32 _idleForceMs = 0;
+	Common::String _forcedDialogue;
 	uint32 _controlSince = 0;
 	uint32 _nextWorldPoll = 0;
+
+	// Servers that predate the speech commands get dialogue as batched context instead
+	bool _dialogueAsContext = false;
+	Common::String _pendingDialogue;
+	Common::String _lastLine;
+	uint32 _lastTalkTime = 0;
+	void flushDialogue();
 
 	Common::String _speechIdPrefix;
 	uint32 _speechCounter = 0;

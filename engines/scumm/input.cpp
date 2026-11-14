@@ -42,6 +42,9 @@
 #include "scumm/scumm_v6.h"
 #include "scumm/scumm_v8.h"
 #include "scumm/sound.h"
+#ifdef ENABLE_NEURO
+#include "scumm/neuro/neuro.h"
+#endif
 #include "scumm/dialogs.h"
 
 #include "graphics/cursorman.h"
@@ -426,6 +429,11 @@ void ScummEngine::processInput() {
 		_virtualMouse.y = -1;
 	if (_virtualMouse.y >= vs->h)
 		_virtualMouse.y = -1;
+
+#ifdef ENABLE_NEURO
+	if (_neuro)
+		_neuro->overridePointer();
+#endif
 
 	//
 	// Determine the mouse button state.

@@ -21,6 +21,7 @@
 
 #include "scumm/neuro/neuro.h"
 
+#include "common/algorithm.h"
 #include "common/debug.h"
 #include "common/system.h"
 
@@ -35,6 +36,10 @@ namespace Scumm {
 
 static const uint32 kWorldPollIntervalMs = 100;
 static const uint32 kControlSettleMs = 300;
+
+// In Monkey Island 1 and 2 this verb slot is not a verb but the sentence line
+// ("Walk to door") above the verbs.
+static const int kSentenceLineVerb = 100;
 
 Common::String NeuroBridge::cleanText(const byte *text, bool resolveCodes) {
 	if (!text)
@@ -95,12 +100,28 @@ bool NeuroBridge::playerHasControl() const {
 	return _vm->_userPut > 0 && _vm->_cursor.state > 0;
 }
 
+/** Things sharing a name get numbered from left to right. */
 static void numberDuplicates(NeuroThingList &objects, NeuroThingList &actors) {
+	// A character is often both an actor and a clickable object. Keep the
+	// object, which is what a click finds first.
+	for (uint i = 0; i < actors.size();) {
+		bool duplicate = false;
+		for (const auto &object : objects)
+			duplicate |= object.name.equalsIgnoreCase(actors[i].name);
+		if (duplicate)
+			actors.remove_at(i);
+		else
+			i++;
+	}
+
 	Common::Array<NeuroThing *> all;
 	for (auto &thing : objects)
 		all.push_back(&thing);
 	for (auto &thing : actors)
 		all.push_back(&thing);
+	Common::sort(all.begin(), all.end(), [](const NeuroThing *a, const NeuroThing *b) {
+		return a->x < b->x;
+	});
 
 	for (uint i = 0; i < all.size(); i++) {
 		const Common::String name = all[i]->name;
@@ -143,6 +164,8 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 
 		NeuroThing thing;
 		thing.id = od.obj_nr;
+		thing.x = od.x_pos + od.width / 2;
+		thing.state = od.state;
 		thing.name = cleanText(_vm->getObjOrActorName(od.obj_nr), true);
 		if (!thing.name.empty())
 			world.objects.push_back(thing);
@@ -158,6 +181,7 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 
 		NeuroThing thing;
 		thing.id = i;
+		thing.x = actor->getPos().x;
 		thing.name = cleanText(actor->getActorName(), true);
 		if (!thing.name.empty())
 			world.actors.push_back(thing);
@@ -177,7 +201,7 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 
 	for (int slot = 1; slot < _vm->_numVerbs; slot++) {
 		const VerbSlot &vs = _vm->_verbs[slot];
-		if (!vs.verbid || vs.saveid != 0 || vs.curmode != 1 || vs.type != kTextVerbType)
+		if (!vs.verbid || vs.verbid == kSentenceLineVerb || vs.saveid != 0 || vs.curmode != 1 || vs.type != kTextVerbType)
 			continue;
 
 		NeuroThing thing;
@@ -188,6 +212,15 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 	}
 
 	numberDuplicates(world.objects, world.actors);
+
+	// Conversation lines replace the normal verbs while they are shown
+	if (!world.verbs.empty() && !_standardVerbs.empty()) {
+		world.inDialogue = true;
+		for (const auto &verb : world.verbs) {
+			for (const auto &standard : _standardVerbs)
+				world.inDialogue &= (verb.id != standard.id);
+		}
+	}
 }
 
 static Common::String joinNames(const NeuroThingList &things) {
@@ -204,11 +237,13 @@ static Common::String joinNames(const NeuroThingList &things) {
 }
 
 Common::String NeuroBridge::describeRoom(const NeuroWorld &world) const {
-	Common::String text = Common::String::format("## You are now in room %d\n\n", world.room);
+	Common::String text = Common::String::format("## Location: room %d\n\n", world.room);
 	text += "- Things here: " + joinNames(world.objects) + "\n";
 	if (!world.actors.empty())
 		text += "- Characters here: " + joinNames(world.actors) + "\n";
 	text += "- You are carrying: " + joinNames(world.inventory) + "\n";
+	if (text.contains(" #2"))
+		text += "- Things with the same name are numbered from left to right.\n";
 	return text;
 }
 
@@ -251,6 +286,18 @@ Common::String NeuroBridge::describeChanges(const NeuroWorld &before, const Neur
 		if (!removed.empty())
 			text += Common::String::format(category.removed, joinNames(removed).c_str());
 	}
+
+	// A state change is only visible on screen (a door swinging open, a
+	// lever moving), so it has to be spelled out.
+	NeuroThingList changed;
+	for (const auto &thing : after.objects) {
+		for (const auto &old : before.objects) {
+			if (old.id == thing.id && old.name == thing.name && old.state != thing.state)
+				changed.push_back(thing);
+		}
+	}
+	if (!changed.empty())
+		text += Common::String::format("Changed in appearance: %s\n", joinNames(changed).c_str());
 	return text;
 }
 
@@ -273,12 +320,18 @@ void NeuroBridge::pollWorld() {
 	// states are noise.
 	if (!playerHasControl() || _speechOpen || _vm->_sentenceNum > 0) {
 		_controlSince = 0;
+		_lastActivity = now;
 		return;
 	}
+	// Still carrying out the last action
+	if (_vm->_actors[_vm->VAR(_vm->VAR_EGO)]->_moving)
+		_lastActivity = now;
 	if (!_controlSince)
 		_controlSince = now;
 	if (now - _controlSince < kControlSettleMs)
 		return;
+
+	flushDialogue();
 
 	NeuroWorld world;
 	collectWorld(world);
@@ -291,8 +344,13 @@ void NeuroBridge::pollWorld() {
 			sendContext(changes, true);
 	}
 
-	if (joinNames(world.verbs) != joinNames(_described.verbs))
-		debug(1, "Neuro: Verbs on screen: %s", joinNames(world.verbs).c_str());
+	// The first verbs to appear are the game's normal ones
+	if (_standardVerbs.empty() && !world.verbs.empty()) {
+		_standardVerbs = world.verbs;
+		registerActions();
+	}
+
+	updateForces(world);
 
 	_described = world;
 }
@@ -316,18 +374,32 @@ void NeuroBridge::onTalkStarted(int actor, const byte *text) {
 			speaker = "Narrator";
 	}
 
+	// Crowds shout the same line once per member; report it once
+	const Common::String spoken = speaker + ": " + line;
+	if (spoken == _lastLine && g_system->getMillis() - _lastTalkTime < 5000)
+		return;
+	_lastLine = spoken;
+
+	_speechOpen = true;
+	if (_dialogueAsContext) {
+		_pendingDialogue += Common::String::format("%s: \"%s\"\n", speaker.c_str(), line.c_str());
+		return;
+	}
+
 	Common::JSONObject data;
 	data.setVal("id", new Common::JSONValue(Common::String::format("%s-%u", _speechIdPrefix.c_str(), ++_speechCounter)));
 	data.setVal("speaker", new Common::JSONValue(speaker));
 	data.setVal("text", new Common::JSONValue(line));
 	send("speech/started", &data);
-	_speechOpen = true;
 }
 
 void NeuroBridge::onTalkStopped() {
 	if (!_speechOpen)
 		return;
 	_speechOpen = false;
+	_lastTalkTime = g_system->getMillis();
+	if (_dialogueAsContext)
+		return;
 
 	Common::JSONObject data;
 	data.setVal("id", new Common::JSONValue(Common::String::format("%s-%u", _speechIdPrefix.c_str(), _speechCounter)));

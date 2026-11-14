@@ -1,6 +1,6 @@
 # Neuro-sama plays The Secret of Monkey Island: development plan
 
-Status: phases 0 (mostly), 1 and 2 done; next is phase 3, action. 2026-11-13.
+Status: phases 0 (mostly), 1, 2 and 3 done; next is phase 4, the vertical slice with an LLM. 2026-11-13.
 
 ## Decisions so far
 
@@ -134,9 +134,21 @@ The game has object names but no text describing a room. Proposal: a hand-writte
 - Verified headless so far: intro and lookout dialogue arrive as speech lines with speaker names, and the first room (33, the dock street) is described once the player gains control. `skip_cutscene` was pulled forward from phase 3 to make this testable.
 - Implementation notes: the world is polled, not hooked; a snapshot is sent only after the player has had control for 300 ms with no line being spoken. Rooms are still identified by number until the description data exists.
 
-**3. Action**
+**3. Action** (done)
 - The action set above, validation and error messages, state machine, forces.
-- Exit test: via Gary's manual mode (driven over MCP), complete: lookout dialogue -> walk to SCUMM Bar -> talk to the important-looking pirates -> pick up items in the kitchen.
+- Exit test passed, headless, driven through Gary's MCP endpoint: lookout dialogue -> open door, walk into the SCUMM Bar -> talk to the important-looking pirates with dialogue choices -> into the kitchen -> pick up meat and pot -> use meat with pot o' stew.
+- What was built, where it differs from the draft above:
+  - `interact` covers walking too: "Walk to" is a pseudo-verb. The verb parameter becomes an enum once the game's verbs have been seen.
+  - Verb sentences go through `doSentence`. Walking does not work that way (the game answers "That doesn't seem to work"), so "Walk to" is a simulated click: the pointer is held over the target for a few frames so the game's hover script sees it, then the button is pressed. The game then issues its own internal walk sentence (verb 11), which is also what takes Guybrush through doors.
+  - Verb slot 100 is the sentence line, not a verb, and is filtered out.
+  - Dialogue choices are verb slots that share no id with the normal verbs; they trigger an `actions/force` for `choose_dialogue`.
+  - Idle prompt: after `NEURO_IDLE_FORCE_SECONDS` (default 45, 0 = off) with nothing happening, a force for `interact` with the room as ephemeral state.
+  - Same-named things are numbered left to right ("door #1", "door #2"). Objects whose look changed are reported ("Changed in appearance: door"), since an opened door is otherwise invisible to her.
+  - Gary 1.0.4 rejects `speech/started` / `speech/ended`. `NEURO_DIALOGUE_MODE=context` (the default in `neuro/run.sh`) sends dialogue as batched context messages instead; `speech` is the mode for the real server.
+  - Unregistered `debug_screenshot` action for development.
+- Found for phase 4:
+  - The cook is an unnamed actor, so Neuro cannot tell when he leaves the kitchen. The description data needs to name unnamed actors, which then show up as "Arrived" / "Left". Getting into the kitchen is the first timing puzzle.
+  - Off-screen speakers come through as "Narrator", unnamed ones as "Someone".
 
 **4. Vertical slice with an LLM**
 - Room descriptions for the slice. Gary with GPT plays from a fresh start.
