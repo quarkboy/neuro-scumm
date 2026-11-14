@@ -123,7 +123,8 @@ endif
 ifdef ENABLE_NEURO
 MODULE_OBJS += \
 	neuro/neuro.o \
-	neuro/websocket.o
+	neuro/websocket.o \
+	neuro/world.o
 endif
 
 ifdef ENABLE_SCUMM_7_8

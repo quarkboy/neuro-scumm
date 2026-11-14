@@ -46,6 +46,9 @@ private:
 
 	// Commands
 	bool Cmd_Room(int argc, const char **argv);
+#ifdef ENABLE_NEURO
+	bool Cmd_Neuro(int argc, const char **argv);
+#endif
 	bool Cmd_LoadGame(int argc, const char **argv);
 	bool Cmd_SaveGame(int argc, const char **argv);
 	bool Cmd_Restart(int argc, const char **argv);

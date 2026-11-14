@@ -22,6 +22,7 @@
 #ifndef SCUMM_NEURO_NEURO_H
 #define SCUMM_NEURO_NEURO_H
 
+#include "common/array.h"
 #include "common/formats/json.h"
 #include "common/str.h"
 
@@ -30,6 +31,22 @@
 namespace Scumm {
 
 class ScummEngine;
+
+struct NeuroThing {
+	int id = 0;
+	Common::String name;
+};
+
+typedef Common::Array<NeuroThing> NeuroThingList;
+
+/** Everything the player could see or use at one moment. */
+struct NeuroWorld {
+	int room = 0;
+	NeuroThingList objects;
+	NeuroThingList actors;
+	NeuroThingList inventory;
+	NeuroThingList verbs;
+};
 
 /**
  * Lets Neuro-sama play the game through the Neuro API
@@ -48,6 +65,13 @@ public:
 
 	void sendContext(const Common::String &message, bool silent);
 
+	/** A character (or the narrator, for actor 0xFF) started saying a line. */
+	void onTalkStarted(int actor, const byte *text);
+	void onTalkStopped();
+
+	/** What Neuro would be told on entering the current room. */
+	Common::String describeWorld();
+
 private:
 	NeuroBridge(ScummEngine *vm, const Common::String &url);
 
@@ -55,6 +79,15 @@ private:
 	void registerActions();
 	void handleMessage(const Common::String &text);
 	void handleAction(const Common::String &id, const Common::String &name, const Common::String &data);
+
+	bool playerHasControl() const;
+	void pollWorld();
+	void collectWorld(NeuroWorld &world);
+	Common::String describeRoom(const NeuroWorld &world) const;
+	Common::String describeChanges(const NeuroWorld &before, const NeuroWorld &after) const;
+
+	/** Converts game text to UTF-8, dropping control codes and name padding. */
+	Common::String cleanText(const byte *text, bool resolveCodes);
 
 	/** Takes ownership of the values in data. */
 	void send(const char *command, const Common::JSONObject *data = nullptr);
@@ -66,6 +99,14 @@ private:
 	WebSocketClient _ws;
 	bool _wasConnected = false;
 	uint32 _nextConnectAttempt = 0;
+
+	NeuroWorld _described;
+	uint32 _controlSince = 0;
+	uint32 _nextWorldPoll = 0;
+
+	Common::String _speechIdPrefix;
+	uint32 _speechCounter = 0;
+	bool _speechOpen = false;
 };
 
 } // End of namespace Scumm

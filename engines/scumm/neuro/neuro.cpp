@@ -25,6 +25,7 @@
 
 #include "common/config-manager.h"
 #include "common/debug.h"
+#include "common/random.h"
 #include "common/system.h"
 #include "common/textconsole.h"
 
@@ -66,6 +67,10 @@ NeuroBridge::NeuroBridge(ScummEngine *vm, const Common::String &url) : _vm(vm), 
 		_gameName = _vm->_game.gameid;
 		break;
 	}
+
+	// Line ids must stay unique across restarts of the game
+	Common::RandomSource rnd("neuro_speech");
+	_speechIdPrefix = Common::String::format("%08x", rnd.getRandomNumber(0x7FFFFFFF));
 }
 
 void NeuroBridge::update() {
@@ -89,12 +94,24 @@ void NeuroBridge::update() {
 	Common::String message;
 	while (_ws.receive(message))
 		handleMessage(message);
+
+	pollWorld();
 }
 
 void NeuroBridge::onConnected() {
 	debug(1, "Neuro: Connected to %s as '%s'", _url.c_str(), _gameName.c_str());
 	send("startup");
 	registerActions();
+
+	sendContext(Common::String::format(
+		"You are playing %s, a classic point-and-click adventure game. "
+		"You control Guybrush Threepwood, who wants to become a pirate. "
+		"You cannot see the screen, so each location and what is in it will be described to you.",
+		_gameName.c_str()), true);
+
+	// Describe the current room again from scratch
+	_described = NeuroWorld();
+	_speechOpen = false;
 }
 
 void NeuroBridge::registerActions() {
@@ -102,8 +119,13 @@ void NeuroBridge::registerActions() {
 	wait.setVal("name", new Common::JSONValue("wait"));
 	wait.setVal("description", new Common::JSONValue("Do nothing for a moment and let the game continue."));
 
+	Common::JSONObject skip;
+	skip.setVal("name", new Common::JSONValue("skip_cutscene"));
+	skip.setVal("description", new Common::JSONValue("Skip the cutscene that is currently playing."));
+
 	Common::JSONArray actions;
 	actions.push_back(new Common::JSONValue(wait));
+	actions.push_back(new Common::JSONValue(skip));
 
 	Common::JSONObject data;
 	data.setVal("actions", new Common::JSONValue(actions));
@@ -170,6 +192,16 @@ void NeuroBridge::handleMessage(const Common::String &text) {
 void NeuroBridge::handleAction(const Common::String &id, const Common::String &name, const Common::String &data) {
 	if (name == "wait") {
 		sendActionResult(id, true);
+		return;
+	}
+
+	if (name == "skip_cutscene") {
+		if (_vm->vm.cutSceneStackPointer == 0 || _vm->vm.cutScenePtr[_vm->vm.cutSceneStackPointer] == 0) {
+			sendActionResult(id, true, "There is no skippable cutscene playing right now.");
+			return;
+		}
+		sendActionResult(id, true);
+		_vm->abortCutscene();
 		return;
 	}
 

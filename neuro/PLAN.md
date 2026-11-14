@@ -1,6 +1,6 @@
 # Neuro-sama plays The Secret of Monkey Island: development plan
 
-Status: phases 0 (mostly) and 1 done; next is phase 2, observation. 2026-11-13.
+Status: phases 0 (mostly), 1 and 2 done; next is phase 3, action. 2026-11-13.
 
 ## Decisions so far
 
@@ -127,10 +127,12 @@ The game has object names but no text describing a room. Proposal: a hand-writte
 - Built as a SCUMM sub-engine: `configure --disable-all-engines --enable-engine=scumm,neuro` (defines `ENABLE_NEURO`). URL from `NEURO_SDK_WS_URL` or the `neuro_ws_url` config key; without either the bridge stays off.
 - Exit test passed: Gary lists the game with its `wait` action, an action round trip works, and the only diagnostic is an info note caused by answering Gary's own `actions/reregister_all`.
 
-**2. Observation**
+**2. Observation** (done, pending a human playthrough check)
 - World snapshot and diffing; room-entry context; speech events; cutscene tracking.
 - Debug console command to dump exactly what Neuro would be sent.
 - Exit test: a human plays the opening while Gary's context log reads as a coherent transcript.
+- Verified headless so far: intro and lookout dialogue arrive as speech lines with speaker names, and the first room (33, the dock street) is described once the player gains control. `skip_cutscene` was pulled forward from phase 3 to make this testable.
+- Implementation notes: the world is polled, not hooked; a snapshot is sent only after the player has had control for 300 ms with no line being spoken. Rooms are still identified by number until the description data exists.
 
 **3. Action**
 - The action set above, validation and error messages, state machine, forces.

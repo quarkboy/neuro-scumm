@@ -22,6 +22,9 @@
 #include "common/system.h"	// for setFocusRectangle/clearFocusRectangle
 #include "common/scummsys.h"
 #include "scumm/scumm.h"
+#ifdef ENABLE_NEURO
+#include "scumm/neuro/neuro.h"
+#endif
 #include "scumm/actor.h"
 #include "scumm/actor_he.h"
 #include "scumm/akos.h"
@@ -3535,6 +3538,10 @@ void ScummEngine::actorTalk(const byte *msg) {
 #ifdef USE_TTS
 	stopTextToSpeech();
 #endif
+#ifdef ENABLE_NEURO
+	if (_neuro)
+		_neuro->onTalkStarted(getTalkingActor(), _charsetBuffer);
+#endif
 	displayDialog();
 }
 
@@ -3563,6 +3570,11 @@ void Actor::runActorTalkScript(int f) {
 
 void ScummEngine::stopTalk() {
 	int act;
+
+#ifdef ENABLE_NEURO
+	if (_neuro)
+		_neuro->onTalkStopped();
+#endif
 
 	_sound->stopTalkSound();
 

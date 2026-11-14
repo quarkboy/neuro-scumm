@@ -33,6 +33,9 @@
 #include "scumm/object.h"
 #include "scumm/resource.h"
 #include "scumm/scumm.h"
+#ifdef ENABLE_NEURO
+#include "scumm/neuro/neuro.h"
+#endif
 #include "scumm/sound.h"
 
 #include "scumm/akos.h"
@@ -110,6 +113,9 @@ ScummDebugger::ScummDebugger(ScummEngine *s)
 		registerCmd("imuse", WRAP_METHOD(ScummDebugger, Cmd_DiMuse));
 #endif
 
+#ifdef ENABLE_NEURO
+	registerCmd("neuro",     WRAP_METHOD(ScummDebugger, Cmd_Neuro));
+#endif
 	registerCmd("resetcursors",    WRAP_METHOD(ScummDebugger, Cmd_ResetCursors));
 }
 
@@ -363,6 +369,16 @@ bool ScummDebugger::Cmd_DiMuse(int argc, const char **argv) {
 	return true;
 }
 
+#endif
+
+#ifdef ENABLE_NEURO
+bool ScummDebugger::Cmd_Neuro(int argc, const char **argv) {
+	if (_vm->_neuro)
+		debugPrintf("%s", _vm->_neuro->describeWorld().c_str());
+	else
+		debugPrintf("The Neuro bridge is off: no server URL is configured\n");
+	return true;
+}
 #endif
 
 bool ScummDebugger::Cmd_Room(int argc, const char **argv) {
