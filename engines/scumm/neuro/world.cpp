@@ -662,6 +662,8 @@ void NeuroBridge::onTalkStarted(int actor, const byte *text) {
 	data.setVal("id", new Common::JSONValue(Common::String::format("%s-%u", _speechIdPrefix.c_str(), ++_speechCounter)));
 	data.setVal("speaker", new Common::JSONValue(speaker));
 	data.setVal("text", new Common::JSONValue(line));
+	// Only a safety net in case the end message is lost: generous reading time
+	data.setVal("expected_duration_ms", new Common::JSONValue((long long int)(3000 + line.size() * 150)));
 	send("speech/started", &data);
 }
 
