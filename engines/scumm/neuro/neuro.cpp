@@ -512,24 +512,27 @@ void NeuroBridge::handleMessage(const Common::String &text) {
 }
 
 void NeuroBridge::handleDebugAction(const Common::String &id, const Common::String &name, const Common::String &data) {
+	// The dev driver sends these with the id "dbg", straight to the game: the
+	// server never issued them and would only warn about an unexpected result
+	const bool quiet = id == "dbg";
 	// Development aid, deliberately not registered: saves a screenshot
 	// to ScummVM's screenshot directory.
 	if (name == "debug_screenshot") {
 		g_system->saveScreenshot();
-		sendActionResult(id, true);
+		if (!quiet) sendActionResult(id, true);
 		return;
 	}
 
 	if (name == "debug_dump") {
 		debugDump();
-		sendActionResult(id, true);
+		if (!quiet) sendActionResult(id, true);
 		return;
 	}
 	if (name == "debug_save" || name == "debug_load") {
 		int slot = 0;
 		char label[64] = "";
 		sscanf(data.c_str(), "%d %63[^\n]", &slot, label);
-		sendActionResult(id, true);
+		if (!quiet) sendActionResult(id, true);
 		if (name == "debug_save")
 			_vm->requestSave(slot, label[0] ? label : "neuro");
 		else
@@ -539,19 +542,40 @@ void NeuroBridge::handleDebugAction(const Common::String &id, const Common::Stri
 	if (name == "debug_speed") {
 		_fastMode = kFastOff;
 		_vm->_fastMode = atoi(data.c_str());
-		sendActionResult(id, true);
+		if (!quiet) sendActionResult(id, true);
+		return;
+	}
+	if (name == "debug_sentence") {
+		int verb = 0, a = 0, b = 0;
+		sscanf(data.c_str(), "%d %d %d", &verb, &a, &b);
+		if (!quiet) sendActionResult(id, true);
+		_vm->doSentence(verb, a, b);
+		return;
+	}
+	if (name == "debug_entry") {
+		// "OBJ" or "OBJ VERB": where an object is, who owns it, which verbs it handles
+		int obj = 0, verb = -1;
+		sscanf(data.c_str(), "%d %d", &obj, &verb);
+		Common::String text = Common::String::format("object %d: where %d, owner %d, class bits %x; handles verbs:",
+			obj, _vm->whereIsObject(obj), _vm->objIsActor(obj) ? -1 : _vm->getOwner(obj), _vm->objIsActor(obj) ? 0 : _vm->_classData[obj]);
+		for (int v = 1; v < 256; v++) {
+			if ((verb < 0 || v == verb) && _vm->getVerbEntrypoint(obj, v))
+				text += Common::String::format(" %d", v);
+		}
+		debug("NEURODUMP %s", text.c_str());
+		if (!quiet) sendActionResult(id, true, text);
 		return;
 	}
 	if (name == "debug_room") {
 		const int room = atoi(data.c_str());
-		sendActionResult(id, true);
+		if (!quiet) sendActionResult(id, true);
 		_vm->_actors[_vm->VAR(_vm->VAR_EGO)]->_room = room;
 		_vm->startScene(room, nullptr, 0);
 		_vm->_fullRedraw = true;
 		return;
 	}
 
-	sendActionResult(id, false, "Unknown debug action.");
+	if (!quiet) sendActionResult(id, false, "Unknown debug action.");
 }
 
 void NeuroBridge::handleAction(const Common::String &id, const Common::String &rawName, const Common::String &data) {

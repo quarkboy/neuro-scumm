@@ -25,7 +25,8 @@ unverified, the matching work item starts with checking it in the game.
 
 ## The order, in one line
 
-E1 E2 E3 first (they unblock testing everything else), E9 alongside them, then the game in story
+E1 E2 E3 first (they unblock testing everything else), E10's line dump with them (it makes every
+goal and clue trigger exact), E9 alongside, then the game in story
 order: P1 (rest of Part One), P2 (the voyage), P3 (Monkey Island), P4 (the finale), then a full
 unaided run. Each P item also writes the hints for its puzzles (E9).
 
@@ -130,6 +131,33 @@ whether to look.
   monkey, the cannibals, the catacombs, the ghost ship, the final fight.
 - **Done when:** with hints on, GPT stuck at the safe asks for hints and gets through using them;
   with hints off, the action says hints are switched off.
+
+### E10. Clues in the journal, and a dump of every line in the game (L)
+Proposed by Samuel, 2026-11-14. Goals tell her what to do; clues are what she has learned that
+helps with them, written down the moment she hears it. Example: the prisoner says he was jailed
+for picking a flower, and names it.
+- **Journal:** `read_journal` shows the unfinished goals as now. A new option shows the clues
+  gathered so far, under the goal each belongs to. Clues of finished goals are hidden with them.
+  When a clue is recorded she is told at the next pause, like a new goal
+  ("Clue noted under Thievery trial: ...").
+- **Description file:** `[clue.ID]` sections with `goal` (which goal it belongs to), `when` (the
+  same triggers as goals, almost always `heard:` with the exact line) and `text` (the clue as a
+  short note in plain words). Clues replace the `[nudge.*]` entries.
+- **A dump of every line:** extract every line of dialogue and text from the game's scripts, per
+  room, with its speaker. Ways to get it, to be tried in this order: decompile the scripts with
+  ScummVM's `descumm` tool; scan the script resources for the text-printing instructions from
+  inside the engine; record every line heard during the E1 scripted run (covers only the
+  walkthrough's path, but is easy).
+- **Review page:** a "Lines" view per room listing every line, where a reviewer marks a line as
+  a new goal, a goal done, or a clue for a chosen goal. Saving writes the section with the exact
+  text as its trigger. Claude drafts the marks from the dump and the walkthrough; a person checks.
+- **Why it matters:** every `heard:` trigger in the file is currently guessed from walkthrough
+  paraphrases (many are marked unverified). With the dump they become exact, and the whole game's
+  goals and clues can be laid out in one pass instead of discovered during play.
+- **Careful with:** clues must only record what she has actually heard, and only what a careful
+  player would write down; a clue list that solves the puzzle makes the hint system pointless.
+- **Done when:** the dump covers every room; Part One's goals and clues are marked from it; and
+  in a GPT run, talking to the prisoner records the flower clue under the thievery trial.
 
 ---
 
