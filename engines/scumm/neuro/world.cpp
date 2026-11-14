@@ -590,12 +590,16 @@ void NeuroBridge::pollWorld() {
 		if (!remembered)
 			_seenRooms[world.room] = _tokensSent;
 		sendContext(describeRoom(world, remembered ? kRoomRevisit : kRoomFirstVisit), false);
+		_outcomeTold = true;
 	} else {
 		Common::String changes = describeChanges(_described, world);
-		// Someone coming or going may be her cue to act
-		if (!changes.empty())
-			sendContext(changes, !(changes.contains("Arrived:") || changes.contains("Left:")));
+		// Her cue to act: someone coming or going, or the result of what she just did
+		if (!changes.empty()) {
+			sendContext(changes, !(_awaitingOutcome || changes.contains("Arrived:") || changes.contains("Left:")));
+			_outcomeTold |= _awaitingOutcome;
+		}
 	}
+	finishAction(world);
 	checkAlerts(_described, world);
 
 	// The first verbs to appear are the game's normal ones
@@ -609,7 +613,31 @@ void NeuroBridge::pollWorld() {
 	_described = world;
 }
 
+void NeuroBridge::finishAction(const NeuroWorld &world) {
+	if (!_awaitingOutcome)
+		return;
+
+	// Still going: a click not yet made, steps queued, walking, the game's own script
+	const bool busy = _clickPhase != kClickIdle || !_queue.empty()
+		|| _vm->_actors[_vm->VAR(_vm->VAR_EGO)]->_moving
+		|| _vm->isScriptRunning(_vm->VAR(_vm->VAR_SENTENCE_SCRIPT));
+	if (busy || g_system->getMillis() - _commandStartedAt < 600)
+		return;
+	// After someone has spoken, lines to choose from may be about to appear;
+	// they bring their own prompt, so give them a moment first.
+	if (_outcomeSpoken && !world.inDialogue && g_system->getMillis() - _controlSince < 1200)
+		return;
+
+	_awaitingOutcome = false;
+	// A conversation prompts her with the lines to choose from. Otherwise she
+	// needs a cue that is hers: the replies to her action were not sent as one.
+	if (!_outcomeTold && !world.inDialogue)
+		sendContext(_outcomeSpoken ? "Your move." : "Done.", false);
+}
+
 void NeuroBridge::onTalkStarted(int actor, const byte *text) {
+	_outcomeSpoken = true;
+
 	onTalkStopped();
 
 	Common::String line = cleanText(text, false);
@@ -706,6 +734,11 @@ void NeuroBridge::onTalkStarted(int actor, const byte *text) {
 	data.setVal("id", new Common::JSONValue(Common::String::format("%s-%u", _speechIdPrefix.c_str(), ++_speechCounter)));
 	data.setVal("speaker", new Common::JSONValue(speaker));
 	data.setVal("text", new Common::JSONValue(line));
+	// Lines she is only watching may get a reaction. Replies to her own action
+	// must not prompt her one by one: she is prompted once, when it is her
+	// turn, with the choice of lines or a cue.
+	if (_awaitingOutcome)
+		data.setVal("reply", new Common::JSONValue("never"));
 	// Only a safety net in case the end message is lost: generous reading time
 	data.setVal("expected_duration_ms", new Common::JSONValue((long long int)(3000 + line.size() * 150)));
 	send("speech/started", &data);

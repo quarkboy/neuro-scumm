@@ -134,6 +134,13 @@ private:
 	void runCommand(const NeuroCommand &command);
 	void updateQueuedCommand();
 
+	// After each of her actions she is told how it turned out, so that
+	// she can carry on at once instead of waiting to be prompted.
+	bool _awaitingOutcome = false;
+	bool _outcomeTold = false;   ///< she has been prompted with the result
+	bool _outcomeSpoken = false; ///< someone said something in reply
+	void finishAction(const NeuroWorld &world);
+
 	// Follow-up steps, each run as soon as the one before has played out
 	Common::Array<NeuroCommand> _queue;
 	bool _queueSawBusy = false;

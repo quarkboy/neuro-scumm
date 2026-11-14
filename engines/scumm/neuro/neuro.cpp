@@ -243,6 +243,7 @@ void NeuroBridge::flushDialogue() {
 		cue = !world.inDialogue;
 	}
 	sendContext(text, !cue);
+	_outcomeTold |= cue;
 	sendJournalNews();
 }
 

@@ -150,6 +150,11 @@ void NeuroBridge::actionChooseDialogue(const Common::String &id, const NeuroArgs
 	}
 
 	sendActionResult(id, true);
+	// What is said next is the reply to her line, not something to react to separately
+	_commandStartedAt = g_system->getMillis();
+	_awaitingOutcome = true;
+	_outcomeTold = false;
+	_outcomeSpoken = false;
 	_vm->runInputScript(kVerbClickArea, world.verbs[option - 1].id, 1);
 }
 
@@ -295,6 +300,9 @@ bool NeuroBridge::resolveCommand(const NeuroWorld &world, const Common::String &
 
 void NeuroBridge::runCommand(const NeuroCommand &command) {
 	_commandStartedAt = g_system->getMillis();
+	_awaitingOutcome = true;
+	_outcomeTold = false;
+	_outcomeSpoken = false;
 	_queueSawBusy = false;
 	_queueIdleSince = 0;
 	if (command.walk) {
