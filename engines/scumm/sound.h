@@ -24,6 +24,7 @@
 
 #include "common/scummsys.h"
 #include "common/serializer.h"
+#include "common/array.h"
 #include "common/str.h"
 #include "audio/mididrv.h"
 #include "scumm/file.h"
@@ -109,6 +110,11 @@ protected:
 public:
 	Audio::SoundHandle *_talkChannelHandle;	// Handle of mixer channel actor is talking on
 
+	// Remastered Monkey Island speech: a line that is interrupted by the
+	// next speaker keeps playing underneath it instead of being cut off.
+	Common::Array<Audio::SoundHandle> _overlappingTalkHandles;
+	bool _letTalkSoundFinish = false;
+
 	bool _soundsPaused;
 	byte _digiSndMode;
 	uint _lastSound;
@@ -127,6 +133,8 @@ public:
 	void triggerSound(int soundID);
 	void startTalkSound(uint32 offset, uint32 b, int mode, Audio::SoundHandle *handle = NULL);
 	void stopTalkSound();
+	/** The next stopTalkSound() is only making room for a new line. */
+	void letTalkSoundFinish() { _letTalkSoundFinish = shouldInjectMISEAudio(); }
 	bool isMouthSyncOff(uint pos);
 	virtual int isSoundRunning(int sound) const;
 	virtual bool isSoundInUse(int sound) const;

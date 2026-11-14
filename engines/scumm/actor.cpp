@@ -3483,6 +3483,7 @@ void ScummEngine::actorTalk(const byte *msg) {
 
 	if (_actorToPrintStrFor == 0xFF) {
 		if (!_keepText) {
+			_sound->letTalkSoundFinish();
 			stopTalk();
 		}
 		setTalkingActor(0xFF);
@@ -3495,6 +3496,7 @@ void ScummEngine::actorTalk(const byte *msg) {
 			oldact = 0xFF;
 		} else {
 			if (!_keepText) {
+				_sound->letTalkSoundFinish();
 				stopTalk();
 			}
 			setTalkingActor(a->_number);

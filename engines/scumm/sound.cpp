@@ -814,6 +814,25 @@ void Sound::startTalkSound(uint32 offset, uint32 length, int mode, Audio::SoundH
 }
 
 void Sound::stopTalkSound() {
+	const bool letFinish = _letTalkSoundFinish;
+	_letTalkSoundFinish = false;
+
+	if (letFinish) {
+		// Another character is starting to speak: leave this line playing.
+		// The talk handle is about to be reused, so keep a copy to be able
+		// to stop the line later.
+		for (uint i = 0; i < _overlappingTalkHandles.size();) {
+			if (_mixer->isSoundHandleActive(_overlappingTalkHandles[i]))
+				i++;
+			else
+				_overlappingTalkHandles.remove_at(i);
+		}
+		if (_mixer->isSoundHandleActive(*_talkChannelHandle))
+			_overlappingTalkHandles.push_back(*_talkChannelHandle);
+		_digiSndMode &= ~DIGI_SND_MODE_TALKIE;
+		return;
+	}
+
 	if (_digiSndMode & DIGI_SND_MODE_TALKIE) {
 		if (_vm->_imuseDigital) {
 #ifdef ENABLE_SCUMM_7_8
@@ -974,6 +993,10 @@ void Sound::stopSound(int sound) {
 }
 
 void Sound::stopAllSounds() {
+	for (const auto &handle : _overlappingTalkHandles)
+		_mixer->stopHandle(handle);
+	_overlappingTalkHandles.clear();
+
 	_soundCD->stopAllCDSounds();
 	if (_enableAmbienceSounds)
 		_soundSE->stopAmbience();
