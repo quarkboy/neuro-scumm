@@ -33,6 +33,7 @@
 #include "audio/decoders/mp3.h"
 #include "audio/decoders/raw.h"
 #include "audio/decoders/wma.h"
+#include "common/memstream.h"
 
 namespace Scumm {
 
@@ -662,13 +663,7 @@ Audio::SeekableAudioStream *SoundSE::createSoundStream(Common::SeekableSubReadSt
 		);
 	}
 	case kXWBCodecWMA:
-		// TODO: Implement WMA codec
-		warning("createSoundStream: WMA codec not implemented");
-		delete stream;
-		return nullptr;
-#if 0
 		return new HeaderlessWMAStream(stream, entry, disposeAfterUse);
-#endif
 	case kFSBCodecMP3:
 #ifdef USE_MAD
 		return Audio::makeMP3Stream(
@@ -925,26 +920,30 @@ void SoundSE::stopAmbience() {
 	_mixer->stopHandle(_ambienceHandle);
 }
 
-#if 0
 HeaderlessWMAStream::HeaderlessWMAStream(
 					Common::SeekableReadStream *stream,
 					AudioEntry entry,
 					DisposeAfterUse::Flag disposeAfterUse) :
 					_stream(stream), _entry(entry), _disposeAfterUse(disposeAfterUse) {
-	// Taken from https://github.com/bgbennyboy/Monkey-Island-Explorer/blob/master/uMIExplorer_XWBManager.pas
-	const uint16 blockAlignArray[] = {
+	// A wave bank stores no WMA header. Its format word holds two indices
+	// instead: the low five bits pick the packet size and the rest pick the
+	// bit rate. Tables as used by Microsoft's XACT tools.
+	static const uint16 blockAlignArray[] = {
 		929, 1487, 1280, 2230, 8917,
 		8192, 4459, 5945, 2304, 1536,
 		1485, 1008, 2731, 4096, 6827,
 		5462, 1280
 	};
+	static const uint32 bytesPerSecondArray[] = {
+		12000, 24000, 4000, 6000, 8000, 20000, 2500
+	};
 
-	const uint16 index = _entry.align < ARRAYSIZE(blockAlignArray) ? _entry.align : 0;
-	const uint32 blockAlign = blockAlignArray[index];
-	const uint32 bitRate = (_entry.bits + 1) * 8;
+	const uint alignIndex = _entry.align & 0x1F;
+	const uint rateIndex = _entry.align >> 5;
+	_blockAlign = blockAlignArray[alignIndex < ARRAYSIZE(blockAlignArray) ? alignIndex : 0];
+	_bitRate = bytesPerSecondArray[rateIndex < ARRAYSIZE(bytesPerSecondArray) ? rateIndex : 0] * 8;
 
-	_wmaCodec = new Audio::WMACodec(2, _entry.rate, _entry.channels, bitRate, blockAlign);
-	_audioStream = _wmaCodec->decodeFrame(*stream);
+	createCodec();
 }
 
 HeaderlessWMAStream::~HeaderlessWMAStream() {
@@ -954,38 +953,57 @@ HeaderlessWMAStream::~HeaderlessWMAStream() {
 		delete _stream;
 }
 
-bool HeaderlessWMAStream::seek(const Audio::Timestamp &where) {
-	if (where == 0) {
-		return rewind();
-	}
+void HeaderlessWMAStream::createCodec() {
+	delete _wmaCodec;
+	delete _audioStream;
+	_audioStream = nullptr;
+	_endOfPackets = false;
+	// The codec's flags normally come from the missing header. These are the
+	// ones the XACT encoder always uses: exponent VLC, bit reservoir,
+	// variable block length (plus two bits with no effect on decoding).
+	static const byte extraData[6] = {0, 0, 0, 0, 0x1F, 0};
+	Common::MemoryReadStream extraDataStream(extraData, sizeof(extraData));
+	_wmaCodec = new Audio::WMACodec(2, _entry.rate, _entry.channels, _bitRate, _blockAlign, &extraDataStream);
+}
 
-	// Seeking is not supported
-	return false;
+bool HeaderlessWMAStream::seek(const Audio::Timestamp &where) {
+	// Only rewinding is supported, which is all that looping needs
+	if (where != 0)
+		return false;
+
+	_stream->seek(0);
+	// The codec carries data over from one packet to the next
+	createCodec();
+	return true;
 }
 
 int HeaderlessWMAStream::readBuffer(int16 *buffer, const int numSamples) {
 	int samplesDecoded = 0;
 
-	for (;;) {
-		if (_audioStream) {
-			samplesDecoded += _audioStream->readBuffer(buffer + samplesDecoded, numSamples - samplesDecoded);
-
-			if (_audioStream->endOfData()) {
-				delete _audioStream;
-				_audioStream = nullptr;
+	while (samplesDecoded < numSamples) {
+		if (!_audioStream) {
+			if (_endOfPackets)
+				break;
+			// The data is a plain sequence of fixed-size packets
+			if (_stream->pos() + (int64)_blockAlign > _stream->size()) {
+				_endOfPackets = true;
+				break;
 			}
+			Common::SeekableReadStream *packet = _stream->readStream(_blockAlign);
+			_audioStream = _wmaCodec->decodeFrame(*packet);
+			delete packet;
+			if (!_audioStream)
+				continue;
 		}
 
-		if (samplesDecoded == numSamples || endOfData())
-			break;
-
-		if (!_audioStream) {
-			_audioStream = _wmaCodec->decodeFrame(*_stream);
+		samplesDecoded += _audioStream->readBuffer(buffer + samplesDecoded, numSamples - samplesDecoded);
+		if (_audioStream->endOfData()) {
+			delete _audioStream;
+			_audioStream = nullptr;
 		}
 	}
 
 	return samplesDecoded;
 }
-#endif
 
 } // End of namespace Scumm
