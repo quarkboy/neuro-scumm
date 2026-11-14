@@ -150,7 +150,7 @@ bool NeuroJournal::isEmpty() const {
 	return _notes.empty();
 }
 
-Common::String NeuroJournal::describe(bool withNotes) const {
+Common::String NeuroJournal::describe(bool withCompleted) const {
 	Common::String active, done;
 	for (const auto &goal : _goals) {
 		if (goal.state == kActive)
@@ -161,14 +161,13 @@ Common::String NeuroJournal::describe(bool withNotes) const {
 
 	Common::String text = "## Your journal\n\n";
 	text += "Current goals:\n" + (active.empty() ? Common::String("- none yet\n") : active);
-	if (withNotes) {
-		if (!done.empty())
-			text += "\nAlready done:\n" + done;
-		if (!_notes.empty()) {
-			text += "\nYour notes:\n";
-			for (const auto &note : _notes)
-				text += "- " + note + "\n";
-		}
+	// Finished goals are left out unless asked for: seeing them invites doing them again
+	if (withCompleted)
+		text += "\nCompleted goals:\n" + (done.empty() ? Common::String("- none yet\n") : done);
+	if (!_notes.empty()) {
+		text += "\nYour notes:\n";
+		for (const auto &note : _notes)
+			text += "- " + note + "\n";
 	}
 	return text;
 }

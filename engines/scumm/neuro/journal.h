@@ -57,7 +57,7 @@ public:
 
 	void addNote(const Common::String &text);
 
-	Common::String describe(bool withNotes = true) const;
+	Common::String describe(bool withCompleted = false) const;
 	bool isEmpty() const;
 
 	/** Bridge state that has to survive a save and load along with the goals. */

@@ -341,7 +341,15 @@ void NeuroBridge::registerActions(bool interactOnly) {
 	Common::JSONObject readJournal;
 	readJournal.setVal("name", new Common::JSONValue("read_journal"));
 	readJournal.setVal("description", new Common::JSONValue(
-		"Read your journal: your current goals, what you have already done, and your own notes."));
+		"Read your journal: your current goals and your own notes. Set show_completed to also list goals you have already finished."));
+	Common::JSONObject completedType;
+	completedType.setVal("type", new Common::JSONValue("boolean"));
+	Common::JSONObject journalProperties;
+	journalProperties.setVal("show_completed", new Common::JSONValue(completedType));
+	Common::JSONObject journalSchema;
+	journalSchema.setVal("type", new Common::JSONValue("object"));
+	journalSchema.setVal("properties", new Common::JSONValue(journalProperties));
+	readJournal.setVal("schema", new Common::JSONValue(journalSchema));
 
 	Common::JSONObject noteProperties;
 	noteProperties.setVal("text", stringSchema());
@@ -521,7 +529,12 @@ void NeuroBridge::handleAction(const Common::String &id, const Common::String &n
 		return;
 	}
 	if (name == "read_journal") {
-		sendActionResult(id, true, _journal.describe());
+		Common::JSONValue *args = data.empty() ? nullptr : Common::JSON::parse(data);
+		bool completed = false;
+		if (args && args->isObject() && args->hasChild("show_completed") && args->child("show_completed")->isBool())
+			completed = args->child("show_completed")->asBool();
+		delete args;
+		sendActionResult(id, true, _journal.describe(completed));
 		return;
 	}
 	if (name == "add_note") {
