@@ -119,7 +119,7 @@ const NeuroThing *NeuroBridge::findThing(const NeuroThingList &things, const Com
 void NeuroBridge::actionSkipCutscene(const Common::String &id) {
 	const int depth = _vm->vm.cutSceneStackPointer;
 	if (depth == 0 || _vm->vm.cutScenePtr[depth] == 0) {
-		sendActionResult(id, true, "There is no skippable cutscene playing right now.");
+		sendActionResult(id, true, "No cutscene to skip.");
 		return;
 	}
 	sendActionResult(id, true);
@@ -137,7 +137,7 @@ void NeuroBridge::actionChooseDialogue(const Common::String &id, const Common::J
 	NeuroWorld world;
 	collectWorld(world);
 	if (!playerHasControl() || !world.inDialogue) {
-		sendActionResult(id, false, "There is nothing to choose right now.");
+		sendActionResult(id, false, "Nothing to choose now.");
 		return;
 	}
 
@@ -152,7 +152,7 @@ void NeuroBridge::actionChooseDialogue(const Common::String &id, const Common::J
 			option = atoi(value->asString().c_str());
 	}
 	if (option < 1 || option > (int)world.verbs.size()) {
-		sendActionResult(id, false, "Pick one of these lines by its number:\n" + listDialogue(world.verbs));
+		sendActionResult(id, false, "Pick a line by number:\n" + listDialogue(world.verbs));
 		return;
 	}
 
@@ -172,7 +172,7 @@ void NeuroBridge::actionAnswer(const Common::String &id, const Common::JSONValue
 	_questionCommand.clear();
 	// These questions are about a passing moment
 	if (command.empty() || g_system->getMillis() - _questionAskedAt > 20000) {
-		sendActionResult(id, true, "There is no question waiting for an answer.");
+		sendActionResult(id, true, "No question is waiting.");
 		return;
 	}
 	if (answer == "no") {
@@ -193,7 +193,7 @@ void NeuroBridge::actionAnswer(const Common::String &id, const Common::JSONValue
 	Common::String error;
 	if (!playerHasControl() || !resolveCommand(world, fields[0], fields[1], fields[2], resolved, error)) {
 		// Not a failure she should retry: the moment has simply gone
-		sendActionResult(id, true, "Too late: that is no longer possible.");
+		sendActionResult(id, true, "Too late.");
 		return;
 	}
 	sendActionResult(id, true);
@@ -215,7 +215,7 @@ void NeuroBridge::updateForces(const NeuroWorld &world) {
 		const bool fresh = lines != _forcedDialogue || now - _lastActionAt > 3000;
 		if (!_forceActive && fresh) {
 			_forcedDialogue = lines;
-			sendForce("Lines Guybrush can say:\n" + lines, "Choose what to say next.", "choose_dialogue");
+			sendForce(lines, "Pick a line to say.", "choose_dialogue");
 		}
 		return;
 	}
@@ -223,7 +223,7 @@ void NeuroBridge::updateForces(const NeuroWorld &world) {
 
 	if (_idleForceMs && !_forceActive && now - _lastActivity > _idleForceMs) {
 		_lastActivity = now;
-		sendForce(describeRoom(world), "The game is waiting for you. Decide what to do next. If you have lost track of your goals, read your journal.", "interact");
+		sendForce(describeRoom(world, kRoomStatus), "Your move.", "interact");
 	}
 }
 
@@ -236,7 +236,7 @@ bool NeuroBridge::resolveCommand(const NeuroWorld &world, const Common::String &
 	if (!command.walk) {
 		const NeuroThing *verb = findThing(world.verbs, verbName);
 		if (!verb) {
-			error = Common::String::format("There is no verb '%s'. The verbs are: %s, %s.",
+			error = Common::String::format("No verb '%s'. Verbs: %s, %s.",
 				verbName.c_str(), listNames(world.verbs).c_str(), kWalkVerbName);
 			return false;
 		}
@@ -256,7 +256,7 @@ bool NeuroBridge::resolveCommand(const NeuroWorld &world, const Common::String &
 			continue;
 		const NeuroThing *thing = findThing(everything, *names[i]);
 		if (!thing) {
-			error = Common::String::format("There is nothing called '%s' here. In the room: %s. In your inventory: %s.",
+			error = Common::String::format("No '%s' here. Room: %s. Inventory: %s.",
 				names[i]->c_str(), listNames(room, world.spots).c_str(), listNames(world.inventory).c_str());
 			return false;
 		}
@@ -265,7 +265,7 @@ bool NeuroBridge::resolveCommand(const NeuroWorld &world, const Common::String &
 
 	if (command.objects[0] < 0 || command.objects[1] < 0) {
 		if (!command.walk || command.objects[1]) {
-			error = "That is just a place: all you can do there is \"Walk to\" it.";
+			error = "That is a place: you can only \"Walk to\" it.";
 			return false;
 		}
 		const int spot = -command.objects[0] - 1;
@@ -277,7 +277,7 @@ bool NeuroBridge::resolveCommand(const NeuroWorld &world, const Common::String &
 	}
 
 	if (command.walk && (!findThing(room, targetName) || !findClickPoint(command.objects[0], command.x, command.y))) {
-		error = Common::String::format("You can only walk to things in the room: %s.", listNames(room, world.spots).c_str());
+		error = Common::String::format("Walk to something in the room: %s.", listNames(room, world.spots).c_str());
 		return false;
 	}
 	return true;
@@ -349,14 +349,14 @@ void NeuroBridge::actionInteract(const Common::String &id, const Common::JSONVal
 		return;
 	}
 	if (!playerHasControl()) {
-		sendActionResult(id, false, "You can't do anything right now: wait until the current scene has finished.");
+		sendActionResult(id, false, "Not now: a scene is playing.");
 		return;
 	}
 
 	NeuroWorld world;
 	collectWorld(world);
 	if (world.inDialogue) {
-		sendActionResult(id, false, "You are in a conversation: use choose_dialogue to pick what to say.");
+		sendActionResult(id, false, "In a conversation: use choose_dialogue.");
 		return;
 	}
 

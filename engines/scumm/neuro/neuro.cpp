@@ -217,6 +217,7 @@ void NeuroBridge::resetAfterLoad() {
 	_namedCostume.clear();
 	_recentLines.clear();
 	_lastActivity = g_system->getMillis();
+	_seenRooms.clear();
 	sendContext("A saved game was loaded. Forget where you were; your situation is described again below.", true);
 }
 
@@ -248,6 +249,7 @@ void NeuroBridge::onConnected() {
 		"You are playing %s, a classic point-and-click adventure game. "
 		"You control Guybrush Threepwood, who wants to become a pirate. "
 		"You cannot see the screen, so each location and what is in it will be described to you. "
+		"Things that share a name are numbered from left to right. "
 		"Your goals are kept in a journal that you can read at any time with read_journal.",
 		_gameName.c_str()), true);
 
@@ -281,11 +283,11 @@ void NeuroBridge::registerActions(bool interactOnly) {
 
 	Common::JSONObject wait;
 	wait.setVal("name", new Common::JSONValue("wait"));
-	wait.setVal("description", new Common::JSONValue("Do nothing for a moment and let the game continue."));
+	wait.setVal("description", new Common::JSONValue("Let the game continue for a moment."));
 
 	Common::JSONObject skip;
 	skip.setVal("name", new Common::JSONValue("skip_cutscene"));
-	skip.setVal("description", new Common::JSONValue("Skip the cutscene that is currently playing."));
+	skip.setVal("description", new Common::JSONValue("Skip the current cutscene."));
 
 	// Once the game's verbs are known they are offered as an enum
 	Common::JSONValue *verbSchema = stringSchema();
@@ -318,10 +320,9 @@ void NeuroBridge::registerActions(bool interactOnly) {
 	Common::JSONObject interact;
 	interact.setVal("name", new Common::JSONValue("interact"));
 	interact.setVal("description", new Common::JSONValue(
-		"Use one of the game's verbs on something in the room or in your inventory, e.g. verb \"Look at\", target \"poster\". "
-		"Walk somewhere with the verb \"Walk to\". "
-		"second_target is only for using or giving an inventory item: \"Use\" target \"key\" second_target \"door\". "
-		"When timing matters, then_verb and then_target add a second step that is done the instant the first one finishes."));
+		"Use a verb on something here or in your inventory. \"Walk to\" moves you. "
+		"second_target: what an item is used on or given to. "
+		"then_verb and then_target: an optional second step, done the instant the first ends."));
 	interact.setVal("schema", new Common::JSONValue(schema));
 
 	Common::JSONObject optionType;
@@ -339,7 +340,7 @@ void NeuroBridge::registerActions(bool interactOnly) {
 	Common::JSONObject choose;
 	choose.setVal("name", new Common::JSONValue("choose_dialogue"));
 	choose.setVal("description", new Common::JSONValue(
-		"During a conversation, pick what Guybrush says next by the number of the line."));
+		"In a conversation, say the line with this number."));
 	choose.setVal("schema", new Common::JSONValue(optionSchema));
 
 	Common::JSONArray actions;
@@ -347,7 +348,7 @@ void NeuroBridge::registerActions(bool interactOnly) {
 	Common::JSONObject readJournal;
 	readJournal.setVal("name", new Common::JSONValue("read_journal"));
 	readJournal.setVal("description", new Common::JSONValue(
-		"Read your journal: your current goals and your own notes. Set show_completed to also list goals you have already finished."));
+		"Read your goals and notes. show_completed adds finished goals."));
 	Common::JSONObject completedType;
 	completedType.setVal("type", new Common::JSONValue("boolean"));
 	Common::JSONObject journalProperties;
@@ -368,7 +369,7 @@ void NeuroBridge::registerActions(bool interactOnly) {
 	Common::JSONObject addNote;
 	addNote.setVal("name", new Common::JSONValue("add_note"));
 	addNote.setVal("description", new Common::JSONValue(
-		"Write a short note in your journal so you remember it later, such as a clue or a plan."));
+		"Add a short note to your journal."));
 	addNote.setVal("schema", new Common::JSONValue(noteSchema));
 
 	Common::JSONArray yesNo;
@@ -388,7 +389,7 @@ void NeuroBridge::registerActions(bool interactOnly) {
 	Common::JSONObject answer;
 	answer.setVal("name", new Common::JSONValue("answer"));
 	answer.setVal("description", new Common::JSONValue(
-		"Answer yes or no when the game asks you a quick question. Yes does what the question offered, immediately."));
+		"Answer a yes/no question from the game. Yes does what it offered, at once."));
 	answer.setVal("schema", new Common::JSONValue(answerSchema));
 
 	Common::JSONValue *others[] = {new Common::JSONValue(choose), new Common::JSONValue(wait), new Common::JSONValue(skip),

@@ -166,7 +166,13 @@ private:
 	bool playerHasControl() const;
 	void pollWorld();
 	void collectWorld(NeuroWorld &world);
-	Common::String describeRoom(const NeuroWorld &world) const;
+	enum RoomDetail {
+		kRoomFirstVisit, ///< with the written description
+		kRoomRevisit,    ///< just what is there
+		kRoomStatus      ///< what is there and what she carries, for a reminder
+	};
+	Common::String describeRoom(const NeuroWorld &world, RoomDetail detail) const;
+	Common::Array<int> _seenRooms;
 	Common::String describeChanges(const NeuroWorld &before, const NeuroWorld &after) const;
 
 	/** Converts game text to UTF-8, dropping control codes and name padding. */

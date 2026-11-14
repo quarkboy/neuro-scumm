@@ -338,24 +338,25 @@ static Common::String joinNames(const NeuroThingList &things) {
 	return result;
 }
 
-Common::String NeuroBridge::describeRoom(const NeuroWorld &world) const {
+Common::String NeuroBridge::describeRoom(const NeuroWorld &world, RoomDetail detail) const {
 	Common::String name = _data.roomName(world.room);
 	if (name.empty())
 		name = Common::String::format("room %d", world.room);
 	Common::String text = "## Location: " + name + "\n\n";
 
+	// The prose is worth its length once; after that she only needs what is here
 	const Common::String description = _data.roomDescription(world.room);
-	if (!description.empty())
+	if (detail == kRoomFirstVisit && !description.empty())
 		text += description + "\n\n";
 
-	text += "- Things here: " + joinDescribed(world.objects, _data) + "\n";
+	text += "- Things: " + joinDescribed(world.objects, _data) + "\n";
 	if (!world.actors.empty())
-		text += "- Characters here: " + joinNames(world.actors) + "\n";
+		text += "- People: " + joinNames(world.actors) + "\n";
 	if (!world.spots.empty())
-		text += "- Places you can walk to: " + joinNames(world.spots) + "\n";
-	text += "- You are carrying: " + joinNames(world.inventory) + "\n";
-	if (world.numbered)
-		text += "- Things with the same name are numbered from left to right.\n";
+		text += "- Places: " + joinNames(world.spots) + "\n";
+	// Inventory changes are announced as they happen
+	if (detail == kRoomStatus)
+		text += "- Inventory: " + joinNames(world.inventory) + "\n";
 	return text;
 }
 
@@ -376,27 +377,49 @@ static NeuroThingList difference(const NeuroThingList &from, const NeuroThingLis
 	return result;
 }
 
+/** A name without the number that tells same-named things apart. */
+static Common::String baseName(const Common::String &name) {
+	Common::String base = name;
+	while (!base.empty() && Common::isDigit(base.lastChar()))
+		base.deleteLastChar();
+	base.trim();
+	return base;
+}
+
 Common::String NeuroBridge::describeChanges(const NeuroWorld &before, const NeuroWorld &after) const {
-	struct Category {
-		const NeuroThingList &before;
-		const NeuroThingList &after;
-		const char *added;
-		const char *removed;
+	const NeuroThingList got = difference(before.inventory, after.inventory);
+	const NeuroThingList lost = difference(after.inventory, before.inventory);
+	const NeuroThingList appeared = difference(before.objects, after.objects);
+	NeuroThingList gone = difference(after.objects, before.objects);
+
+	// Picking something up makes it vanish from the room; saying so twice is noise
+	for (uint i = 0; i < gone.size();) {
+		bool pickedUp = false;
+		for (const auto &item : got)
+			pickedUp |= item.name.equalsIgnoreCase(baseName(gone[i].name));
+		if (pickedUp)
+			gone.remove_at(i);
+		else
+			i++;
+	}
+
+	struct Line {
+		const char *label;
+		NeuroThingList things;
 	};
-	const Category categories[] = {
-		{before.inventory, after.inventory, "You now have: %s\n", "You no longer have: %s\n"},
-		{before.objects, after.objects, "Now here: %s\n", "No longer here: %s\n"},
-		{before.actors, after.actors, "Arrived: %s\n", "Left: %s\n"}
+	const Line lines[] = {
+		{"Got", got},
+		{"Lost", lost},
+		{"Appeared", appeared},
+		{"Gone", gone},
+		{"Arrived", difference(before.actors, after.actors)},
+		{"Left", difference(after.actors, before.actors)}
 	};
 
 	Common::String text;
-	for (const auto &category : categories) {
-		NeuroThingList added = difference(category.before, category.after);
-		NeuroThingList removed = difference(category.after, category.before);
-		if (!added.empty())
-			text += Common::String::format(category.added, joinNames(added).c_str());
-		if (!removed.empty())
-			text += Common::String::format(category.removed, joinNames(removed).c_str());
+	for (const auto &line : lines) {
+		if (!line.things.empty())
+			text += Common::String::format("%s: %s\n", line.label, joinNames(line.things).c_str());
 	}
 
 	// A state change is only visible on screen (a door swinging open, a
@@ -420,7 +443,7 @@ Common::String NeuroBridge::describeChanges(const NeuroWorld &before, const Neur
 		changed.remove_at(i);
 	}
 	if (!changed.empty())
-		text += Common::String::format("Changed in appearance: %s\n", joinNames(changed).c_str());
+		text += Common::String::format("Changed: %s\n", joinNames(changed).c_str());
 	return text;
 }
 
@@ -500,7 +523,8 @@ void NeuroBridge::checkAlerts(const NeuroWorld &before, const NeuroWorld &after)
 Common::String NeuroBridge::describeWorld() {
 	NeuroWorld world;
 	collectWorld(world);
-	Common::String text = describeRoom(world);
+	Common::String text = describeRoom(world, kRoomFirstVisit);
+	text += "- Inventory: " + joinNames(world.inventory) + "\n";
 	text += "- Verbs on screen: " + joinNames(world.verbs) + "\n";
 	text += Common::String::format("- Player has control: %s\n", playerHasControl() ? "yes" : "no");
 	return text;
@@ -552,7 +576,12 @@ void NeuroBridge::pollWorld() {
 	sendJournalNews();
 
 	if (world.room != _described.room) {
-		sendContext(describeRoom(world), false);
+		bool seen = false;
+		for (const int room : _seenRooms)
+			seen |= room == world.room;
+		if (!seen)
+			_seenRooms.push_back(world.room);
+		sendContext(describeRoom(world, seen ? kRoomRevisit : kRoomFirstVisit), false);
 	} else {
 		Common::String changes = describeChanges(_described, world);
 		// Someone coming or going may be her cue to act
