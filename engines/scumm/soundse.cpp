@@ -967,11 +967,15 @@ void HeaderlessWMAStream::createCodec() {
 }
 
 bool HeaderlessWMAStream::seek(const Audio::Timestamp &where) {
-	// Only rewinding is supported, which is all that looping needs
-	if (where != 0)
+	// Packets are all the same size and length, so the nearest packet
+	// before the target is easy to find. That is as close as this gets
+	// (about a third of a second), which is fine for resuming music.
+	const uint64 byteOffset = (uint64)where.msecs() * _bitRate / 8 / 1000;
+	const uint32 packet = (uint32)(byteOffset / _blockAlign);
+	if ((int64)packet * _blockAlign >= _stream->size())
 		return false;
 
-	_stream->seek(0);
+	_stream->seek((int64)packet * _blockAlign);
 	// The codec carries data over from one packet to the next
 	createCodec();
 	return true;

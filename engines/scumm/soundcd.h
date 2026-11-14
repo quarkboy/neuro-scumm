@@ -83,6 +83,9 @@ public:
 	AudioCDManager::Status getCDStatus();
 	int getCurrentCDSound() const { return _currentCDSound; }
 
+	/** Music played from game files never shows up in the system's CD status. */
+	bool hasFileBasedCDSound() const { return _hasFileBasedCDAudio && _currentCDSound != 0; }
+
 	int restoreAfterLoad();
 	void restoreCDAudioAfterLoad(AudioCDManager::Status &info);
 

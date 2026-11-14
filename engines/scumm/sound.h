@@ -178,6 +178,9 @@ public:
 	int getCurrentCDSound() const {
 		return _soundCD->getCurrentCDSound();
 	}
+	bool hasFileBasedCDSound() const {
+		return _soundCD->hasFileBasedCDSound();
+	}
 	void restoreCDAudioAfterLoad(AudioCDManager::Status &info) {
 		_soundCD->restoreCDAudioAfterLoad(info);
 	}
