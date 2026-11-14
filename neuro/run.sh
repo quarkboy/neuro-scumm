@@ -8,5 +8,6 @@ here=$(cd "$(dirname "$0")" && pwd)
 # Gary does not understand speech/started yet, so send dialogue as context by default.
 # Set NEURO_DIALOGUE_MODE=speech for the real Neuro server.
 : "${NEURO_DIALOGUE_MODE:=context}"
-export NEURO_SDK_WS_URL NEURO_DIALOGUE_MODE
+: "${NEURO_DESCRIPTIONS:=$here/data/monkey1.ini}"
+export NEURO_SDK_WS_URL NEURO_DIALOGUE_MODE NEURO_DESCRIPTIONS
 exec "$BUILD_DIR/scummvm" --auto-detect -p "$MONKEY1_DIR" "$@"

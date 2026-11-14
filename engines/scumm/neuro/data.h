@@ -1,0 +1,74 @@
+/* ScummVM - Graphic Adventure Engine
+ *
+ * ScummVM is the legal property of its developers, whose names
+ * are too numerous to list here. Please refer to the COPYRIGHT
+ * file distributed with this source distribution.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ */
+
+#ifndef SCUMM_NEURO_DATA_H
+#define SCUMM_NEURO_DATA_H
+
+#include "common/array.h"
+#include "common/formats/ini-file.h"
+#include "common/str.h"
+
+namespace Scumm {
+
+/**
+ * Hand-written text for what the game only shows as pictures: room names
+ * and descriptions, what an object is, who an unnamed character is.
+ *
+ * The file is an INI file with one [roomN] section per room:
+ *   name, description      the room itself
+ *   object.ID              a note shown after the object's name
+ *   actor.ID               a name for an actor; overrides the game's own, which
+ *                          can be left over from another room. A leading '-'
+ *                          names the speaker but keeps it out of the room list,
+ *                          and an empty value hides the actor.
+ *   spot.NAME = X,Y        a place with no object that she can walk to
+ * and two global sections:
+ *   [actors]  ID = name    fallback names for unnamed actors
+ *   [states]  object name = label for state 0, label for state 1, ...
+ */
+class NeuroData {
+public:
+	bool load(const Common::String &path);
+
+	Common::String roomName(int room) const;
+	Common::String roomDescription(int room) const;
+	Common::String objectNote(int room, int object) const;
+	/** Returns false if the file says nothing about this actor. */
+	bool actorName(int room, int actor, Common::String &name) const;
+
+	struct Spot {
+		Common::String name;
+		int x, y;
+	};
+	Common::Array<Spot> spots(int room) const;
+
+	/** A word for the state an object is in, e.g. "open"; empty if unknown. */
+	Common::String stateName(const Common::String &objectName, int state) const;
+
+private:
+	Common::String get(const Common::String &section, const Common::String &key) const;
+
+	Common::INIFile _ini;
+};
+
+} // End of namespace Scumm
+
+#endif

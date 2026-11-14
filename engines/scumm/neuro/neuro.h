@@ -23,9 +23,11 @@
 #define SCUMM_NEURO_NEURO_H
 
 #include "common/array.h"
+#include "common/rect.h"
 #include "common/formats/json.h"
 #include "common/str.h"
 
+#include "scumm/neuro/data.h"
 #include "scumm/neuro/websocket.h"
 
 namespace Scumm {
@@ -37,6 +39,9 @@ struct NeuroThing {
 	int x = 0;
 	int state = 0;
 	Common::String name;
+
+	/** Extra words for the room listing; not part of the name. */
+	Common::String note;
 };
 
 typedef Common::Array<NeuroThing> NeuroThingList;
@@ -48,6 +53,10 @@ struct NeuroWorld {
 	NeuroThingList actors;
 	NeuroThingList inventory;
 	NeuroThingList verbs;
+
+	/** Places without an object that can still be walked to; id is -(index + 1). */
+	NeuroThingList spots;
+	Common::Array<Common::Point> spotPositions;
 
 	/** The verb area shows lines to say instead of verbs. */
 	bool inDialogue = false;
@@ -120,6 +129,11 @@ private:
 	Common::String _url;
 	Common::String _gameName;
 	WebSocketClient _ws;
+	NeuroData _data;
+
+	/** forList: for the list of characters in the room, as opposed to naming a speaker. */
+	Common::String actorName(int actor, bool forList = false);
+	void debugDump();
 	bool _wasConnected = false;
 	uint32 _nextConnectAttempt = 0;
 

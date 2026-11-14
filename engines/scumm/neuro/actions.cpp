@@ -199,6 +199,7 @@ void NeuroBridge::actionInteract(const Common::String &id, const Common::JSONVal
 
 	NeuroThingList everything = room;
 	everything.push_back(world.inventory);
+	everything.push_back(world.spots);
 
 	int objects[2] = {0, 0};
 	const Common::String *names[2] = {&targetName, &secondName};
@@ -215,10 +216,21 @@ void NeuroBridge::actionInteract(const Common::String &id, const Common::JSONVal
 		objects[i] = thing->id;
 	}
 
+	if (objects[0] < 0 || objects[1] < 0) {
+		if (!walk || objects[1]) {
+			sendActionResult(id, false, "That is just a place: all you can do there is \"Walk to\" it.");
+			return;
+		}
+		const Common::Point &spot = world.spotPositions[-objects[0] - 1];
+		sendActionResult(id, true);
+		clickInRoom(spot.x, spot.y);
+		return;
+	}
+
 	if (walk) {
 		int x, y;
 		if (!findThing(room, targetName) || !findClickPoint(objects[0], x, y)) {
-			sendActionResult(id, false, Common::String::format("You can only walk to things in the room: %s.", listNames(room).c_str()));
+			sendActionResult(id, false, Common::String::format("You can only walk to things in the room: %s.", listNames(room, world.spots).c_str()));
 			return;
 		}
 		sendActionResult(id, true);

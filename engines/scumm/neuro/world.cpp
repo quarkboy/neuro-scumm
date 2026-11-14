@@ -139,12 +139,15 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 	world = NeuroWorld();
 	world.room = _vm->_currentRoom;
 
+	// Things that cannot be used right now still take part in numbering, so
+	// that "door #2" stays "door #2" when door #1 becomes unusable.
+	Common::Array<bool> usable;
+
 	for (int i = 1; i < _vm->_numLocalObjects; i++) {
 		const ObjectData &od = _vm->_objs[i];
-		if (od.obj_nr < 1 || _vm->getClass(od.obj_nr, kObjectClassUntouchable))
+		if (od.obj_nr < 1 || od.width == 0 || od.height == 0)
 			continue;
-		if (_vm->whereIsObject(od.obj_nr) != WIO_ROOM)
-			continue;
+		const bool available = !_vm->getClass(od.obj_nr, kObjectClassUntouchable) && _vm->whereIsObject(od.obj_nr) == WIO_ROOM;
 
 		// Same test as findObject(): an object nested in another one only
 		// exists while each parent is in the required state.
@@ -159,16 +162,17 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 				break;
 			}
 		} while ((_vm->_objs[b].state & 0xF) == a);
-		if (!reachable)
-			continue;
 
 		NeuroThing thing;
 		thing.id = od.obj_nr;
 		thing.x = od.x_pos + od.width / 2;
 		thing.state = od.state;
 		thing.name = cleanText(_vm->getObjOrActorName(od.obj_nr), true);
-		if (!thing.name.empty())
+		thing.note = _data.objectNote(world.room, od.obj_nr);
+		if (!thing.name.empty()) {
 			world.objects.push_back(thing);
+			usable.push_back(available && reachable);
+		}
 	}
 
 	const int ego = _vm->VAR(_vm->VAR_EGO);
@@ -182,7 +186,7 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 		NeuroThing thing;
 		thing.id = i;
 		thing.x = actor->getPos().x;
-		thing.name = cleanText(actor->getActorName(), true);
+		thing.name = actorName(i, true);
 		if (!thing.name.empty())
 			world.actors.push_back(thing);
 	}
@@ -213,6 +217,26 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 
 	numberDuplicates(world.objects, world.actors);
 
+	NeuroThingList usableObjects;
+	for (uint i = 0; i < world.objects.size(); i++) {
+		if (usable[i])
+			usableObjects.push_back(world.objects[i]);
+	}
+	world.objects = usableObjects;
+	Common::sort(world.objects.begin(), world.objects.end(), [](const NeuroThing &a, const NeuroThing &b) {
+		return a.x < b.x;
+	});
+
+	const Common::Array<NeuroData::Spot> spots = _data.spots(world.room);
+	for (uint i = 0; i < spots.size(); i++) {
+		NeuroThing thing;
+		thing.id = -(int)(i + 1);
+		thing.x = spots[i].x;
+		thing.name = spots[i].name;
+		world.spots.push_back(thing);
+		world.spotPositions.push_back(Common::Point(spots[i].x, spots[i].y));
+	}
+
 	// Conversation lines replace the normal verbs while they are shown
 	if (!world.verbs.empty() && !_standardVerbs.empty()) {
 		world.inDialogue = true;
@@ -221,6 +245,60 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 				world.inDialogue &= (verb.id != standard.id);
 		}
 	}
+}
+
+Common::String NeuroBridge::actorName(int actor, bool forList) {
+	if (actor <= 0 || actor >= _vm->_numActors)
+		return Common::String();
+
+	Common::String name;
+	if (_data.actorName(_vm->_currentRoom, actor, name)) {
+		if (name.hasPrefix("-"))
+			return forList ? Common::String() : name.substr(1);
+		return name;
+	}
+	return cleanText(_vm->_actors[actor]->getActorName(), true);
+}
+
+void NeuroBridge::debugDump() {
+	debug("NEURODUMP room %d (resource %d) width %d", _vm->_currentRoom, _vm->_roomResource, _vm->_roomWidth);
+	for (int i = 1; i < _vm->_numLocalObjects; i++) {
+		const ObjectData &od = _vm->_objs[i];
+		if (od.obj_nr < 1)
+			continue;
+		debug("NEURODUMP object.%d '%s' at %d,%d %dx%d state %d untouchable %d", od.obj_nr,
+			cleanText(_vm->getObjOrActorName(od.obj_nr), true).c_str(), od.x_pos, od.y_pos, od.width, od.height,
+			od.state, _vm->getClass(od.obj_nr, kObjectClassUntouchable));
+	}
+	for (int i = 1; i < _vm->_numActors; i++) {
+		Actor *actor = _vm->_actors[i];
+		if (!actor->isInCurrentRoom())
+			continue;
+		debug("NEURODUMP actor.%d '%s' at %d,%d costume %d visible %d untouchable %d", i,
+			cleanText(actor->getActorName(), true).c_str(), actor->getPos().x, actor->getPos().y,
+			actor->_costume, actor->_visible, _vm->getClass(i, kObjectClassUntouchable));
+	}
+}
+
+/** Names with their notes, for telling her what is in a room. */
+static Common::String joinDescribed(const NeuroThingList &things, const NeuroData &data) {
+	if (things.empty())
+		return "nothing";
+
+	Common::String result;
+	for (uint i = 0; i < things.size(); i++) {
+		if (i)
+			result += ", ";
+		result += things[i].name;
+
+		Common::String extra = data.stateName(things[i].name, things[i].state);
+		if (!extra.empty() && !things[i].note.empty())
+			extra += "; ";
+		extra += things[i].note;
+		if (!extra.empty())
+			result += " (" + extra + ")";
+	}
+	return result;
 }
 
 static Common::String joinNames(const NeuroThingList &things) {
@@ -237,10 +315,20 @@ static Common::String joinNames(const NeuroThingList &things) {
 }
 
 Common::String NeuroBridge::describeRoom(const NeuroWorld &world) const {
-	Common::String text = Common::String::format("## Location: room %d\n\n", world.room);
-	text += "- Things here: " + joinNames(world.objects) + "\n";
+	Common::String name = _data.roomName(world.room);
+	if (name.empty())
+		name = Common::String::format("room %d", world.room);
+	Common::String text = "## Location: " + name + "\n\n";
+
+	const Common::String description = _data.roomDescription(world.room);
+	if (!description.empty())
+		text += description + "\n\n";
+
+	text += "- Things here: " + joinDescribed(world.objects, _data) + "\n";
 	if (!world.actors.empty())
 		text += "- Characters here: " + joinNames(world.actors) + "\n";
+	if (!world.spots.empty())
+		text += "- Places you can walk to: " + joinNames(world.spots) + "\n";
 	text += "- You are carrying: " + joinNames(world.inventory) + "\n";
 	if (text.contains(" #2"))
 		text += "- Things with the same name are numbered from left to right.\n";
@@ -297,6 +385,15 @@ Common::String NeuroBridge::describeChanges(const NeuroWorld &before, const Neur
 			if (hers && old.id == thing.id && old.name == thing.name && old.state != thing.state)
 				changed.push_back(thing);
 		}
+	}
+	for (uint i = 0; i < changed.size();) {
+		const Common::String label = _data.stateName(changed[i].name, changed[i].state);
+		if (label.empty()) {
+			i++;
+			continue;
+		}
+		text += Common::String::format("The %s is now %s.\n", changed[i].name.c_str(), label.c_str());
+		changed.remove_at(i);
 	}
 	if (!changed.empty())
 		text += Common::String::format("Changed in appearance: %s\n", joinNames(changed).c_str());
@@ -364,9 +461,7 @@ void NeuroBridge::onTalkStarted(int actor, const byte *text) {
 	if (line.empty() || !_ws.isConnected())
 		return;
 
-	Common::String speaker;
-	if (actor > 0 && actor < _vm->_numActors)
-		speaker = cleanText(_vm->_actors[actor]->getActorName(), true);
+	Common::String speaker = actorName(actor);
 	if (speaker.empty()) {
 		if (actor == _vm->VAR(_vm->VAR_EGO))
 			speaker = "Guybrush";

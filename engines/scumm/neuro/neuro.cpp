@@ -30,6 +30,7 @@
 #include "common/util.h"
 #include "common/textconsole.h"
 
+#include "scumm/actor.h"
 #include "scumm/scumm.h"
 
 #ifndef USE_BASIC_NET
@@ -76,6 +77,12 @@ NeuroBridge::NeuroBridge(ScummEngine *vm, const Common::String &url) : _vm(vm), 
 	else if (ConfMan.hasKey("neuro_dialogue_mode"))
 		dialogueMode = ConfMan.get("neuro_dialogue_mode");
 	_dialogueAsContext = dialogueMode.equalsIgnoreCase("context");
+
+	const char *descriptions = getenv("NEURO_DESCRIPTIONS");
+	if (descriptions && *descriptions)
+		_data.load(descriptions);
+	else if (ConfMan.hasKey("neuro_descriptions"))
+		_data.load(ConfMan.get("neuro_descriptions"));
 
 	const char *idle = getenv("NEURO_IDLE_FORCE_SECONDS");
 	int idleSeconds = 45;
@@ -319,6 +326,20 @@ void NeuroBridge::handleAction(const Common::String &id, const Common::String &n
 	if (name == "debug_screenshot") {
 		g_system->saveScreenshot();
 		sendActionResult(id, true);
+		return;
+	}
+
+	if (name == "debug_dump") {
+		debugDump();
+		sendActionResult(id, true);
+		return;
+	}
+	if (name == "debug_room") {
+		const int room = atoi(data.c_str());
+		sendActionResult(id, true);
+		_vm->_actors[_vm->VAR(_vm->VAR_EGO)]->_room = room;
+		_vm->startScene(room, nullptr, 0);
+		_vm->_fullRedraw = true;
 		return;
 	}
 
