@@ -49,7 +49,9 @@ NeuroBridge *NeuroBridge::create(ScummEngine *vm) {
 	else if (ConfMan.hasKey("neuro_ws_url"))
 		url = ConfMan.get("neuro_ws_url");
 
-	if (url.empty())
+	// The room extraction tool runs without a server
+	const char *extract = getenv("NEURO_EXTRACT_DIR");
+	if (url.empty() && !(extract && *extract))
 		return nullptr;
 	return new NeuroBridge(vm, url);
 }
@@ -120,12 +122,19 @@ NeuroBridge::NeuroBridge(ScummEngine *vm, const Common::String &url) : _vm(vm), 
 		idleSeconds = ConfMan.getInt("neuro_idle_force_seconds");
 	_idleForceMs = MAX(0, idleSeconds) * 1000;
 
+	startExtraction();
+
 	// Line ids must stay unique across restarts of the game
 	Common::RandomSource rnd("neuro_speech");
 	_speechIdPrefix = Common::String::format("%08x", rnd.getRandomNumber(0x7FFFFFFF));
 }
 
 void NeuroBridge::update() {
+	if (_extract.phase != kExtractOff) {
+		updateExtraction();
+		return;
+	}
+
 	if (!_ws.isConnected()) {
 		if (_wasConnected) {
 			warning("Neuro: Connection to %s lost", _url.c_str());

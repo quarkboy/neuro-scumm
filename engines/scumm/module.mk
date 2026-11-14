@@ -125,6 +125,7 @@ MODULE_OBJS += \
 	neuro/actions.o \
 	neuro/args.o \
 	neuro/data.o \
+	neuro/extract.o \
 	neuro/journal.o \
 	neuro/neuro.o \
 	neuro/websocket.o \

@@ -134,6 +134,30 @@ private:
 	void runCommand(const NeuroCommand &command);
 	void updateQueuedCommand();
 
+	// Development tool that dumps every room; see extract.cpp
+	enum ExtractPhase {
+		kExtractOff,
+		kExtractWaitForGame,
+		kExtractEnterRoom,
+		kExtractSettle,
+		kExtractPan
+	};
+	struct Extraction {
+		ExtractPhase phase = kExtractOff;
+		Common::String dir;
+		Common::Array<int> skip;
+		int room = 0;
+		int frames = 0;
+		int width = 0, height = 0, panX = 0;
+		Common::Array<byte> pixels;
+	};
+	Extraction _extract;
+	bool startExtraction();
+	void updateExtraction();
+	bool extractNextRoom();
+	void extractCopyScreen();
+	void extractWriteRoom();
+
 	// After each of her actions she is told how it turned out, so that
 	// she can carry on at once instead of waiting to be prompted.
 	bool _awaitingOutcome = false;

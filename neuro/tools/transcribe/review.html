@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Room Review</title>
+<style>
+:root {
+	--bg: #f6f5f2; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6a66; --line: #dddbd5;
+	--accent: #2f6fb3; --object: #2f6fb3; --actor: #c2410c; --hidden: #8a8780;
+	--ok: #2e7d32; --warn: #b26a00; --todo: #8a8780;
+}
+@media (prefers-color-scheme: dark) {
+	:root { --bg: #161615; --panel: #201f1d; --text: #ecebe7; --muted: #a09e98; --line: #3a3935;
+		--accent: #6fa8e8; --object: #6fa8e8; --actor: #f08a4b; --hidden: #8a8780;
+		--ok: #6cc070; --warn: #e0a040; --todo: #8a8780; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, sans-serif; display: grid; grid-template-columns: 240px 1fr; height: 100vh; }
+nav { border-right: 1px solid var(--line); overflow-y: auto; background: var(--panel); }
+nav .filters { padding: 10px; border-bottom: 1px solid var(--line); display: flex; gap: 6px; flex-wrap: wrap; position: sticky; top: 0; background: var(--panel); }
+nav button.room { display: flex; width: 100%; text-align: left; gap: 8px; padding: 6px 10px; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; align-items: baseline; }
+nav button.room:hover { background: var(--bg); }
+nav button.room.current { background: var(--accent); color: #fff; }
+nav .num { font-variant-numeric: tabular-nums; color: var(--muted); width: 2.5em; flex: none; }
+nav button.current .num { color: #fff; }
+nav .label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; align-self: center; background: var(--todo); }
+.dot.checked { background: var(--ok); } .dot.needs-work { background: var(--warn); } .dot.draft { background: var(--accent); }
+main { overflow-y: auto; padding: 16px 20px 40px; }
+h1 { font-size: 18px; margin: 0 0 4px; } .sub { color: var(--muted); margin-bottom: 12px; }
+.picture { overflow-x: auto; background: #000; border-radius: 6px; margin-bottom: 14px; }
+.picture .frame { position: relative; display: inline-block; }
+.picture img { display: block; image-rendering: pixelated; }
+.picture svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.box { fill: none; stroke: var(--object); stroke-width: 1; vector-effect: non-scaling-stroke; cursor: pointer; }
+.box.hidden { stroke: var(--hidden); stroke-dasharray: 3 3; }
+.box.hot, .marker.hot { stroke: #ffd400; stroke-width: 3; }
+.marker { fill: var(--actor); stroke: #000; stroke-width: 1; vector-effect: non-scaling-stroke; cursor: pointer; }
+.zoom { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; color: var(--muted); }
+form { display: grid; gap: 10px; max-width: 980px; }
+label { display: grid; gap: 3px; font-weight: 600; font-size: 13px; }
+input, textarea, select { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--text); }
+textarea { min-height: 90px; resize: vertical; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; } .row > label { flex: 1; min-width: 180px; }
+table { border-collapse: collapse; width: 100%; } th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+th { font-size: 12px; color: var(--muted); font-weight: 600; }
+td.id { font-variant-numeric: tabular-nums; color: var(--muted); width: 4em; }
+td input { width: 100%; }
+tr.hidden td.name { color: var(--hidden); text-decoration: line-through; }
+tr.hot { background: color-mix(in srgb, #ffd400 25%, transparent); }
+button.primary { background: var(--accent); color: #fff; border: 0; border-radius: 5px; padding: 8px 16px; font: inherit; font-weight: 600; cursor: pointer; }
+button.small { border: 1px solid var(--line); background: var(--panel); color: inherit; border-radius: 5px; padding: 3px 8px; font: inherit; font-size: 12px; cursor: pointer; }
+button.small.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.saved { color: var(--ok); margin-left: 10px; } .other { color: var(--muted); font-size: 12px; white-space: pre-wrap; }
+@media (max-width: 760px) { body { grid-template-columns: 1fr; grid-template-rows: 180px 1fr; } }
+</style>
+</head>
+<body>
+<nav>
+	<div class="filters" id="filters"></div>
+	<div id="list"></div>
+</nav>
+<main id="main"><p>Loading…</p></main>
+<script>
+const STATUSES = ["", "draft", "needs-work", "checked"];
+const STATUS_LABEL = { "": "not written", draft: "draft", "needs-work": "needs work", checked: "checked" };
+let rooms = [], current = 0, filter = "all", zoom = 3, showHidden = false;
+
+function el(tag, attrs = {}, ...children) {
+	const node = document.createElement(tag);
+	for (const [k, v] of Object.entries(attrs)) {
+		if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
+		else if (v !== false && v != null) node.setAttribute(k, v === true ? "" : v);
+	}
+	node.append(...children);
+	return node;
+}
+const svgEl = (tag, attrs) => { const n = document.createElementNS("http://www.w3.org/2000/svg", tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n; };
+
+async function load() {
+	rooms = await (await fetch("api/rooms")).json();
+	const fromHash = parseInt(location.hash.slice(1));
+	const index = rooms.findIndex(r => r.room === fromHash);
+	current = index >= 0 ? index : 0;
+	renderFilters(); renderList(); renderRoom();
+}
+
+function visibleRooms() {
+	return rooms.map((r, i) => [r, i]).filter(([r]) => filter === "all" || (r.ini.status || "") === filter);
+}
+
+function renderFilters() {
+	const box = document.getElementById("filters");
+	box.replaceChildren(...["all", ...STATUSES].map(s => el("button", {
+		class: "small" + (filter === s ? " on" : ""),
+		onclick: () => { filter = s; renderFilters(); renderList(); },
+	}, s === "all" ? `all ${rooms.length}` : `${STATUS_LABEL[s]} ${rooms.filter(r => (r.ini.status || "") === s).length}`)));
+}
+
+function renderList() {
+	document.getElementById("list").replaceChildren(...visibleRooms().map(([r, i]) => el("button", {
+		class: "room" + (i === current ? " current" : ""), onclick: () => go(i),
+	}, el("span", { class: "dot " + (r.ini.status || "") }), el("span", { class: "num" }, r.room),
+		el("span", { class: "label" }, r.ini.name || r.objects.filter(o => o.name && !o.untouchable).slice(0, 3).map(o => o.name).join(", ") || "—"))));
+}
+
+function go(index) {
+	if (index < 0 || index >= rooms.length) return;
+	current = index; location.hash = rooms[index].room;
+	renderList(); renderRoom();
+}
+
+function highlight(kind, id, on) {
+	document.querySelectorAll(`[data-thing="${kind}${id}"]`).forEach(n => n.classList.toggle("hot", on));
+}
+
+function renderRoom() {
+	const r = rooms[current], ini = r.ini;
+	const objects = r.objects.filter(o => o.name && (showHidden || !o.untouchable));
+	const frame = el("div", { class: "frame" });
+	const img = el("img", { src: r.image, width: r.width * zoom, height: r.height * zoom, alt: `Room ${r.room}` });
+	const svg = svgEl("svg", { viewBox: `0 0 ${r.width} ${r.height}`, preserveAspectRatio: "none" });
+	for (const o of objects) {
+		const box = svgEl("rect", { x: o.x, y: o.y, width: Math.max(o.w, 1), height: Math.max(o.h, 1), class: "box" + (o.untouchable ? " hidden" : ""), "data-thing": "o" + o.id });
+		box.append(svgEl("title", {})); box.lastChild.textContent = `${o.name} (${o.id})`;
+		box.addEventListener("mouseenter", () => highlight("o", o.id, true));
+		box.addEventListener("mouseleave", () => highlight("o", o.id, false));
+		box.addEventListener("click", () => document.getElementById("o" + o.id)?.focus());
+		svg.append(box);
+	}
+	for (const a of r.actors) {
+		const dot = svgEl("circle", { cx: a.x, cy: a.y, r: 3, class: "marker", "data-thing": "a" + a.id });
+		dot.append(svgEl("title", {})); dot.lastChild.textContent = `actor ${a.id} ${a.name || ""}`;
+		dot.addEventListener("click", () => document.getElementById("a" + a.id)?.focus());
+		svg.append(dot);
+	}
+	frame.append(img, svg);
+
+	const field = (key, labelText, tag = "input") => el("label", {}, labelText,
+		el(tag, { name: key, value: tag === "input" ? ini[key] : null }, tag === "textarea" ? ini[key] : ""));
+	const status = el("select", { name: "status" }, ...STATUSES.map(s => el("option", { value: s, selected: (ini.status || "") === s }, STATUS_LABEL[s])));
+
+	const objectRows = objects.map(o => el("tr", { class: o.untouchable ? "hidden" : "", "data-thing": "o" + o.id,
+		onmouseenter: () => highlight("o", o.id, true), onmouseleave: () => highlight("o", o.id, false) },
+		el("td", { class: "id" }, o.id), el("td", { class: "name" }, o.name), el("td", {}, o.state),
+		el("td", {}, el("input", { id: "o" + o.id, "data-object": o.id, value: ini.objects[o.id] || "", placeholder: "note shown after the name" }))));
+	const actorRows = r.actors.map(a => el("tr", { "data-thing": "a" + a.id,
+		onmouseenter: () => highlight("a", a.id, true), onmouseleave: () => highlight("a", a.id, false) },
+		el("td", { class: "id" }, a.id), el("td", { class: "name" }, a.name || "—"), el("td", {}, `costume ${a.costume}${a.visible ? "" : ", hidden"}`),
+		el("td", {}, el("input", { id: "a" + a.id, "data-actor": a.id, value: ini.actors[a.id] || "", placeholder: "name (leading - : speaker only)" }))));
+
+	const saved = el("span", { class: "saved" });
+	const form = el("form", { onsubmit: e => { e.preventDefault(); save(form, saved); } },
+		el("div", { class: "row" }, field("name", "Room name"), el("label", {}, "Review status", status)),
+		field("description", "Description (what is on screen; no solutions)", "textarea"),
+		field("review_note", "Reviewer note (not shown to her)"),
+		el("h3", {}, "Objects"),
+		el("table", {}, el("tr", {}, el("th", {}, "id"), el("th", {}, "game name"), el("th", {}, "state"), el("th", {}, "note")), ...objectRows),
+		el("h3", {}, "Actors"),
+		r.actors.length ? el("table", {}, el("tr", {}, el("th", {}, "id"), el("th", {}, "game name"), el("th", {}, "costume"), el("th", {}, "name override")), ...actorRows) : el("p", { class: "sub" }, "None in this room when it was captured."),
+		Object.keys(ini.other).length ? el("div", { class: "other" }, "Also in the file (not edited here):\n" + Object.entries(ini.other).map(([k, v]) => `${k} = ${v}`).join("\n")) : "",
+		el("div", {}, el("button", { class: "primary", type: "submit" }, "Save"), saved));
+
+	document.getElementById("main").replaceChildren(
+		el("h1", {}, `Room ${r.room}${ini.name ? ": " + ini.name : ""}`),
+		el("div", { class: "sub" }, `${r.width}×${r.height} · ${r.objects.filter(o => o.name && !o.untouchable).length} usable objects · ${r.actors.length} actors${r.stayed ? "" : " · the game left this room while it was captured"} · keys: j/k next/previous, ctrl+s save`),
+		el("div", { class: "zoom" }, "Zoom",
+			...[1, 2, 3, 4].map(z => el("button", { class: "small" + (z === zoom ? " on" : ""), type: "button", onclick: () => { zoom = z; renderRoom(); } }, `${z}×`)),
+			el("button", { class: "small" + (showHidden ? " on" : ""), type: "button", onclick: () => { showHidden = !showHidden; renderRoom(); } }, "show untouchable")),
+		el("div", { class: "picture" }, frame), form);
+}
+
+async function save(form, saved) {
+	const r = rooms[current], data = Object.fromEntries(new FormData(form));
+	data.objects = {}; data.actors = {};
+	form.querySelectorAll("[data-object]").forEach(i => data.objects[i.dataset.object] = i.value);
+	form.querySelectorAll("[data-actor]").forEach(i => data.actors[i.dataset.actor] = i.value);
+	const res = await fetch(`api/room/${r.room}`, { method: "POST", body: JSON.stringify(data) });
+	if (!res.ok) { saved.textContent = "Save failed"; return; }
+	Object.assign(r.ini, { name: data.name, description: data.description, status: data.status, review_note: data.review_note });
+	for (const [k, v] of Object.entries(data.objects)) v ? r.ini.objects[k] = v : delete r.ini.objects[k];
+	for (const [k, v] of Object.entries(data.actors)) v ? r.ini.actors[k] = v : delete r.ini.actors[k];
+	saved.textContent = "Saved";
+	renderFilters(); renderList();
+}
+
+document.addEventListener("keydown", e => {
+	if ((e.ctrlKey || e.metaKey) && e.key === "s") { e.preventDefault(); document.querySelector("form")?.requestSubmit(); return; }
+	if (e.target.matches("input, textarea, select")) return;
+	if (e.key === "j") go(current + 1);
+	if (e.key === "k") go(current - 1);
+});
+load();
+</script>
+</body>
+</html>
