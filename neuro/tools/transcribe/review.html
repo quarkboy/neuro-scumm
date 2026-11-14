@@ -7,53 +7,77 @@
 <style>
 :root {
 	--bg: #f6f5f2; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6a66; --line: #dddbd5;
-	--accent: #2f6fb3; --object: #2f6fb3; --actor: #c2410c; --hidden: #8a8780;
+	--accent: #2f6fb3; --object: #4f9cf0; --actor: #f08a4b; --hidden: #a8a59e; --hot: #ffd400;
 	--ok: #2e7d32; --warn: #b26a00; --todo: #8a8780;
 }
 @media (prefers-color-scheme: dark) {
 	:root { --bg: #161615; --panel: #201f1d; --text: #ecebe7; --muted: #a09e98; --line: #3a3935;
-		--accent: #6fa8e8; --object: #6fa8e8; --actor: #f08a4b; --hidden: #8a8780;
-		--ok: #6cc070; --warn: #e0a040; --todo: #8a8780; }
+		--accent: #6fa8e8; --ok: #6cc070; --warn: #e0a040; --todo: #8a8780; }
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, sans-serif; display: grid; grid-template-columns: 240px 1fr; height: 100vh; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, sans-serif;
+	display: grid; grid-template-columns: 210px minmax(0, 1.5fr) minmax(360px, 1fr); }
+
+/* Room list */
 nav { border-right: 1px solid var(--line); overflow-y: auto; background: var(--panel); }
-nav .filters { padding: 10px; border-bottom: 1px solid var(--line); display: flex; gap: 6px; flex-wrap: wrap; position: sticky; top: 0; background: var(--panel); }
-nav button.room { display: flex; width: 100%; text-align: left; gap: 8px; padding: 6px 10px; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; align-items: baseline; }
+nav .filters { padding: 8px; border-bottom: 1px solid var(--line); display: flex; gap: 4px; flex-wrap: wrap; position: sticky; top: 0; background: var(--panel); z-index: 1; }
+nav button.room { display: flex; width: 100%; text-align: left; gap: 8px; padding: 5px 10px; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; align-items: baseline; }
 nav button.room:hover { background: var(--bg); }
 nav button.room.current { background: var(--accent); color: #fff; }
-nav .num { font-variant-numeric: tabular-nums; color: var(--muted); width: 2.5em; flex: none; }
+nav .num { font-variant-numeric: tabular-nums; color: var(--muted); width: 2.2em; flex: none; }
 nav button.current .num { color: #fff; }
 nav .label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; align-self: center; background: var(--todo); }
 .dot.checked { background: var(--ok); } .dot.needs-work { background: var(--warn); } .dot.draft { background: var(--accent); }
-main { overflow-y: auto; padding: 16px 20px 40px; }
-h1 { font-size: 18px; margin: 0 0 4px; } .sub { color: var(--muted); margin-bottom: 12px; }
-.picture { overflow-x: auto; background: #000; border-radius: 6px; margin-bottom: 14px; }
-.picture .frame { position: relative; display: inline-block; }
-.picture img { display: block; image-rendering: pixelated; }
-.picture svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-.box { fill: none; stroke: var(--object); stroke-width: 1; vector-effect: non-scaling-stroke; cursor: pointer; }
+
+/* Picture: pinned, scrolls on its own if the room is wide */
+#picturePane { height: 100vh; overflow: auto; background: #000; position: relative; }
+.toolbar { position: sticky; top: 0; left: 0; z-index: 2; display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+	padding: 8px 10px; background: rgba(0, 0, 0, 0.75); color: #ddd; font-size: 13px; }
+.toolbar .info { margin-left: auto; color: #aaa; }
+.frame { position: relative; display: inline-block; vertical-align: top; }
+.frame.fit { display: block; width: 100%; }
+.frame img { display: block; image-rendering: pixelated; }
+.frame.fit img { width: 100%; height: auto; }
+.frame svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+/* Transparent fill so the whole area answers the mouse, not just the outline */
+.box { fill: rgba(0, 0, 0, 0); stroke: var(--object); stroke-width: 1.5; vector-effect: non-scaling-stroke; cursor: pointer; pointer-events: all; }
 .box.hidden { stroke: var(--hidden); stroke-dasharray: 3 3; }
-.box.hot, .marker.hot { stroke: #ffd400; stroke-width: 3; }
-.marker { fill: var(--actor); stroke: #000; stroke-width: 1; vector-effect: non-scaling-stroke; cursor: pointer; }
-.zoom { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; color: var(--muted); }
-form { display: grid; gap: 10px; max-width: 980px; }
+.box:hover, .box.hot { fill: rgba(255, 212, 0, 0.25); stroke: var(--hot); stroke-width: 3; }
+.marker { fill: var(--actor); stroke: #000; stroke-width: 1; vector-effect: non-scaling-stroke; cursor: pointer; pointer-events: all; }
+.marker.hot, .marker:hover { fill: var(--hot); }
+#tooltip { position: fixed; pointer-events: none; background: #111; color: #fff; padding: 3px 7px; border-radius: 4px; font-size: 12px; display: none; z-index: 5; white-space: nowrap; }
+
+/* Entries */
+main { overflow-y: auto; height: 100vh; padding: 14px 18px 40px; border-left: 1px solid var(--line); }
+h1 { font-size: 17px; margin: 0 0 2px; } .sub { color: var(--muted); margin-bottom: 12px; font-size: 13px; }
+h3 { margin: 16px 0 4px; font-size: 14px; }
+form { display: grid; gap: 10px; }
 label { display: grid; gap: 3px; font-weight: 600; font-size: 13px; }
-input, textarea, select { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--text); }
-textarea { min-height: 90px; resize: vertical; }
-.row { display: flex; gap: 10px; flex-wrap: wrap; } .row > label { flex: 1; min-width: 180px; }
-table { border-collapse: collapse; width: 100%; } th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+input, textarea, select { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--text); width: 100%; }
+textarea { min-height: 110px; resize: vertical; }
+.row { display: flex; gap: 10px; } .row > label { flex: 1; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 3px 4px; border-bottom: 1px solid var(--line); vertical-align: middle; }
 th { font-size: 12px; color: var(--muted); font-weight: 600; }
-td.id { font-variant-numeric: tabular-nums; color: var(--muted); width: 4em; }
-td input { width: 100%; }
+td.id { font-variant-numeric: tabular-nums; color: var(--muted); width: 3.2em; }
+td.name { width: 34%; }
 tr.hidden td.name { color: var(--hidden); text-decoration: line-through; }
-tr.hot { background: color-mix(in srgb, #ffd400 25%, transparent); }
+tr.hot { background: color-mix(in srgb, var(--hot) 28%, transparent); }
+.savebar { position: sticky; bottom: -40px; background: var(--bg); padding: 10px 0; display: flex; align-items: center; gap: 10px; }
 button.primary { background: var(--accent); color: #fff; border: 0; border-radius: 5px; padding: 8px 16px; font: inherit; font-weight: 600; cursor: pointer; }
-button.small { border: 1px solid var(--line); background: var(--panel); color: inherit; border-radius: 5px; padding: 3px 8px; font: inherit; font-size: 12px; cursor: pointer; }
+button.small { border: 1px solid #555; background: #222; color: #ddd; border-radius: 5px; padding: 2px 8px; font: inherit; font-size: 12px; cursor: pointer; }
 button.small.on { background: var(--accent); color: #fff; border-color: var(--accent); }
-.saved { color: var(--ok); margin-left: 10px; } .other { color: var(--muted); font-size: 12px; white-space: pre-wrap; }
-@media (max-width: 760px) { body { grid-template-columns: 1fr; grid-template-rows: 180px 1fr; } }
+nav button.small { border-color: var(--line); background: var(--panel); color: inherit; }
+nav button.small.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.saved { color: var(--ok); } .other { color: var(--muted); font-size: 12px; white-space: pre-wrap; }
+.note { color: var(--muted); font-size: 12px; font-style: italic; }
+
+@media (max-width: 900px) {
+	body { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; height: auto; }
+	nav { max-height: 30vh; } #picturePane { height: auto; max-height: 50vh; } main { height: auto; }
+}
 </style>
 </head>
 <body>
@@ -61,11 +85,14 @@ button.small.on { background: var(--accent); color: #fff; border-color: var(--ac
 	<div class="filters" id="filters"></div>
 	<div id="list"></div>
 </nav>
+<section id="picturePane"></section>
 <main id="main"><p>Loading…</p></main>
+<div id="tooltip"></div>
 <script>
 const STATUSES = ["", "draft", "needs-work", "checked"];
 const STATUS_LABEL = { "": "not written", draft: "draft", "needs-work": "needs work", checked: "checked" };
-let rooms = [], current = 0, filter = "all", zoom = 3, showHidden = false;
+let rooms = [], current = 0, filter = "all", zoom = "fit", showHidden = false;
+const tooltip = document.getElementById("tooltip");
 
 function el(tag, attrs = {}, ...children) {
 	const node = document.createElement(tag);
@@ -76,99 +103,122 @@ function el(tag, attrs = {}, ...children) {
 	node.append(...children);
 	return node;
 }
-const svgEl = (tag, attrs) => { const n = document.createElementNS("http://www.w3.org/2000/svg", tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n; };
+function svgEl(tag, attrs) {
+	const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+	for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+	return node;
+}
 
 async function load() {
 	rooms = await (await fetch("api/rooms")).json();
-	const fromHash = parseInt(location.hash.slice(1));
-	const index = rooms.findIndex(r => r.room === fromHash);
+	const index = rooms.findIndex(r => r.room === parseInt(location.hash.slice(1)));
 	current = index >= 0 ? index : 0;
 	renderFilters(); renderList(); renderRoom();
 }
 
-function visibleRooms() {
-	return rooms.map((r, i) => [r, i]).filter(([r]) => filter === "all" || (r.ini.status || "") === filter);
-}
-
 function renderFilters() {
-	const box = document.getElementById("filters");
-	box.replaceChildren(...["all", ...STATUSES].map(s => el("button", {
+	document.getElementById("filters").replaceChildren(...["all", ...STATUSES].map(s => el("button", {
 		class: "small" + (filter === s ? " on" : ""),
 		onclick: () => { filter = s; renderFilters(); renderList(); },
 	}, s === "all" ? `all ${rooms.length}` : `${STATUS_LABEL[s]} ${rooms.filter(r => (r.ini.status || "") === s).length}`)));
 }
 
 function renderList() {
-	document.getElementById("list").replaceChildren(...visibleRooms().map(([r, i]) => el("button", {
+	const shown = rooms.map((r, i) => [r, i]).filter(([r]) => filter === "all" || (r.ini.status || "") === filter);
+	document.getElementById("list").replaceChildren(...shown.map(([r, i]) => el("button", {
 		class: "room" + (i === current ? " current" : ""), onclick: () => go(i),
 	}, el("span", { class: "dot " + (r.ini.status || "") }), el("span", { class: "num" }, r.room),
 		el("span", { class: "label" }, r.ini.name || r.objects.filter(o => o.name && !o.untouchable).slice(0, 3).map(o => o.name).join(", ") || "—"))));
+	document.querySelector("nav button.current")?.scrollIntoView({ block: "nearest" });
 }
 
 function go(index) {
 	if (index < 0 || index >= rooms.length) return;
-	current = index; location.hash = rooms[index].room;
+	current = index;
+	history.replaceState(null, "", "#" + rooms[index].room);
 	renderList(); renderRoom();
 }
 
-function highlight(kind, id, on) {
-	document.querySelectorAll(`[data-thing="${kind}${id}"]`).forEach(n => n.classList.toggle("hot", on));
+/** Lights up a thing in the picture and its row in the list. */
+function highlight(key, on) {
+	document.querySelectorAll(`[data-thing="${key}"]`).forEach(n => n.classList.toggle("hot", on));
+}
+/** From the picture to its entry: scroll the row into view and put the cursor in it. */
+function focusEntry(key) {
+	const input = document.getElementById(key);
+	if (!input) return;
+	input.closest("tr").scrollIntoView({ block: "center", behavior: "smooth" });
+	input.focus({ preventScroll: true });
+}
+function hover(node, key, text) {
+	node.addEventListener("mouseenter", () => { highlight(key, true); tooltip.textContent = text; tooltip.style.display = "block"; });
+	node.addEventListener("mousemove", e => { tooltip.style.left = e.clientX + 12 + "px"; tooltip.style.top = e.clientY + 12 + "px"; });
+	node.addEventListener("mouseleave", () => { highlight(key, false); tooltip.style.display = "none"; });
+	node.addEventListener("click", () => focusEntry(key));
 }
 
-function renderRoom() {
-	const r = rooms[current], ini = r.ini;
-	const objects = r.objects.filter(o => o.name && (showHidden || !o.untouchable));
-	const frame = el("div", { class: "frame" });
-	const img = el("img", { src: r.image, width: r.width * zoom, height: r.height * zoom, alt: `Room ${r.room}` });
+function renderPicture(r, objects) {
+	const fit = zoom === "fit";
+	const frame = el("div", { class: "frame" + (fit ? " fit" : "") });
+	const img = el("img", { src: r.image, alt: `Room ${r.room}`, ...(fit ? {} : { width: r.width * zoom, height: r.height * zoom }) });
 	const svg = svgEl("svg", { viewBox: `0 0 ${r.width} ${r.height}`, preserveAspectRatio: "none" });
-	for (const o of objects) {
-		const box = svgEl("rect", { x: o.x, y: o.y, width: Math.max(o.w, 1), height: Math.max(o.h, 1), class: "box" + (o.untouchable ? " hidden" : ""), "data-thing": "o" + o.id });
-		box.append(svgEl("title", {})); box.lastChild.textContent = `${o.name} (${o.id})`;
-		box.addEventListener("mouseenter", () => highlight("o", o.id, true));
-		box.addEventListener("mouseleave", () => highlight("o", o.id, false));
-		box.addEventListener("click", () => document.getElementById("o" + o.id)?.focus());
+	// Biggest first, so small things drawn on top of big ones can still be pointed at
+	for (const o of [...objects].sort((a, b) => b.w * b.h - a.w * a.h)) {
+		const box = svgEl("rect", { x: o.x, y: o.y, width: Math.max(o.w, 2), height: Math.max(o.h, 2),
+			class: "box" + (o.untouchable ? " hidden" : ""), "data-thing": "o" + o.id });
+		hover(box, "o" + o.id, `${o.name || "(no name)"} · object ${o.id}`);
 		svg.append(box);
 	}
 	for (const a of r.actors) {
-		const dot = svgEl("circle", { cx: a.x, cy: a.y, r: 3, class: "marker", "data-thing": "a" + a.id });
-		dot.append(svgEl("title", {})); dot.lastChild.textContent = `actor ${a.id} ${a.name || ""}`;
-		dot.addEventListener("click", () => document.getElementById("a" + a.id)?.focus());
+		const dot = svgEl("circle", { cx: a.x, cy: a.y, r: 4, class: "marker", "data-thing": "a" + a.id });
+		hover(dot, "a" + a.id, `${r.ini.actors[a.id] || a.name || "(no name)"} · actor ${a.id}`);
 		svg.append(dot);
 	}
 	frame.append(img, svg);
 
-	const field = (key, labelText, tag = "input") => el("label", {}, labelText,
-		el(tag, { name: key, value: tag === "input" ? ini[key] : null }, tag === "textarea" ? ini[key] : ""));
-	const status = el("select", { name: "status" }, ...STATUSES.map(s => el("option", { value: s, selected: (ini.status || "") === s }, STATUS_LABEL[s])));
+	const zoomButton = z => el("button", { class: "small" + (z === zoom ? " on" : ""), type: "button", onclick: () => { zoom = z; renderRoom(); } }, z === "fit" ? "fit" : `${z}×`);
+	document.getElementById("picturePane").replaceChildren(
+		el("div", { class: "toolbar" }, ...["fit", 2, 3, 4].map(zoomButton),
+			el("button", { class: "small" + (showHidden ? " on" : ""), type: "button", onclick: () => { showHidden = !showHidden; renderRoom(); } }, "untouchable"),
+			el("span", { class: "info" }, `${r.width}×${r.height}`)),
+		frame);
+}
 
-	const objectRows = objects.map(o => el("tr", { class: o.untouchable ? "hidden" : "", "data-thing": "o" + o.id,
-		onmouseenter: () => highlight("o", o.id, true), onmouseleave: () => highlight("o", o.id, false) },
-		el("td", { class: "id" }, o.id), el("td", { class: "name" }, o.name), el("td", {}, o.state),
-		el("td", {}, el("input", { id: "o" + o.id, "data-object": o.id, value: ini.objects[o.id] || "", placeholder: "note shown after the name" }))));
-	const actorRows = r.actors.map(a => el("tr", { "data-thing": "a" + a.id,
-		onmouseenter: () => highlight("a", a.id, true), onmouseleave: () => highlight("a", a.id, false) },
-		el("td", { class: "id" }, a.id), el("td", { class: "name" }, a.name || "—"), el("td", {}, `costume ${a.costume}${a.visible ? "" : ", hidden"}`),
-		el("td", {}, el("input", { id: "a" + a.id, "data-actor": a.id, value: ini.actors[a.id] || "", placeholder: "name (leading - : speaker only)" }))));
+function renderRoom() {
+	const r = rooms[current], ini = r.ini;
+	const objects = r.objects.filter(o => showHidden || (o.name && !o.untouchable));
+	renderPicture(r, objects);
+
+	const field = (key, labelText, tag = "input") => el("label", {}, labelText,
+		tag === "textarea" ? el("textarea", { name: key }, ini[key]) : el("input", { name: key, value: ini[key] }));
+	const status = el("select", { name: "status" }, ...STATUSES.map(s => el("option", { value: s, selected: (ini.status || "") === s }, STATUS_LABEL[s])));
+	const rowEvents = key => ({ "data-thing": key, onmouseenter: () => highlight(key, true), onmouseleave: () => highlight(key, false) });
+
+	const objectRows = objects.filter(o => o.name).map(o => el("tr", { class: o.untouchable ? "hidden" : "", ...rowEvents("o" + o.id) },
+		el("td", { class: "id" }, o.id), el("td", { class: "name" }, o.name + (o.state ? ` (state ${o.state})` : "")),
+		el("td", {}, el("input", { id: "o" + o.id, "data-object": o.id, value: ini.objects[o.id] || "", placeholder: "note after the name" }))));
+	const actorRows = r.actors.map(a => el("tr", rowEvents("a" + a.id),
+		el("td", { class: "id" }, a.id), el("td", { class: "name" }, (a.name || "—") + ` (costume ${a.costume})`),
+		el("td", {}, el("input", { id: "a" + a.id, "data-actor": a.id, value: ini.actors[a.id] || "", placeholder: "name; leading - = speaker only" }))));
 
 	const saved = el("span", { class: "saved" });
 	const form = el("form", { onsubmit: e => { e.preventDefault(); save(form, saved); } },
-		el("div", { class: "row" }, field("name", "Room name"), el("label", {}, "Review status", status)),
+		el("div", { class: "row" }, field("name", "Room name"), el("label", {}, "Status", status)),
 		field("description", "Description (what is on screen; no solutions)", "textarea"),
 		field("review_note", "Reviewer note (not shown to her)"),
 		el("h3", {}, "Objects"),
-		el("table", {}, el("tr", {}, el("th", {}, "id"), el("th", {}, "game name"), el("th", {}, "state"), el("th", {}, "note")), ...objectRows),
+		objectRows.length ? el("table", {}, ...objectRows) : el("p", { class: "note" }, "No named objects."),
 		el("h3", {}, "Actors"),
-		r.actors.length ? el("table", {}, el("tr", {}, el("th", {}, "id"), el("th", {}, "game name"), el("th", {}, "costume"), el("th", {}, "name override")), ...actorRows) : el("p", { class: "sub" }, "None in this room when it was captured."),
+		actorRows.length ? el("table", {}, ...actorRows) : el("p", { class: "note" }, "None in this room when it was captured."),
 		Object.keys(ini.other).length ? el("div", { class: "other" }, "Also in the file (not edited here):\n" + Object.entries(ini.other).map(([k, v]) => `${k} = ${v}`).join("\n")) : "",
-		el("div", {}, el("button", { class: "primary", type: "submit" }, "Save"), saved));
+		el("div", { class: "savebar" }, el("button", { class: "primary", type: "submit" }, "Save"), saved,
+			el("span", { class: "note" }, "ctrl+s save · j/k next/previous room")));
 
 	document.getElementById("main").replaceChildren(
 		el("h1", {}, `Room ${r.room}${ini.name ? ": " + ini.name : ""}`),
-		el("div", { class: "sub" }, `${r.width}×${r.height} · ${r.objects.filter(o => o.name && !o.untouchable).length} usable objects · ${r.actors.length} actors${r.stayed ? "" : " · the game left this room while it was captured"} · keys: j/k next/previous, ctrl+s save`),
-		el("div", { class: "zoom" }, "Zoom",
-			...[1, 2, 3, 4].map(z => el("button", { class: "small" + (z === zoom ? " on" : ""), type: "button", onclick: () => { zoom = z; renderRoom(); } }, `${z}×`)),
-			el("button", { class: "small" + (showHidden ? " on" : ""), type: "button", onclick: () => { showHidden = !showHidden; renderRoom(); } }, "show untouchable")),
-		el("div", { class: "picture" }, frame), form);
+		el("div", { class: "sub" }, `${r.objects.filter(o => o.name && !o.untouchable).length} usable objects · ${r.actors.length} actors${r.stayed ? "" : " · the game left this room while it was captured"}`),
+		form);
+	document.getElementById("main").scrollTop = 0;
 }
 
 async function save(form, saved) {
