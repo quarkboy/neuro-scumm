@@ -29,6 +29,7 @@
 #include "common/str.h"
 
 #include "scumm/neuro/data.h"
+#include "scumm/neuro/journal.h"
 #include "scumm/neuro/websocket.h"
 
 namespace Scumm {
@@ -164,6 +165,11 @@ private:
 	Common::String _gameName;
 	WebSocketClient _ws;
 	NeuroData _data;
+	NeuroJournal _journal;
+	Common::String journalFileName(int slot) const;
+	void sendJournalNews();
+	int _saveLoadSlot = -1;
+	bool _savePending = false;
 
 	// The costume each actor wore when it was named. Scripts reuse actors
 	// for other characters without renaming them, which leaves a wrong name.
@@ -189,11 +195,26 @@ private:
 
 	NeuroWorld _described;
 
+	// Testing aid: run the game at ScummVM's fast speed, always or only while she cannot act
+	enum FastMode {
+		kFastOff,
+		kFastAlways,
+		kFastScenes
+	};
+	FastMode _fastMode = kFastOff;
+	void updateSpeed();
+
+	// A loaded savegame can change everything at once
+	bool _loadPending = false;
+	void resetAfterLoad();
+
 	// The game's normal verbs, learned the first time they are on screen
 	NeuroThingList _standardVerbs;
 
 	// Only one force may be outstanding at a time
 	bool _forceActive = false;
+	Common::String _forceAction;
+	Common::String _currentAction;
 	uint32 _forceSentAt = 0;
 	uint32 _lastActivity = 0;
 	uint32 _idleForceMs = 0;

@@ -469,6 +469,12 @@ void NeuroBridge::pollWorld() {
 	NeuroWorld world;
 	collectWorld(world);
 
+	Common::StringArray carried;
+	for (const auto &item : world.inventory)
+		carried.push_back(item.name);
+	_journal.observed(world.room, carried);
+	sendJournalNews();
+
 	if (world.room != _described.room) {
 		sendContext(describeRoom(world), false);
 	} else {
@@ -518,6 +524,9 @@ void NeuroBridge::onTalkStarted(int actor, const byte *text) {
 			speaker = "Narrator";
 		}
 	}
+
+	if (_journal.heard(line) && !_dialogueAsContext)
+		sendJournalNews();
 
 	// Crowds shout the same line once per member; report it once
 	const Common::String spoken = speaker + ": " + line;

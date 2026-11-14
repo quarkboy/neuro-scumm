@@ -67,6 +67,8 @@ public:
 	/** A word for the state an object is in, e.g. "open"; empty if unknown. */
 	Common::String stateName(const Common::String &objectName, int state) const;
 
+	const Common::INIFile &ini() const { return _ini; }
+
 private:
 	Common::String get(const Common::String &section, const Common::String &key) const;
 

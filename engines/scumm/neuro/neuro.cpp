@@ -84,6 +84,19 @@ NeuroBridge::NeuroBridge(ScummEngine *vm, const Common::String &url) : _vm(vm), 
 	else if (ConfMan.hasKey("neuro_descriptions"))
 		_data.load(ConfMan.get("neuro_descriptions"));
 
+	_journal.loadGoals(_data.ini());
+
+	const char *fast = getenv("NEURO_FAST_MODE");
+	Common::String fastMode;
+	if (fast && *fast)
+		fastMode = fast;
+	else if (ConfMan.hasKey("neuro_fast_mode"))
+		fastMode = ConfMan.get("neuro_fast_mode");
+	if (fastMode.equalsIgnoreCase("always"))
+		_fastMode = kFastAlways;
+	else if (fastMode.equalsIgnoreCase("scenes"))
+		_fastMode = kFastScenes;
+
 	const char *idle = getenv("NEURO_IDLE_FORCE_SECONDS");
 	int idleSeconds = 45;
 	if (idle && *idle)
@@ -119,8 +132,24 @@ void NeuroBridge::update() {
 	while (_ws.receive(message))
 		handleMessage(message);
 
+	updateSpeed();
 	updateClick();
 	updateQueuedCommand();
+
+	// Saving and loading happen between frames. The journal travels with
+	// each savegame in a file of its own.
+	if (_vm->_saveLoadFlag != 0) {
+		_saveLoadSlot = _vm->_saveLoadSlot;
+		_loadPending = _vm->_saveLoadFlag == 2;
+		_savePending = !_loadPending;
+	} else if (_loadPending) {
+		_loadPending = false;
+		_journal.load(journalFileName(_saveLoadSlot));
+		resetAfterLoad();
+	} else if (_savePending) {
+		_savePending = false;
+		_journal.save(journalFileName(_saveLoadSlot));
+	}
 
 	if (!_pendingDialogue.empty()) {
 		const uint32 now = g_system->getMillis();
@@ -130,6 +159,40 @@ void NeuroBridge::update() {
 	}
 
 	pollWorld();
+}
+
+Common::String NeuroBridge::journalFileName(int slot) const {
+	return Common::String::format("%s-journal.%02d", _vm->_targetName.c_str(), slot);
+}
+
+void NeuroBridge::sendJournalNews() {
+	const Common::String news = _journal.takeNews();
+	if (!news.empty())
+		sendContext(news, true);
+}
+
+void NeuroBridge::updateSpeed() {
+	if (_fastMode == kFastOff)
+		return;
+	// Bit 0 is the engine's "fast mode" (Ctrl-F). Keep real speed while
+	// she is deciding, so timing stays what it would be on stream.
+	const bool fast = _fastMode == kFastAlways || !playerHasControl();
+	if (fast)
+		_vm->_fastMode |= 1;
+	else
+		_vm->_fastMode &= ~1;
+}
+
+void NeuroBridge::resetAfterLoad() {
+	_described = NeuroWorld();
+	_queue.clear();
+	_clickPhase = kClickIdle;
+	_pendingDialogue.clear();
+	_speechOpen = false;
+	_namedCostume.clear();
+	_recentLines.clear();
+	_lastActivity = g_system->getMillis();
+	sendContext("A saved game was loaded. Forget where you were; your situation is described again below.", true);
 }
 
 void NeuroBridge::flushDialogue() {
@@ -148,6 +211,7 @@ void NeuroBridge::flushDialogue() {
 		cue = !world.inDialogue;
 	}
 	sendContext(text, !cue);
+	sendJournalNews();
 }
 
 void NeuroBridge::onConnected() {
@@ -254,7 +318,27 @@ void NeuroBridge::registerActions(bool interactOnly) {
 
 	Common::JSONArray actions;
 	actions.push_back(new Common::JSONValue(interact));
-	Common::JSONValue *others[] = {new Common::JSONValue(choose), new Common::JSONValue(wait), new Common::JSONValue(skip)};
+	Common::JSONObject readJournal;
+	readJournal.setVal("name", new Common::JSONValue("read_journal"));
+	readJournal.setVal("description", new Common::JSONValue(
+		"Read your journal: your current goals, what you have already done, and your own notes."));
+
+	Common::JSONObject noteProperties;
+	noteProperties.setVal("text", stringSchema());
+	Common::JSONArray noteRequired;
+	noteRequired.push_back(new Common::JSONValue("text"));
+	Common::JSONObject noteSchema;
+	noteSchema.setVal("type", new Common::JSONValue("object"));
+	noteSchema.setVal("properties", new Common::JSONValue(noteProperties));
+	noteSchema.setVal("required", new Common::JSONValue(noteRequired));
+	Common::JSONObject addNote;
+	addNote.setVal("name", new Common::JSONValue("add_note"));
+	addNote.setVal("description", new Common::JSONValue(
+		"Write a short note in your journal so you remember it later, such as a clue or a plan."));
+	addNote.setVal("schema", new Common::JSONValue(noteSchema));
+
+	Common::JSONValue *others[] = {new Common::JSONValue(choose), new Common::JSONValue(wait), new Common::JSONValue(skip),
+		new Common::JSONValue(readJournal), new Common::JSONValue(addNote)};
 	for (Common::JSONValue *other : others) {
 		if (interactOnly)
 			delete other;
@@ -291,19 +375,28 @@ void NeuroBridge::sendForce(const Common::String &state, const Common::String &q
 	names.push_back(new Common::JSONValue(actionName));
 
 	Common::JSONObject data;
-	data.setVal("state", new Common::JSONValue(state));
+	// The force is the one moment she is sure to read, so remind her what she is doing
+	Common::String fullState = state;
+	if (!_journal.isEmpty())
+		fullState += "\n" + _journal.describe(Common::String(actionName) == "interact");
+	data.setVal("state", new Common::JSONValue(fullState));
 	data.setVal("query", new Common::JSONValue(query));
 	data.setVal("ephemeral_context", new Common::JSONValue(true));
 	data.setVal("action_names", new Common::JSONValue(names));
 	send("actions/force", &data);
 
 	_forceActive = true;
+	_forceAction = actionName;
 	_forceSentAt = g_system->getMillis();
 }
 
 void NeuroBridge::sendActionResult(const Common::String &id, bool success, const Common::String &message) {
 	// Keep what she is told in the order it happened
 	flushDialogue();
+
+	// A force is over once the forced action succeeds; the server retries a failed one itself
+	if (success && _forceActive && _currentAction == _forceAction)
+		_forceActive = false;
 	Common::JSONObject data;
 	data.setVal("id", new Common::JSONValue(id));
 	data.setVal("success", new Common::JSONValue(success));
@@ -357,6 +450,23 @@ void NeuroBridge::handleDebugAction(const Common::String &id, const Common::Stri
 		sendActionResult(id, true);
 		return;
 	}
+	if (name == "debug_save" || name == "debug_load") {
+		int slot = 0;
+		char label[64] = "";
+		sscanf(data.c_str(), "%d %63[^\n]", &slot, label);
+		sendActionResult(id, true);
+		if (name == "debug_save")
+			_vm->requestSave(slot, label[0] ? label : "neuro");
+		else
+			_vm->requestLoad(slot);
+		return;
+	}
+	if (name == "debug_speed") {
+		_fastMode = kFastOff;
+		_vm->_fastMode = atoi(data.c_str());
+		sendActionResult(id, true);
+		return;
+	}
 	if (name == "debug_room") {
 		const int room = atoi(data.c_str());
 		sendActionResult(id, true);
@@ -376,8 +486,7 @@ void NeuroBridge::handleAction(const Common::String &id, const Common::String &n
 		return;
 	}
 
-	// Any action answers an outstanding force
-	_forceActive = false;
+	_currentAction = name;
 	_lastActivity = g_system->getMillis();
 	_lastActionAt = _lastActivity;
 
@@ -395,6 +504,26 @@ void NeuroBridge::handleAction(const Common::String &id, const Common::String &n
 		clickInRoom(x, y);
 		return;
 	}
+	if (name == "read_journal") {
+		sendActionResult(id, true, _journal.describe());
+		return;
+	}
+	if (name == "add_note") {
+		Common::JSONValue *args = data.empty() ? nullptr : Common::JSON::parse(data);
+		Common::String text;
+		if (args && args->isObject() && args->hasChild("text") && args->child("text")->isString())
+			text = args->child("text")->asString();
+		delete args;
+		text.trim();
+		if (text.empty()) {
+			sendActionResult(id, false, "add_note needs some text.");
+		} else {
+			_journal.addNote(text);
+			sendActionResult(id, true, "Noted.");
+		}
+		return;
+	}
+
 	if (name == "wait") {
 		sendActionResult(id, true);
 		return;

@@ -131,14 +131,10 @@ void NeuroBridge::actionChooseDialogue(const Common::String &id, const Common::J
 	}
 	if (option < 1 || option > (int)world.verbs.size()) {
 		sendActionResult(id, false, "Pick one of these lines by its number:\n" + listDialogue(world.verbs));
-		// The server retries a failed force by itself; do not send another
-		_forceActive = true;
-		_forceSentAt = g_system->getMillis();
 		return;
 	}
 
 	sendActionResult(id, true);
-	_forcedDialogue.clear();
 	_vm->runInputScript(kVerbClickArea, world.verbs[option - 1].id, 1);
 }
 
@@ -146,12 +142,15 @@ void NeuroBridge::updateForces(const NeuroWorld &world) {
 	const uint32 now = g_system->getMillis();
 
 	// A force that was never answered must not block the game forever
-	if (_forceActive && now - _forceSentAt > 60000)
+	if (_forceActive && now - _forceSentAt > 300000)
 		_forceActive = false;
 
 	if (world.inDialogue) {
 		const Common::String lines = listDialogue(world.verbs);
-		if (lines != _forcedDialogue || !_forceActive) {
+		// A second force while one is outstanding confuses the server, even if the lines have changed
+		// The chosen line can stay on screen for a moment after she picks it
+		const bool fresh = lines != _forcedDialogue || now - _lastActionAt > 3000;
+		if (!_forceActive && fresh) {
 			_forcedDialogue = lines;
 			sendForce("Lines Guybrush can say:\n" + lines, "Choose what to say next.", "choose_dialogue");
 		}

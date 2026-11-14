@@ -124,6 +124,7 @@ ifdef ENABLE_NEURO
 MODULE_OBJS += \
 	neuro/actions.o \
 	neuro/data.o \
+	neuro/journal.o \
 	neuro/neuro.o \
 	neuro/websocket.o \
 	neuro/world.o
