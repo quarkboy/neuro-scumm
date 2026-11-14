@@ -160,6 +160,47 @@ void NeuroBridge::actionChooseDialogue(const Common::String &id, const Common::J
 	_vm->runInputScript(kVerbClickArea, world.verbs[option - 1].id, 1);
 }
 
+void NeuroBridge::actionAnswer(const Common::String &id, const Common::JSONValue *args) {
+	Common::String answer = getStringArg(args, "answer");
+	answer.toLowercase();
+	if (answer != "yes" && answer != "no") {
+		sendActionResult(id, false, "Answer \"yes\" or \"no\".");
+		return;
+	}
+
+	const Common::String command = _questionCommand;
+	_questionCommand.clear();
+	// These questions are about a passing moment
+	if (command.empty() || g_system->getMillis() - _questionAskedAt > 20000) {
+		sendActionResult(id, true, "There is no question waiting for an answer.");
+		return;
+	}
+	if (answer == "no") {
+		sendActionResult(id, true);
+		return;
+	}
+
+	Common::StringTokenizer parts(command, "|");
+	Common::StringArray fields = parts.split();
+	for (auto &field : fields)
+		field.trim();
+	while (fields.size() < 3)
+		fields.push_back(Common::String());
+
+	NeuroWorld world;
+	collectWorld(world);
+	NeuroCommand resolved;
+	Common::String error;
+	if (!playerHasControl() || !resolveCommand(world, fields[0], fields[1], fields[2], resolved, error)) {
+		// Not a failure she should retry: the moment has simply gone
+		sendActionResult(id, true, "Too late: that is no longer possible.");
+		return;
+	}
+	sendActionResult(id, true);
+	_queue.clear();
+	runCommand(resolved);
+}
+
 void NeuroBridge::updateForces(const NeuroWorld &world) {
 	const uint32 now = g_system->getMillis();
 

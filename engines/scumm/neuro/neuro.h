@@ -24,6 +24,7 @@
 
 #include "common/array.h"
 #include "common/hashmap.h"
+#include "common/hash-str.h"
 #include "common/rect.h"
 #include "common/formats/json.h"
 #include "common/str.h"
@@ -142,6 +143,11 @@ private:
 
 	// How long she takes from prompt to action; alerts are sent that much early
 	uint32 _reactionMs = 300;
+	// A yes/no question from an alert, and what saying yes does
+	Common::String _questionCommand;
+	uint32 _questionAskedAt = 0;
+	void actionAnswer(const Common::String &id, const Common::JSONValue *args);
+
 	int _pendingAlert = -1;
 	uint32 _pendingAlertDue = 0;
 	void updateForces(const NeuroWorld &world);
@@ -250,6 +256,10 @@ private:
 	// Speakers nobody has named are told apart by number within a room
 	int _strangerRoom = 0;
 	Common::Array<int> _strangers;
+
+	// Several characters can share one actor and differ only in the colour
+	// of their text; the colours seen so far for each speaker name
+	Common::HashMap<Common::String, Common::Array<byte> > _voiceColors;
 	uint32 _lastActionAt = 0;
 	uint32 _pendingSince = 0;
 	Common::String _lastLineText;

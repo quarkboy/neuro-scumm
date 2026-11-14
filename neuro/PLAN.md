@@ -158,7 +158,9 @@ The game has object names but no text describing a room. Proposal: a hand-writte
   - Journal: goals from `[goal.*]` sections, revealed and completed by lines heard, items held, rooms entered; `read_journal` and `add_note` actions; stored beside each savegame. It is not appended to forces: she reads it when she wants to.
   - `NEURO_FAST_MODE=always|scenes`, savegame checkpoints (`run.sh -x SLOT`), dev driver in `neuro/tools/dev/`.
   - Noise control: mid-scene dialogue is silent, background chatter and animation are filtered, unnamed speakers are numbered, stale actor names are ignored.
-- Still to do: let GPT attempt the kitchen (cook timing, seagull) unaided; describe remaining Mêlée rooms as she reaches them; decide what counts as passing the slice.
+  - Alerts and yes/no questions (see the quick-time pattern under Later). Speakers that share one actor are numbered by text colour ("important-looking pirates #2").
+  - Measured for the kitchen: the cook leaves the door open, and walking to it works from 3 s after he appears (tried up to 6 s); sooner and he shouts.
+- Still to do: describe remaining Mêlée rooms as she reaches them; decide what counts as passing the slice.
 - Room descriptions for the slice. Gary with GPT plays from a fresh start.
 - Tune action shape, descriptions, context volume and idle-force timing from transcripts.
 - Exit test: the LLM gets through the slice unaided in most runs, and transcripts show no spam or stuck loops.
@@ -169,7 +171,8 @@ The game has object names but no text describing a room. Proposal: a hand-writte
 
 **Later, after the slice is judged**
 - Timing assumption (from Samuel, 2026-11-14): Neuro herself can react in about 250 ms, far faster than the GPT stand-in (about 2.4 s per decision). So time-critical moments should be handled with a timely `actions/force` at `high` priority (second highest; `critical` cuts her off mid-sentence) rather than by slowing the game. GPT failing a timing puzzle is therefore weak evidence; judge those by whether the right force went out at the right moment.
-- Grog and the jail lock (when assembling a crew): grog eats through each mug, so it has to be poured from mug to mug while walking from the SCUMM Bar to the jail, across several rooms. A two-step action is not enough. First choice: a `high` priority force each time a mug starts to melt, naming the pour as the thing to do. Fallbacks: a longer list of steps in one action, or slowing the melt timer as an operator setting. Measure the real timer first.
+- **Quick-time pattern (agreed 2026-11-14): use it for every timed moment.** An `[alert.*]` entry in the description file watches for the moment, then sends a `high` priority `actions/force` that says what just happened on screen and asks a yes/no question; answering yes through the `answer` action carries out a preset command immediately. `lead` and `NEURO_REACTION_MS` decide how early the question goes out. First use: the cook leaving the kitchen ("Slip through the open kitchen door while he is not looking?"), which GPT at 2.5 s per decision passed in 2 of 3 runs. Planned uses: each mug starting to melt on the grog run, and any other window too short for a free-form decision.
+- Grog and the jail lock (when assembling a crew): grog eats through each mug, so it has to be poured from mug to mug while walking from the SCUMM Bar to the jail, across several rooms. A two-step action is not enough. First choice: the quick-time pattern above, one question each time a mug starts to melt ("Pour the grog into the next mug?"). Fallbacks: a longer list of steps in one action, or slowing the melt timer as an operator setting. Measure the real timer first.
 - Remaining rooms' descriptions; Mêlée map screen; insult sword fighting (it is dialogue choices, so mostly a context problem); timed puzzles (grog mugs, underwater); forest and cave mazes; saves and resume; hint or unstuck mechanism; Monkey Island 2.
 
 ## Risks

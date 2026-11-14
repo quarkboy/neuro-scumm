@@ -371,8 +371,28 @@ void NeuroBridge::registerActions(bool interactOnly) {
 		"Write a short note in your journal so you remember it later, such as a clue or a plan."));
 	addNote.setVal("schema", new Common::JSONValue(noteSchema));
 
+	Common::JSONArray yesNo;
+	yesNo.push_back(new Common::JSONValue("yes"));
+	yesNo.push_back(new Common::JSONValue("no"));
+	Common::JSONObject answerType;
+	answerType.setVal("type", new Common::JSONValue("string"));
+	answerType.setVal("enum", new Common::JSONValue(yesNo));
+	Common::JSONObject answerProperties;
+	answerProperties.setVal("answer", new Common::JSONValue(answerType));
+	Common::JSONArray answerRequired;
+	answerRequired.push_back(new Common::JSONValue("answer"));
+	Common::JSONObject answerSchema;
+	answerSchema.setVal("type", new Common::JSONValue("object"));
+	answerSchema.setVal("properties", new Common::JSONValue(answerProperties));
+	answerSchema.setVal("required", new Common::JSONValue(answerRequired));
+	Common::JSONObject answer;
+	answer.setVal("name", new Common::JSONValue("answer"));
+	answer.setVal("description", new Common::JSONValue(
+		"Answer yes or no when the game asks you a quick question. Yes does what the question offered, immediately."));
+	answer.setVal("schema", new Common::JSONValue(answerSchema));
+
 	Common::JSONValue *others[] = {new Common::JSONValue(choose), new Common::JSONValue(wait), new Common::JSONValue(skip),
-		new Common::JSONValue(readJournal), new Common::JSONValue(addNote)};
+		new Common::JSONValue(readJournal), new Common::JSONValue(addNote), new Common::JSONValue(answer)};
 	for (Common::JSONValue *other : others) {
 		if (interactOnly)
 			delete other;
@@ -536,6 +556,13 @@ void NeuroBridge::handleAction(const Common::String &id, const Common::String &n
 		clickInRoom(x, y);
 		return;
 	}
+	if (name == "answer") {
+		Common::JSONValue *args = data.empty() ? nullptr : Common::JSON::parse(data);
+		actionAnswer(id, args);
+		delete args;
+		return;
+	}
+
 	if (name == "read_journal") {
 		Common::JSONValue *args = data.empty() ? nullptr : Common::JSON::parse(data);
 		bool completed = false;

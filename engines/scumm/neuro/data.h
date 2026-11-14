@@ -50,6 +50,9 @@ namespace Scumm {
  *   priority  low, medium, high or critical; how hard to interrupt her
  *   say       what a player watching the screen would have just seen
  *   ask       what she is asked to do about it
+ *   do        optional "VERB | TARGET" (or "VERB | TARGET | SECOND TARGET").
+ *             With it, ask must be a yes/no question, and answering yes
+ *             carries out that command at once.
  * and two global sections:
  *   [actors]  ID = name    fallback names for unnamed actors
  *   [states]  object name = label for state 0, label for state 1, ...
@@ -81,7 +84,7 @@ public:
 	struct Alert {
 		int room = 0;
 		uint32 leadMs = 0;
-		Common::String kind, name, priority, say, ask;
+		Common::String kind, name, priority, say, ask, command;
 	};
 	const Common::Array<Alert> &alerts() const { return _alerts; }
 

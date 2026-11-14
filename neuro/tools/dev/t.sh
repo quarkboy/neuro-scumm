@@ -5,7 +5,7 @@ B=/home/samuelp/projects/neuro-scumm
 case "$1" in
 start)
 	pkill -x scummvm; sleep 1
-	(SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy timeout ${2:-900} $B/scummvm/neuro/run.sh --debuglevel=2 --screenshotpath=$S/shots $DBGFLAGS $GAMEARGS > $S/game.out 2>&1 &)
+	(env ${VISIBLE:+-u NOOP_VAR} $([ -z "$VISIBLE" ] && echo SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy) timeout ${2:-900} $B/scummvm/neuro/run.sh --debuglevel=2 --screenshotpath=$S/shots $DBGFLAGS $GAMEARGS > $S/game.out 2>&1 &)
 	for i in $(seq 1 40); do grep -aq "Neuro: Connected" $S/game.out && break; sleep 1; done; sleep 1
 	$S/mcp.sh set_paused '{"paused":true}' > /dev/null
 	$S/mcp.sh list_games | grep -o '\\"id\\":\\"[^\\]*' | head -1 | sed 's/.*\\"//' > $S/gid

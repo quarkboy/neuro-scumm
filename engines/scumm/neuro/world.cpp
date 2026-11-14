@@ -445,7 +445,12 @@ static bool alertHolds(const NeuroData::Alert &alert, const NeuroWorld &world) {
 void NeuroBridge::fireAlert(const NeuroData::Alert &alert, const NeuroWorld &world) {
 	// Only one force may be outstanding; otherwise say it as plainly as context allows
 	if (!_forceActive && !world.inDialogue) {
-		sendForce(alert.say, alert.ask, "interact", alert.priority);
+		const bool question = !alert.command.empty();
+		if (question) {
+			_questionCommand = alert.command;
+			_questionAskedAt = g_system->getMillis();
+		}
+		sendForce(alert.say, alert.ask, question ? "answer" : "interact", alert.priority);
 		_lastActivity = g_system->getMillis();
 	} else {
 		sendContext(alert.say + " " + alert.ask, false);
@@ -460,6 +465,9 @@ void NeuroBridge::checkAlerts(const NeuroWorld &before, const NeuroWorld &after)
 	if (_pendingAlert >= 0) {
 		const NeuroData::Alert &alert = alerts[_pendingAlert];
 		if ((alert.room && alert.room != after.room) || !alertHolds(alert, after)) {
+			_pendingAlert = -1;
+		} else if (now > _pendingAlertDue + 1500) {
+			// She was busy when the moment came; a late prompt would only mislead
 			_pendingAlert = -1;
 		} else if (now >= _pendingAlertDue) {
 			_pendingAlert = -1;
@@ -569,15 +577,16 @@ void NeuroBridge::onTalkStarted(int actor, const byte *text) {
 		return;
 
 	Common::String speaker = actorName(actor);
+	if (_strangerRoom != _vm->_currentRoom) {
+		_strangerRoom = _vm->_currentRoom;
+		_strangers.clear();
+		_voiceColors.clear();
+	}
 	if (speaker.empty()) {
 		if (actor == _vm->VAR(_vm->VAR_EGO)) {
 			speaker = "Guybrush";
 		} else if (actor > 0 && actor < 0x80) {
 			// Keep unnamed speakers apart so a conversation can be followed
-			if (_strangerRoom != _vm->_currentRoom) {
-				_strangerRoom = _vm->_currentRoom;
-				_strangers.clear();
-			}
 			uint index = 0;
 			while (index < _strangers.size() && _strangers[index] != actor)
 				index++;
@@ -589,6 +598,22 @@ void NeuroBridge::onTalkStarted(int actor, const byte *text) {
 		} else {
 			speaker = "Narrator";
 		}
+	}
+
+	// A group that is one actor (the three pirate leaders) speaks in a
+	// different text colour per member. Number them once a second colour shows up.
+	if (actor > 0 && actor < 0x80 && actor != _vm->VAR(_vm->VAR_EGO)) {
+		Common::Array<byte> &colors = _voiceColors[speaker];
+		const byte color = _vm->_charsetColor;
+		uint index = 0;
+		while (index < colors.size() && colors[index] != color)
+			index++;
+		if (index == colors.size()) {
+			colors.push_back(color);
+			debug(1, "Neuro: Voice %u of '%s' (actor %d, room %d) uses text colour %d", index + 1, speaker.c_str(), actor, _vm->_currentRoom, color);
+		}
+		if (colors.size() > 1)
+			speaker += Common::String::format(" #%u", index + 1);
 	}
 
 	if (_journal.heard(line) && !_dialogueAsContext)
