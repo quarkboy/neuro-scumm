@@ -85,6 +85,9 @@ NeuroBridge::NeuroBridge(ScummEngine *vm, const Common::String &url) : _vm(vm), 
 		_data.load(ConfMan.get("neuro_descriptions"));
 
 	_journal.loadGoals(_data.ini());
+	// Starting straight from a savegame (-x) loads it before the first frame
+	if (ConfMan.hasKey("save_slot") && ConfMan.getInt("save_slot") >= 0)
+		loadJournal(ConfMan.getInt("save_slot"));
 
 	const char *fast = getenv("NEURO_FAST_MODE");
 	Common::String fastMode;
@@ -144,11 +147,11 @@ void NeuroBridge::update() {
 		_savePending = !_loadPending;
 	} else if (_loadPending) {
 		_loadPending = false;
-		_journal.load(journalFileName(_saveLoadSlot));
 		resetAfterLoad();
+		loadJournal(_saveLoadSlot);
 	} else if (_savePending) {
 		_savePending = false;
-		_journal.save(journalFileName(_saveLoadSlot));
+		saveJournal(_saveLoadSlot);
 	}
 
 	if (!_pendingDialogue.empty()) {
@@ -163,6 +166,22 @@ void NeuroBridge::update() {
 
 Common::String NeuroBridge::journalFileName(int slot) const {
 	return Common::String::format("%s-journal.%02d", _vm->_targetName.c_str(), slot);
+}
+
+void NeuroBridge::saveJournal(int slot) {
+	_journal.memos.clear();
+	for (const auto &named : _namedCostume)
+		_journal.memos[Common::String::format("actor.%d", named._key)] = Common::String::format("%d", named._value);
+	_journal.save(journalFileName(slot));
+}
+
+void NeuroBridge::loadJournal(int slot) {
+	_journal.load(journalFileName(slot));
+	_namedCostume.clear();
+	for (const auto &memo : _journal.memos) {
+		if (memo._key.hasPrefix("actor."))
+			_namedCostume[atoi(memo._key.c_str() + 6)] = atoi(memo._value.c_str());
+	}
 }
 
 void NeuroBridge::sendJournalNews() {
@@ -222,7 +241,8 @@ void NeuroBridge::onConnected() {
 	sendContext(Common::String::format(
 		"You are playing %s, a classic point-and-click adventure game. "
 		"You control Guybrush Threepwood, who wants to become a pirate. "
-		"You cannot see the screen, so each location and what is in it will be described to you.",
+		"You cannot see the screen, so each location and what is in it will be described to you. "
+		"Your goals are kept in a journal that you can read at any time with read_journal.",
 		_gameName.c_str()), true);
 
 	// Describe the current room again from scratch
@@ -375,11 +395,7 @@ void NeuroBridge::sendForce(const Common::String &state, const Common::String &q
 	names.push_back(new Common::JSONValue(actionName));
 
 	Common::JSONObject data;
-	// The force is the one moment she is sure to read, so remind her what she is doing
-	Common::String fullState = state;
-	if (!_journal.isEmpty())
-		fullState += "\n" + _journal.describe(Common::String(actionName) == "interact");
-	data.setVal("state", new Common::JSONValue(fullState));
+	data.setVal("state", new Common::JSONValue(state));
 	data.setVal("query", new Common::JSONValue(query));
 	data.setVal("ephemeral_context", new Common::JSONValue(true));
 	data.setVal("action_names", new Common::JSONValue(names));

@@ -168,6 +168,8 @@ private:
 	NeuroJournal _journal;
 	Common::String journalFileName(int slot) const;
 	void sendJournalNews();
+	void saveJournal(int slot);
+	void loadJournal(int slot);
 	int _saveLoadSlot = -1;
 	bool _savePending = false;
 

@@ -160,7 +160,7 @@ void NeuroBridge::updateForces(const NeuroWorld &world) {
 
 	if (_idleForceMs && !_forceActive && now - _lastActivity > _idleForceMs) {
 		_lastActivity = now;
-		sendForce(describeRoom(world), "The game is waiting for you. Decide what to do next.", "interact");
+		sendForce(describeRoom(world), "The game is waiting for you. Decide what to do next. If you have lost track of your goals, read your journal.", "interact");
 	}
 }
 

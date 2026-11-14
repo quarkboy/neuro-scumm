@@ -1,6 +1,6 @@
 # Neuro-sama plays The Secret of Monkey Island: development plan
 
-Status: phases 0 (mostly), 1, 2 and 3 done; next is phase 4, the vertical slice with an LLM. 2026-11-13.
+Status: phases 0 (mostly), 1, 2 and 3 done; phase 4 (vertical slice with an LLM) in progress. 2026-11-14.
 
 ## Decisions so far
 
@@ -150,7 +150,15 @@ The game has object names but no text describing a room. Proposal: a hand-writte
   - The cook is an unnamed actor, so Neuro cannot tell when he leaves the kitchen. The description data needs to name unnamed actors, which then show up as "Arrived" / "Left". Getting into the kitchen is the first timing puzzle.
   - Off-screen speakers come through as "Narrator", unnamed ones as "Someone".
 
-**4. Vertical slice with an LLM**
+**4. Vertical slice with an LLM** (in progress)
+- Done so far:
+  - Description file `neuro/data/monkey1.ini`: lookout, dock, SCUMM Bar, kitchen, town square, high street, alley, mansion exterior, store, jail; names for the cook, seagull, storekeeper, LeChuck and others; open/closed labels for doors.
+  - Gary runs GPT (gpt-6-luna, low reasoning) through `neuro/tools/openai-relay.py`. From a fresh start it opens the SCUMM Bar, talks to the pirate leaders about all three trials, then explores the town, the alley and the jail without help.
+  - Two-step actions (`then_verb`, `then_target`) and walkable places from the description file; the seagull and fish puzzle works with them 3 times out of 3.
+  - Journal: goals from `[goal.*]` sections, revealed and completed by lines heard, items held, rooms entered; `read_journal` and `add_note` actions; stored beside each savegame. It is not appended to forces: she reads it when she wants to.
+  - `NEURO_FAST_MODE=always|scenes`, savegame checkpoints (`run.sh -x SLOT`), dev driver in `neuro/tools/dev/`.
+  - Noise control: mid-scene dialogue is silent, background chatter and animation are filtered, unnamed speakers are numbered, stale actor names are ignored.
+- Still to do: let GPT attempt the kitchen (cook timing, seagull) unaided; describe remaining Mêlée rooms as she reaches them; decide what counts as passing the slice.
 - Room descriptions for the slice. Gary with GPT plays from a fresh start.
 - Tune action shape, descriptions, context volume and idle-force timing from transcripts.
 - Exit test: the LLM gets through the slice unaided in most runs, and transcripts show no spam or stuck loops.

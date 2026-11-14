@@ -23,6 +23,7 @@
 #define SCUMM_NEURO_JOURNAL_H
 
 #include "common/array.h"
+#include "common/hash-str.h"
 #include "common/formats/ini-file.h"
 #include "common/str.h"
 
@@ -58,6 +59,9 @@ public:
 
 	Common::String describe(bool withNotes = true) const;
 	bool isEmpty() const;
+
+	/** Bridge state that has to survive a save and load along with the goals. */
+	Common::StringMap memos;
 
 	void save(const Common::String &fileName) const;
 	void load(const Common::String &fileName);

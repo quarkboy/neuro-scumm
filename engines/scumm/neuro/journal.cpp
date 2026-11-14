@@ -56,6 +56,7 @@ void NeuroJournal::reset() {
 		goal.state = goal.start.empty() ? kActive : kHidden;
 	_notes.clear();
 	_news.clear();
+	memos.clear();
 }
 
 void NeuroJournal::setState(Goal &goal, State state) {
@@ -182,6 +183,8 @@ void NeuroJournal::save(const Common::String &fileName) const {
 	}
 	for (const auto &note : _notes)
 		file->writeString("note " + note + "\n");
+	for (const auto &memo : memos)
+		file->writeString("memo " + memo._key + " " + memo._value + "\n");
 	file->finalize();
 	delete file;
 }
@@ -197,6 +200,10 @@ void NeuroJournal::load(const Common::String &fileName) {
 		Common::String line = file->readLine();
 		if (line.hasPrefix("note ")) {
 			_notes.push_back(line.substr(5));
+		} else if (line.hasPrefix("memo ")) {
+			const size_t space = line.findFirstOf(' ', 5);
+			if (space != Common::String::npos)
+				memos[line.substr(5, space - 5)] = line.substr(space + 1);
 		} else if (line.hasPrefix("goal ")) {
 			const size_t space = line.findLastOf(' ');
 			const Common::String id = line.substr(5, space - 5);
