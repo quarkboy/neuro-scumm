@@ -160,6 +160,7 @@ The game has object names but no text describing a room. Proposal: a hand-writte
   - Noise control: mid-scene dialogue is silent, background chatter and animation are filtered, unnamed speakers are numbered, stale actor names are ignored.
   - Alerts and yes/no questions (see the quick-time pattern under Later). Speakers that share one actor are numbered by text colour ("important-looking pirates #2").
   - Measured for the kitchen: the cook leaves the door open, and walking to it works from 3 s after he appears (tried up to 6 s); sooner and he shouts.
+  - Gary fork in `../gary` (branch `speech-and-openai`, on upstream 1.0.6): accepts `speech/started` / `speech/ended`, and talks to api.openai.com through the Responses API, so `neuro/tools/openai-relay.py` is only needed with stock Gary. Run it with `../gary/src-tauri/target/release/gary --start-server`. The game launcher now defaults to speech mode; verified with GPT playing and no protocol errors.
 - Still to do: describe remaining Mêlée rooms as she reaches them; decide what counts as passing the slice.
 - Room descriptions for the slice. Gary with GPT plays from a fresh start.
 - Tune action shape, descriptions, context volume and idle-force timing from transcripts.
