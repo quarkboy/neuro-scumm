@@ -91,8 +91,14 @@ Common::Array<NeuroData::Spot> NeuroData::spots(int room) const {
 			continue;
 		Spot spot;
 		spot.name = kv.key.substr(5);
-		if (sscanf(kv.value.c_str(), "%d,%d", &spot.x, &spot.y) == 2)
-			result.push_back(spot);
+		if (sscanf(kv.value.c_str(), "%d,%d", &spot.x, &spot.y) != 2)
+			continue;
+		const size_t bar = kv.value.findFirstOf('|');
+		if (bar != Common::String::npos) {
+			spot.effect = kv.value.substr(bar + 1);
+			spot.effect.trim();
+		}
+		result.push_back(spot);
 	}
 	return result;
 }

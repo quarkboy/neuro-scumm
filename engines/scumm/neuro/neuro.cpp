@@ -120,6 +120,7 @@ void NeuroBridge::update() {
 		handleMessage(message);
 
 	updateClick();
+	updateQueuedCommand();
 
 	if (!_pendingDialogue.empty() && !_speechOpen && g_system->getMillis() - _lastTalkTime > 1000)
 		flushDialogue();
@@ -163,7 +164,9 @@ static Common::JSONValue *stringSchema() {
 	return new Common::JSONValue(schema);
 }
 
-void NeuroBridge::registerActions() {
+void NeuroBridge::registerActions(bool interactOnly) {
+	_registeredAt = g_system->getMillis();
+
 	Common::JSONObject wait;
 	wait.setVal("name", new Common::JSONValue("wait"));
 	wait.setVal("description", new Common::JSONValue("Do nothing for a moment and let the game continue."));
@@ -190,6 +193,8 @@ void NeuroBridge::registerActions() {
 	properties.setVal("verb", verbSchema);
 	properties.setVal("target", stringSchema());
 	properties.setVal("second_target", stringSchema());
+	properties.setVal("then_verb", stringSchema());
+	properties.setVal("then_target", stringSchema());
 	Common::JSONArray required;
 	required.push_back(new Common::JSONValue("verb"));
 	required.push_back(new Common::JSONValue("target"));
@@ -203,7 +208,8 @@ void NeuroBridge::registerActions() {
 	interact.setVal("description", new Common::JSONValue(
 		"Use one of the game's verbs on something in the room or in your inventory, e.g. verb \"Look at\", target \"poster\". "
 		"Walk somewhere with the verb \"Walk to\". "
-		"second_target is only for using or giving an inventory item: \"Use\" target \"key\" second_target \"door\"."));
+		"second_target is only for using or giving an inventory item: \"Use\" target \"key\" second_target \"door\". "
+		"When timing matters, then_verb and then_target add a second step that is done the instant the first one finishes."));
 	interact.setVal("schema", new Common::JSONValue(schema));
 
 	Common::JSONObject optionType;
@@ -226,9 +232,13 @@ void NeuroBridge::registerActions() {
 
 	Common::JSONArray actions;
 	actions.push_back(new Common::JSONValue(interact));
-	actions.push_back(new Common::JSONValue(choose));
-	actions.push_back(new Common::JSONValue(wait));
-	actions.push_back(new Common::JSONValue(skip));
+	Common::JSONValue *others[] = {new Common::JSONValue(choose), new Common::JSONValue(wait), new Common::JSONValue(skip)};
+	for (Common::JSONValue *other : others) {
+		if (interactOnly)
+			delete other;
+		else
+			actions.push_back(other);
+	}
 
 	Common::JSONObject data;
 	data.setVal("actions", new Common::JSONValue(actions));
@@ -302,7 +312,9 @@ void NeuroBridge::handleMessage(const Common::String &text) {
 			if (!id.empty())
 				handleAction(id, name, args);
 		} else if (command == "actions/reregister_all") {
-			registerActions();
+			// Some servers ask for this on connect, when everything has just been sent
+			if (g_system->getMillis() - _registeredAt > 3000)
+				registerActions();
 		}
 	}
 
@@ -332,6 +344,13 @@ void NeuroBridge::handleAction(const Common::String &id, const Common::String &n
 	if (name == "debug_dump") {
 		debugDump();
 		sendActionResult(id, true);
+		return;
+	}
+	if (name == "debug_click") {
+		int x = 0, y = 0;
+		sscanf(data.c_str(), "%d,%d", &x, &y);
+		sendActionResult(id, true);
+		clickInRoom(x, y);
 		return;
 	}
 	if (name == "debug_room") {

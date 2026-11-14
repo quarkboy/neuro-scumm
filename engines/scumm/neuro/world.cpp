@@ -233,6 +233,7 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 		thing.id = -(int)(i + 1);
 		thing.x = spots[i].x;
 		thing.name = spots[i].name;
+		thing.note = spots[i].effect;
 		world.spots.push_back(thing);
 		world.spotPositions.push_back(Common::Point(spots[i].x, spots[i].y));
 	}
@@ -439,14 +440,15 @@ void NeuroBridge::pollWorld() {
 		sendContext(describeRoom(world), false);
 	} else {
 		Common::String changes = describeChanges(_described, world);
+		// Someone coming or going may be her cue to act
 		if (!changes.empty())
-			sendContext(changes, true);
+			sendContext(changes, !(changes.contains("Arrived:") || changes.contains("Left:")));
 	}
 
 	// The first verbs to appear are the game's normal ones
 	if (_standardVerbs.empty() && !world.verbs.empty()) {
 		_standardVerbs = world.verbs;
-		registerActions();
+		registerActions(true);
 	}
 
 	updateForces(world);

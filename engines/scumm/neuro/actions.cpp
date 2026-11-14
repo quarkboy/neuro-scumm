@@ -21,6 +21,7 @@
 
 #include "scumm/neuro/neuro.h"
 
+#include "common/debug.h"
 #include "common/system.h"
 
 #include "scumm/actor.h"
@@ -164,13 +165,125 @@ void NeuroBridge::updateForces(const NeuroWorld &world) {
 	}
 }
 
+bool NeuroBridge::resolveCommand(const NeuroWorld &world, const Common::String &verbName, const Common::String &targetName,
+		const Common::String &secondName, NeuroCommand &command, Common::String &error) {
+	command = NeuroCommand();
+
+	// Walking is what a click does when no verb is selected, so it has no verb of its own
+	command.walk = verbName.equalsIgnoreCase(kWalkVerbName) || verbName.equalsIgnoreCase("walk") || verbName.equalsIgnoreCase("go to");
+	if (!command.walk) {
+		const NeuroThing *verb = findThing(world.verbs, verbName);
+		if (!verb) {
+			error = Common::String::format("There is no verb '%s'. The verbs are: %s, %s.",
+				verbName.c_str(), listNames(world.verbs).c_str(), kWalkVerbName);
+			return false;
+		}
+		command.verb = verb->id;
+	}
+
+	NeuroThingList room = world.objects;
+	room.push_back(world.actors);
+
+	NeuroThingList everything = room;
+	everything.push_back(world.inventory);
+	everything.push_back(world.spots);
+
+	const Common::String *names[2] = {&targetName, &secondName};
+	for (int i = 0; i < 2; i++) {
+		if (names[i]->empty())
+			continue;
+		const NeuroThing *thing = findThing(everything, *names[i]);
+		if (!thing) {
+			error = Common::String::format("There is nothing called '%s' here. In the room: %s. In your inventory: %s.",
+				names[i]->c_str(), listNames(room, world.spots).c_str(), listNames(world.inventory).c_str());
+			return false;
+		}
+		command.objects[i] = thing->id;
+	}
+
+	if (command.objects[0] < 0 || command.objects[1] < 0) {
+		if (!command.walk || command.objects[1]) {
+			error = "That is just a place: all you can do there is \"Walk to\" it.";
+			return false;
+		}
+		const int spot = -command.objects[0] - 1;
+		command.x = world.spotPositions[spot].x;
+		command.y = world.spotPositions[spot].y;
+		command.note = world.spots[spot].note;
+		command.isSpot = true;
+		return true;
+	}
+
+	if (command.walk && (!findThing(room, targetName) || !findClickPoint(command.objects[0], command.x, command.y))) {
+		error = Common::String::format("You can only walk to things in the room: %s.", listNames(room, world.spots).c_str());
+		return false;
+	}
+	return true;
+}
+
+void NeuroBridge::runCommand(const NeuroCommand &command) {
+	_commandStartedAt = g_system->getMillis();
+	_queueSawBusy = false;
+	_queueIdleSince = 0;
+	if (command.walk) {
+		clickInRoom(command.x, command.y);
+		return;
+	}
+	_lastTargets[0] = command.objects[0];
+	_lastTargets[1] = command.objects[1];
+	_vm->doSentence(command.verb, command.objects[0], command.objects[1]);
+}
+
+void NeuroBridge::updateQueuedCommand() {
+	if (_queue.empty())
+		return;
+
+	// A simulated click has not started anything yet
+	if (_clickPhase != kClickIdle)
+		return;
+
+	const uint32 elapsed = g_system->getMillis() - _commandStartedAt;
+	if (elapsed > 15000) {
+		_queue.clear();
+		return;
+	}
+
+	// Go as soon as the first command has played out
+	const bool busy = _vm->_sentenceNum > 0
+		|| _vm->isScriptRunning(_vm->VAR(_vm->VAR_SENTENCE_SCRIPT))
+		|| _vm->_actors[_vm->VAR(_vm->VAR_EGO)]->_moving;
+	// The first command takes a moment to get going, so wait until it has
+	// been seen running, or long enough that it evidently did nothing.
+	if (busy)
+		_queueSawBusy = true;
+	const uint32 now = g_system->getMillis();
+	if (busy || !playerHasControl() || (!_queueSawBusy && elapsed < 1500)) {
+		_queueIdleSince = 0;
+		return;
+	}
+	if (!_queueIdleSince)
+		_queueIdleSince = now;
+	if (now - _queueIdleSince < _queue[0].settleMs)
+		return;
+
+	const NeuroCommand next = _queue.remove_at(0);
+	debug(1, "Neuro: Running queued step after %u ms, Guybrush at %d,%d", elapsed,
+		_vm->_actors[_vm->VAR(_vm->VAR_EGO)]->getPos().x, _vm->_actors[_vm->VAR(_vm->VAR_EGO)]->getPos().y);
+	runCommand(next);
+}
+
 void NeuroBridge::actionInteract(const Common::String &id, const Common::JSONValue *args) {
 	const Common::String verbName = getStringArg(args, "verb");
 	const Common::String targetName = getStringArg(args, "target");
-	const Common::String secondName = getStringArg(args, "second_target");
+	const Common::String thenVerb = getStringArg(args, "then_verb");
+	const Common::String thenTarget = getStringArg(args, "then_target");
 
 	if (verbName.empty() || targetName.empty()) {
 		sendActionResult(id, false, "interact needs a verb and a target.");
+		return;
+	}
+	if (thenVerb.empty() != thenTarget.empty()) {
+		sendActionResult(id, false, "then_verb and then_target must be given together.");
 		return;
 	}
 	if (!playerHasControl()) {
@@ -185,63 +298,27 @@ void NeuroBridge::actionInteract(const Common::String &id, const Common::JSONVal
 		return;
 	}
 
-	// Walking is what a click does when no verb is selected, so it has no verb of its own
-	const bool walk = verbName.equalsIgnoreCase(kWalkVerbName) || verbName.equalsIgnoreCase("walk") || verbName.equalsIgnoreCase("go to");
-	const NeuroThing *verb = walk ? nullptr : findThing(world.verbs, verbName);
-	if (!walk && !verb) {
-		sendActionResult(id, false, Common::String::format("There is no verb '%s'. The verbs are: %s, %s.",
-			verbName.c_str(), listNames(world.verbs).c_str(), kWalkVerbName));
+	NeuroCommand first, second;
+	Common::String error;
+	if (!resolveCommand(world, verbName, targetName, getStringArg(args, "second_target"), first, error)
+			|| (!thenVerb.empty() && !resolveCommand(world, thenVerb, thenTarget, getStringArg(args, "then_second_target"), second, error))) {
+		sendActionResult(id, false, error);
 		return;
 	}
 
-	NeuroThingList room = world.objects;
-	room.push_back(world.actors);
-
-	NeuroThingList everything = room;
-	everything.push_back(world.inventory);
-	everything.push_back(world.spots);
-
-	int objects[2] = {0, 0};
-	const Common::String *names[2] = {&targetName, &secondName};
-	for (int i = 0; i < 2; i++) {
-		if (names[i]->empty())
-			continue;
-		const NeuroThing *thing = findThing(everything, *names[i]);
-		if (!thing) {
-			sendActionResult(id, false, Common::String::format(
-				"There is nothing called '%s' here. In the room: %s. In your inventory: %s.",
-				names[i]->c_str(), listNames(room).c_str(), listNames(world.inventory).c_str()));
-			return;
-		}
-		objects[i] = thing->id;
+	// For a place, say what stepping there looks like
+	sendActionResult(id, true, first.note);
+	_queue.clear();
+	// A place may only react to a step taken from a standstill right next
+	// to it (a loose plank, say): walk there, pause, then step onto it again.
+	if (first.isSpot) {
+		NeuroCommand again = first;
+		again.settleMs = 1000;
+		_queue.push_back(again);
 	}
-
-	if (objects[0] < 0 || objects[1] < 0) {
-		if (!walk || objects[1]) {
-			sendActionResult(id, false, "That is just a place: all you can do there is \"Walk to\" it.");
-			return;
-		}
-		const Common::Point &spot = world.spotPositions[-objects[0] - 1];
-		sendActionResult(id, true);
-		clickInRoom(spot.x, spot.y);
-		return;
-	}
-
-	if (walk) {
-		int x, y;
-		if (!findThing(room, targetName) || !findClickPoint(objects[0], x, y)) {
-			sendActionResult(id, false, Common::String::format("You can only walk to things in the room: %s.", listNames(room, world.spots).c_str()));
-			return;
-		}
-		sendActionResult(id, true);
-		clickInRoom(x, y);
-		return;
-	}
-
-	sendActionResult(id, true);
-	_lastTargets[0] = objects[0];
-	_lastTargets[1] = objects[1];
-	_vm->doSentence(verb->id, objects[0], objects[1]);
+	if (!thenVerb.empty())
+		_queue.push_back(second);
+	runCommand(first);
 }
 
 bool NeuroBridge::findClickPoint(int thing, int &x, int &y) const {

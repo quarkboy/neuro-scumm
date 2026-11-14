@@ -46,6 +46,23 @@ struct NeuroThing {
 
 typedef Common::Array<NeuroThing> NeuroThingList;
 
+/** A validated verb sentence or walk, ready to run. */
+struct NeuroCommand {
+	bool walk = false;
+	int verb = 0;
+	int objects[2] = {0, 0};
+
+	// Where to click, for walking
+	int x = 0, y = 0;
+	bool isSpot = false;
+
+	/** As a follow-up: how long Guybrush must have stood still before it starts. */
+	uint32 settleMs = 0;
+
+	/** What she is told on success. */
+	Common::String note;
+};
+
 /** Everything the player could see or use at one moment. */
 struct NeuroWorld {
 	int room = 0;
@@ -93,12 +110,24 @@ private:
 	NeuroBridge(ScummEngine *vm, const Common::String &url);
 
 	void onConnected();
-	void registerActions();
+	void registerActions(bool interactOnly = false);
+	uint32 _registeredAt = 0;
 	void handleMessage(const Common::String &text);
 	void handleAction(const Common::String &id, const Common::String &name, const Common::String &data);
 
 	void actionInteract(const Common::String &id, const Common::JSONValue *args);
 	void actionSkipCutscene(const Common::String &id);
+
+	bool resolveCommand(const NeuroWorld &world, const Common::String &verbName, const Common::String &targetName,
+		const Common::String &secondName, NeuroCommand &command, Common::String &error);
+	void runCommand(const NeuroCommand &command);
+	void updateQueuedCommand();
+
+	// Follow-up steps, each run as soon as the one before has played out
+	Common::Array<NeuroCommand> _queue;
+	bool _queueSawBusy = false;
+	uint32 _queueIdleSince = 0;
+	uint32 _commandStartedAt = 0;
 	void actionChooseDialogue(const Common::String &id, const Common::JSONValue *args);
 
 	void sendForce(const Common::String &state, const Common::String &query, const char *actionName);

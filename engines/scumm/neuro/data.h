@@ -39,7 +39,8 @@ namespace Scumm {
  *                          can be left over from another room. A leading '-'
  *                          names the speaker but keeps it out of the room list,
  *                          and an empty value hides the actor.
- *   spot.NAME = X,Y        a place with no object that she can walk to
+ *   spot.NAME = X,Y | TEXT a place with no object that she can walk to; the
+ *                          optional text says what she sees when she does
  * and two global sections:
  *   [actors]  ID = name    fallback names for unnamed actors
  *   [states]  object name = label for state 0, label for state 1, ...
@@ -57,6 +58,9 @@ public:
 	struct Spot {
 		Common::String name;
 		int x, y;
+
+		/** What stepping there looks like. */
+		Common::String effect;
 	};
 	Common::Array<Spot> spots(int room) const;
 
