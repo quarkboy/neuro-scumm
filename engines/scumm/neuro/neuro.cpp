@@ -253,7 +253,6 @@ void NeuroBridge::flushDialogue() {
 	}
 	sendContext(text, !cue);
 	_outcomeTold |= cue;
-	sendJournalNews();
 }
 
 void NeuroBridge::onConnected() {

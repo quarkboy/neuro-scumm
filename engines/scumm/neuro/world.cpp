@@ -580,7 +580,9 @@ void NeuroBridge::pollWorld() {
 	for (const auto &item : world.inventory)
 		carried.push_back(item.name);
 	_journal.observed(world.room, carried);
-	sendJournalNews();
+	// Goals and nudges wait until the whole conversation or scene is over
+	if (!world.inDialogue)
+		sendJournalNews();
 
 	if (world.room != _described.room) {
 		// The opening explanation has scrolled out of her context by now
@@ -689,8 +691,8 @@ void NeuroBridge::onTalkStarted(int actor, const byte *text) {
 			speaker += Common::String::format(" %u", index + 1);
 	}
 
-	if (_journal.heard(line) && !_dialogueAsContext)
-		sendJournalNews();
+	// Any news waits until the conversation is over (see pollWorld)
+	_journal.heard(line);
 
 	// Crowds shout the same line once per member; report it once
 	const Common::String spoken = speaker + ": " + line;
