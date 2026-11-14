@@ -1,3 +1,77 @@
+# Neuro-sama plays The Secret of Monkey Island
+
+This is a fork of [ScummVM](https://www.scummvm.org/) that lets [Neuro-sama](https://www.twitch.tv/vedal987), the AI streamer, play *The Secret of Monkey Island* through the [Neuro SDK](https://github.com/VedalAI/neuro-sdk). The game connects to her as a WebSocket client, tells her in words what a player would see and hear, and carries out the actions she sends back.
+
+It is an unofficial fan project. It is not affiliated with the ScummVM team, Vedal, or the owners of Monkey Island, and it contains no game data: you need your own copy of the game.
+
+**Status: early.** The opening of Part One works: the lookout, the SCUMM Bar and its kitchen, and the town on Mêlée Island. A stand-in language model can play through that stretch. The rest of the game runs, but has no written descriptions yet. Only Linux (including WSL) has been built and tested so far.
+
+## How it works
+
+Neuro cannot see the screen, so everything goes through text.
+
+- **What she is told.** A description of each room and the things, people and exits in it; every line of dialogue, with who said it; and what changed as a result of her actions.
+- **What she can do.** `interact` uses any of the game's verbs on anything in the room or her inventory, and also walks. `choose_dialogue` picks a line in a conversation. `answer` replies to a quick yes/no question. `read_journal` and `add_note` keep track of goals. `wait` and `skip_cutscene` do what they say.
+- **Timing.** Moments that need a fast reaction (slipping past the cook, for example) are sent as a high-priority question, timed to her reaction speed. An action can also carry a second step that runs the instant the first one ends.
+- **Hand-written text.** Room descriptions, names for characters the game leaves unnamed, goals and alerts live in a plain text file, [`neuro/data/monkey1.ini`](neuro/data/monkey1.ini). They say what is on screen and what characters have told her, never how to solve a puzzle.
+
+The Neuro code is in [`engines/scumm/neuro/`](engines/scumm/neuro/). The development plan and its history are in [`neuro/PLAN.md`](neuro/PLAN.md).
+
+## What you need
+
+- *The Secret of Monkey Island: Special Edition* (the Steam release). The classic game is read straight out of its `Monkey1.pak`.
+- A C++ compiler, `make`, SDL2 and libcurl, with their development packages.
+- A Neuro API server to connect to. For testing without Neuro, [Gary](https://github.com/Govorunb/gary) works.
+
+## Building
+
+```sh
+mkdir build && cd build
+../configure --disable-all-engines --enable-engine=scumm,neuro
+make -j$(nproc)
+```
+
+This builds only the SCUMM engine (Monkey Island 1 and 2 among others) with the Neuro module. Without a server URL configured, the result behaves like ordinary ScummVM.
+
+## Running
+
+[`neuro/run.sh`](neuro/run.sh) starts the game with the settings below. Point it at your game folder and build:
+
+```sh
+MONKEY1_DIR="/path/to/The Secret of Monkey Island Special Edition" \
+BUILD_DIR=build \
+NEURO_SDK_WS_URL=ws://127.0.0.1:8000 \
+neuro/run.sh
+```
+
+Add `-x N` to start from savegame slot N.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `NEURO_SDK_WS_URL` | `ws://127.0.0.1:8000` in `run.sh` | The Neuro API server. Unset, the Neuro module stays off. |
+| `NEURO_DESCRIPTIONS` | `neuro/data/monkey1.ini` in `run.sh` | The description file. |
+| `NEURO_DIALOGUE_MODE` | `speech` | `speech` reports dialogue with the SDK's `speech/started` and `speech/ended`. `context` sends it as ordinary context messages, for servers that do not know those commands (Gary 1.0.x). |
+| `NEURO_IDLE_FORCE_SECONDS` | `45` | Prompt her after this long with nothing happening. `0` turns it off. |
+| `NEURO_REACTION_MS` | `300` | How long she takes to react; timed questions go out that much early. |
+| `NEURO_CONTEXT_TOKENS` | `32000` | After roughly this much traffic, text that is only said once (room descriptions, the introduction) is said again. |
+| `NEURO_FAST_MODE` | off | `always`, or `scenes` to run fast only while she cannot act. For testing. |
+
+Each setting can also be given as a ScummVM config key of the same name in lower case, for example `neuro_idle_force_seconds`. The one exception is the server URL, whose key is `neuro_ws_url`. An environment variable wins over the config key.
+
+## Changes to ScummVM itself
+
+Three fixes outside the Neuro module, all for the Special Edition's audio: its music now plays (it is stored as headerless WMA, which upstream does not decode yet), music resumes after loading a savegame, and a voice line that is interrupted by the next speaker keeps playing instead of being cut off.
+
+## License and credits
+
+Like ScummVM, this fork is licensed under the GNU General Public License, version 3 or later; see [COPYING](COPYING). ScummVM is the work of the ScummVM team. The Neuro SDK is by Vedal AI.
+
+The Neuro module was written with the help of an AI coding assistant (Claude Code), which is recorded in the commit history. It is not intended for submission to the ScummVM project.
+
+---
+
+*The original ScummVM README follows.*
+
 # [ScummVM README](https://www.scummvm.org/) · [![Translation status](https://translations.scummvm.org/widgets/scummvm/-/scummvm/svg-badge.svg)](https://translations.scummvm.org/engage/scummvm/?utm_source=widget) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md#pull-requests)
 
 ## About ScummVM
