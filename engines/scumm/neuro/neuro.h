@@ -29,6 +29,7 @@
 #include "common/formats/json.h"
 #include "common/str.h"
 
+#include "scumm/neuro/args.h"
 #include "scumm/neuro/data.h"
 #include "scumm/neuro/journal.h"
 #include "scumm/neuro/websocket.h"
@@ -125,7 +126,7 @@ private:
 	void handleAction(const Common::String &id, const Common::String &name, const Common::String &data);
 	void handleDebugAction(const Common::String &id, const Common::String &name, const Common::String &data);
 
-	void actionInteract(const Common::String &id, const Common::JSONValue *args);
+	void actionInteract(const Common::String &id, const NeuroArgs &args);
 	void actionSkipCutscene(const Common::String &id);
 
 	bool resolveCommand(const NeuroWorld &world, const Common::String &verbName, const Common::String &targetName,
@@ -138,7 +139,7 @@ private:
 	bool _queueSawBusy = false;
 	uint32 _queueIdleSince = 0;
 	uint32 _commandStartedAt = 0;
-	void actionChooseDialogue(const Common::String &id, const Common::JSONValue *args);
+	void actionChooseDialogue(const Common::String &id, const NeuroArgs &args);
 
 	void sendForce(const Common::String &state, const Common::String &query, const char *actionName, const Common::String &priority = Common::String());
 	void checkAlerts(const NeuroWorld &before, const NeuroWorld &after);
@@ -149,7 +150,7 @@ private:
 	// A yes/no question from an alert, and what saying yes does
 	Common::String _questionCommand;
 	uint32 _questionAskedAt = 0;
-	void actionAnswer(const Common::String &id, const Common::JSONValue *args);
+	void actionAnswer(const Common::String &id, const NeuroArgs &args);
 
 	int _pendingAlert = -1;
 	uint32 _pendingAlertDue = 0;
@@ -181,7 +182,7 @@ private:
 	/** Per room: the traffic count when its full description was last sent. */
 	Common::HashMap<int, uint64> _seenRooms;
 	void sendIntro();
-	Common::String describeChanges(const NeuroWorld &before, const NeuroWorld &after) const;
+	Common::String describeChanges(const NeuroWorld &before, const NeuroWorld &after);
 
 	/** Converts game text to UTF-8, dropping control codes and name padding. */
 	Common::String cleanText(const byte *text, bool resolveCodes);

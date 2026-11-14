@@ -386,7 +386,7 @@ static Common::String baseName(const Common::String &name) {
 	return base;
 }
 
-Common::String NeuroBridge::describeChanges(const NeuroWorld &before, const NeuroWorld &after) const {
+Common::String NeuroBridge::describeChanges(const NeuroWorld &before, const NeuroWorld &after) {
 	const NeuroThingList got = difference(before.inventory, after.inventory);
 	const NeuroThingList lost = difference(after.inventory, before.inventory);
 	const NeuroThingList appeared = difference(before.objects, after.objects);
@@ -429,8 +429,14 @@ Common::String NeuroBridge::describeChanges(const NeuroWorld &before, const Neur
 		for (const auto &old : before.objects) {
 			// Doors that townspeople use and other background animation are noise
 			const bool hers = (thing.id == _lastTargets[0] || thing.id == _lastTargets[1]);
-			if (hers && old.id == thing.id && old.name == thing.name && old.state != thing.state)
+			if (hers && old.id == thing.id && old.name == thing.name && old.state != thing.state) {
 				changed.push_back(thing);
+				// Once is enough: a thing that keeps animating afterwards is not news
+				for (int &target : _lastTargets) {
+					if (target == thing.id)
+						target = 0;
+				}
+			}
 		}
 	}
 	for (uint i = 0; i < changed.size();) {

@@ -545,7 +545,16 @@ void NeuroBridge::handleDebugAction(const Common::String &id, const Common::Stri
 	sendActionResult(id, false, "Unknown debug action.");
 }
 
-void NeuroBridge::handleAction(const Common::String &id, const Common::String &name, const Common::String &data) {
+void NeuroBridge::handleAction(const Common::String &id, const Common::String &rawName, const Common::String &data) {
+	// "Choose-Dialogue" is still choose_dialogue
+	Common::String name = rawName;
+	name.trim();
+	name.toLowercase();
+	for (uint i = 0; i < name.size(); i++) {
+		if (name[i] == '-' || name[i] == ' ')
+			name.setChar('_', i);
+	}
+
 	// Development aids are not her actions
 	if (name.hasPrefix("debug_") && name != "debug_click") {
 		handleDebugAction(id, name, data);
@@ -556,10 +565,10 @@ void NeuroBridge::handleAction(const Common::String &id, const Common::String &n
 	_lastActivity = g_system->getMillis();
 	_lastActionAt = _lastActivity;
 
+	const NeuroArgs args(data);
+
 	if (name == "choose_dialogue") {
-		Common::JSONValue *args = data.empty() ? nullptr : Common::JSON::parse(data);
 		actionChooseDialogue(id, args);
-		delete args;
 		return;
 	}
 
@@ -571,28 +580,18 @@ void NeuroBridge::handleAction(const Common::String &id, const Common::String &n
 		return;
 	}
 	if (name == "answer") {
-		Common::JSONValue *args = data.empty() ? nullptr : Common::JSON::parse(data);
 		actionAnswer(id, args);
-		delete args;
 		return;
 	}
 
 	if (name == "read_journal") {
-		Common::JSONValue *args = data.empty() ? nullptr : Common::JSON::parse(data);
-		bool completed = false;
-		if (args && args->isObject() && args->hasChild("show_completed") && args->child("show_completed")->isBool())
-			completed = args->child("show_completed")->asBool();
-		delete args;
-		sendActionResult(id, true, _journal.describe(completed));
+		Common::String completed = args.get("show_completed|completed|show_done|all", true);
+		completed.toLowercase();
+		sendActionResult(id, true, _journal.describe(completed == "true" || completed == "yes" || completed == "1"));
 		return;
 	}
 	if (name == "add_note") {
-		Common::JSONValue *args = data.empty() ? nullptr : Common::JSON::parse(data);
-		Common::String text;
-		if (args && args->isObject() && args->hasChild("text") && args->child("text")->isString())
-			text = args->child("text")->asString();
-		delete args;
-		text.trim();
+		const Common::String text = args.get("text|note|content|message", true);
 		if (text.empty()) {
 			sendActionResult(id, false, "add_note needs some text.");
 		} else {
@@ -613,9 +612,7 @@ void NeuroBridge::handleAction(const Common::String &id, const Common::String &n
 	}
 
 	if (name == "interact") {
-		Common::JSONValue *args = data.empty() ? nullptr : Common::JSON::parse(data);
 		actionInteract(id, args);
-		delete args;
 		return;
 	}
 

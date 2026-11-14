@@ -123,6 +123,7 @@ endif
 ifdef ENABLE_NEURO
 MODULE_OBJS += \
 	neuro/actions.o \
+	neuro/args.o \
 	neuro/data.o \
 	neuro/journal.o \
 	neuro/neuro.o \

@@ -193,6 +193,7 @@ The game has object names but no text describing a room. Proposal: a hand-writte
   Each case is decided when we reach it; none are in the slice before the kitchen.
 - **Cutscene skipping:** allowed only for cutscenes she has already seen (seen-set persisted across runs), with an operator override.
 - **Operator web console:** a small local web page for whoever runs the stream, as in the Evil DOOM integration. First set of controls: connect/disconnect and server URL, remastered voice on/off, text speed, cutscene-skip policy, pause Neuro's control, idle-force timeout, save/load, and a live view of what Neuro is being sent. ScummVM ships a local web server (`backends/networking/sdl_net/localwebserver.*`, needs SDL_net) that we can probably build on; to be confirmed in phase 1. Built as phase 4b, after actions work.
+  Settings that exist today as environment variables or config keys and should become console controls: `NEURO_SDK_WS_URL` (server), `NEURO_DIALOGUE_MODE` (speech or context), `NEURO_IDLE_FORCE_SECONDS` (idle prompt), `NEURO_REACTION_MS` (how early alerts fire), `NEURO_CONTEXT_TOKENS` (how much traffic before one-time text is repeated, default 32000), `NEURO_FAST_MODE` (always, scenes or off), `NEURO_DESCRIPTIONS` (description file), plus ScummVM's own remastered-audio and text-speed options.
 
 ## Open questions
 None currently. Repo: standalone GitHub repo (not a GitHub fork), private during development; `upstream` remote tracks scummvm/scummvm; work happens on the `neuro` branch; commits keep the Claude co-author line.

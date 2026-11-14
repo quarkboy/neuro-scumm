@@ -52,17 +52,6 @@ static Common::String listNames(const NeuroThingList &a, const NeuroThingList &b
 	return result.empty() ? Common::String("nothing") : result;
 }
 
-static Common::String getStringArg(const Common::JSONValue *args, const char *key) {
-	if (!args || !args->isObject() || !args->hasChild(key))
-		return Common::String();
-	const Common::JSONValue *value = args->asObject().getVal(key);
-	if (!value || !value->isString())
-		return Common::String();
-	Common::String result = value->asString();
-	result.trim();
-	return result;
-}
-
 /** Lower case, with punctuation dropped: "pot o' stew" and "Pot o stew" are the same name. */
 static Common::String simplifyName(const Common::String &name) {
 	Common::String result;
@@ -133,7 +122,7 @@ static Common::String listDialogue(const NeuroThingList &lines) {
 	return text;
 }
 
-void NeuroBridge::actionChooseDialogue(const Common::String &id, const Common::JSONValue *args) {
+void NeuroBridge::actionChooseDialogue(const Common::String &id, const NeuroArgs &args) {
 	NeuroWorld world;
 	collectWorld(world);
 	if (!playerHasControl() || !world.inDialogue) {
@@ -141,15 +130,19 @@ void NeuroBridge::actionChooseDialogue(const Common::String &id, const Common::J
 		return;
 	}
 
+	// A number, possibly dressed up ("option 3", "3."), or the line itself
+	const Common::String choice = args.get("option|choice|line|number|index|id|text", true);
 	int option = 0;
-	if (args && args->isObject() && args->hasChild("option")) {
-		const Common::JSONValue *value = args->asObject().getVal("option");
-		if (value->isIntegerNumber())
-			option = (int)value->asIntegerNumber();
-		else if (value->isNumber())
-			option = (int)value->asNumber();
-		else if (value->isString())
-			option = atoi(value->asString().c_str());
+	for (uint i = 0; i < choice.size() && !option; i++) {
+		if (Common::isDigit(choice[i]))
+			option = atoi(choice.c_str() + i);
+	}
+	if (!option && !choice.empty()) {
+		const NeuroThing *line = findThing(world.verbs, choice);
+		for (uint i = 0; line && i < world.verbs.size(); i++) {
+			if (&world.verbs[i] == line)
+				option = i + 1;
+		}
 	}
 	if (option < 1 || option > (int)world.verbs.size()) {
 		sendActionResult(id, false, "Pick a line by number:\n" + listDialogue(world.verbs));
@@ -160,9 +153,13 @@ void NeuroBridge::actionChooseDialogue(const Common::String &id, const Common::J
 	_vm->runInputScript(kVerbClickArea, world.verbs[option - 1].id, 1);
 }
 
-void NeuroBridge::actionAnswer(const Common::String &id, const Common::JSONValue *args) {
-	Common::String answer = getStringArg(args, "answer");
+void NeuroBridge::actionAnswer(const Common::String &id, const NeuroArgs &args) {
+	Common::String answer = args.get("answer|response|reply|value|choice", true);
 	answer.toLowercase();
+	if (answer == "y" || answer == "true" || answer == "1" || answer == "ok" || answer == "sure" || answer.hasPrefix("yes"))
+		answer = "yes";
+	else if (answer == "n" || answer == "false" || answer == "0" || answer.hasPrefix("no"))
+		answer = "no";
 	if (answer != "yes" && answer != "no") {
 		sendActionResult(id, false, "Answer \"yes\" or \"no\".");
 		return;
@@ -232,9 +229,22 @@ bool NeuroBridge::resolveCommand(const NeuroWorld &world, const Common::String &
 	command = NeuroCommand();
 
 	// Walking is what a click does when no verb is selected, so it has no verb of its own
-	command.walk = verbName.equalsIgnoreCase(kWalkVerbName) || verbName.equalsIgnoreCase("walk") || verbName.equalsIgnoreCase("go to");
+	static const char *const walkWords[] = {"walk", "go to", "go", "move to", "walk to the", "enter", "approach"};
+	command.walk = verbName.equalsIgnoreCase(kWalkVerbName);
+	for (const char *word : walkWords)
+		command.walk |= verbName.equalsIgnoreCase(word);
 	if (!command.walk) {
 		const NeuroThing *verb = findThing(world.verbs, verbName);
+		// Words she is likely to use for a verb the game spells differently
+		static const char *const synonyms[][2] = {
+			{"take", "Pick up"}, {"grab", "Pick up"}, {"get", "Pick up"}, {"pickup", "Pick up"},
+			{"examine", "Look at"}, {"inspect", "Look at"}, {"read", "Look at"},
+			{"speak", "Talk to"}, {"speak to", "Talk to"}, {"speak with", "Talk to"}, {"talk with", "Talk to"}, {"ask", "Talk to"}
+		};
+		for (uint i = 0; !verb && i < ARRAYSIZE(synonyms); i++) {
+			if (verbName.equalsIgnoreCase(synonyms[i][0]))
+				verb = findThing(world.verbs, synonyms[i][1]);
+		}
 		if (!verb) {
 			error = Common::String::format("No verb '%s'. Verbs: %s, %s.",
 				verbName.c_str(), listNames(world.verbs).c_str(), kWalkVerbName);
@@ -334,20 +344,58 @@ void NeuroBridge::updateQueuedCommand() {
 	runCommand(next);
 }
 
-void NeuroBridge::actionInteract(const Common::String &id, const Common::JSONValue *args) {
-	const Common::String verbName = getStringArg(args, "verb");
-	const Common::String targetName = getStringArg(args, "target");
-	const Common::String thenVerb = getStringArg(args, "then_verb");
-	const Common::String thenTarget = getStringArg(args, "then_target");
+/**
+ * Splits a plain sentence ("look at the fireplace please", "use meat with pot")
+ * into a verb and what follows it. The verb has to be one of the given names.
+ */
+static bool splitSentence(const Common::String &sentence, const Common::StringArray &verbNames,
+		Common::String &verb, Common::String &target, Common::String &second) {
+	Common::String text = sentence;
+	text.toLowercase();
 
-	if (verbName.empty() || targetName.empty()) {
-		sendActionResult(id, false, "interact needs a verb and a target.");
-		return;
+	// Longest verb first, so that "walk to" wins over "walk"
+	size_t best = 0;
+	for (const auto &name : verbNames) {
+		Common::String candidate = name;
+		candidate.toLowercase();
+		if (candidate.size() > best && (text == candidate || text.hasPrefix(candidate + " "))) {
+			best = candidate.size();
+			verb = name;
+		}
 	}
-	if (thenVerb.empty() != thenTarget.empty()) {
-		sendActionResult(id, false, "then_verb and then_target must be given together.");
-		return;
+	if (!best)
+		return false;
+
+	Common::String rest = " " + text.substr(best) + " ";
+	static const char *const fillers[] = {" the ", " a ", " an ", " please ", " now ", " my "};
+	for (const char *filler : fillers) {
+		size_t at;
+		while ((at = rest.find(filler)) != Common::String::npos)
+			rest = rest.substr(0, at) + " " + rest.substr(at + strlen(filler));
 	}
+	static const char *const joiners[] = {" with ", " on ", " to ", " in "};
+	for (const char *joiner : joiners) {
+		const size_t at = rest.find(joiner);
+		// not the "to" of "talk to": something has to come before it
+		if (at != Common::String::npos && at > 0) {
+			second = rest.substr(at + strlen(joiner));
+			rest = rest.substr(0, at);
+			break;
+		}
+	}
+	rest.trim();
+	second.trim();
+	target = rest;
+	return !target.empty();
+}
+
+void NeuroBridge::actionInteract(const Common::String &id, const NeuroArgs &args) {
+	Common::String verbName = args.get("verb|action|command");
+	Common::String targetName = args.get("target|object|thing|item|name|first_target|target1");
+	Common::String secondName = args.get("second_target|second|with|on|to|target2|recipient");
+	const Common::String thenVerb = args.get("then_verb|then|next_verb|second_verb");
+	const Common::String thenTarget = args.get("then_target|next_target");
+
 	if (!playerHasControl()) {
 		sendActionResult(id, false, "Not now: a scene is playing.");
 		return;
@@ -360,10 +408,29 @@ void NeuroBridge::actionInteract(const Common::String &id, const Common::JSONVal
 		return;
 	}
 
+	// A sentence instead of fields, or the whole sentence put in the verb
+	if (targetName.empty()) {
+		Common::StringArray verbNames;
+		for (const auto &verb : world.verbs)
+			verbNames.push_back(verb.name);
+		verbNames.push_back(kWalkVerbName);
+		const Common::String sentence = verbName.empty() ? args.get("text|sentence|input", true) : verbName;
+		splitSentence(sentence, verbNames, verbName, targetName, secondName);
+	}
+
+	if (verbName.empty() || targetName.empty()) {
+		sendActionResult(id, false, "interact needs a verb and a target.");
+		return;
+	}
+	if (thenVerb.empty() != thenTarget.empty()) {
+		sendActionResult(id, false, "then_verb and then_target must be given together.");
+		return;
+	}
+
 	NeuroCommand first, second;
 	Common::String error;
-	if (!resolveCommand(world, verbName, targetName, getStringArg(args, "second_target"), first, error)
-			|| (!thenVerb.empty() && !resolveCommand(world, thenVerb, thenTarget, getStringArg(args, "then_second_target"), second, error))) {
+	if (!resolveCommand(world, verbName, targetName, secondName, first, error)
+			|| (!thenVerb.empty() && !resolveCommand(world, thenVerb, thenTarget, args.get("then_second_target|then_with|then_on"), second, error))) {
 		sendActionResult(id, false, error);
 		return;
 	}
