@@ -23,6 +23,7 @@
 
 #include "common/debug.h"
 #include "common/system.h"
+#include "common/tokenizer.h"
 
 #include "scumm/actor.h"
 #include "scumm/object.h"
@@ -84,8 +85,29 @@ const NeuroThing *NeuroBridge::findThing(const NeuroThingList &things, const Com
 	// Accept a partial name as long as it is unambiguous
 	const NeuroThing *match = nullptr;
 	for (const auto &thing : things) {
-		const Common::String candidate = simplifyName(thing.name);
+		// The note counts too: "kitchen" finds "door #2 (leads to the kitchen)"
+		const Common::String candidate = simplifyName(thing.name + " " + thing.note);
 		if (candidate.contains(needle)) {
+			if (match)
+				return nullptr;
+			match = &thing;
+		}
+	}
+	if (match)
+		return match;
+
+	// Last, every word she used appears somewhere in the name or note:
+	// "kitchen door" finds "door #2 (leads to the kitchen)"
+	Common::StringTokenizer words(needle, " ");
+	Common::StringArray wanted = words.split();
+	if (wanted.empty())
+		return nullptr;
+	for (const auto &thing : things) {
+		const Common::String candidate = " " + simplifyName(thing.name + " " + thing.note) + " ";
+		bool all = true;
+		for (const auto &word : wanted)
+			all &= candidate.contains(" " + word + " ");
+		if (all) {
 			if (match)
 				return nullptr;
 			match = &thing;

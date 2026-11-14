@@ -39,9 +39,36 @@ bool NeuroData::load(const Common::String &path) {
 	_ini.allowNonEnglishCharacters();
 	const bool ok = _ini.loadFromStream(*stream);
 	delete stream;
-	if (!ok)
+	if (!ok) {
 		warning("Neuro: Could not parse description file '%s'", path.c_str());
-	return ok;
+		return false;
+	}
+
+	for (const auto &section : _ini.getSections()) {
+		if (!section.name.hasPrefix("alert."))
+			continue;
+		Alert alert;
+		alert.room = atoi(get(section.name, "room").c_str());
+		alert.leadMs = (uint32)(atof(get(section.name, "lead").c_str()) * 1000);
+		alert.priority = get(section.name, "priority");
+		alert.say = get(section.name, "say");
+		alert.ask = get(section.name, "ask");
+
+		const Common::String when = get(section.name, "when");
+		const size_t colon = when.findFirstOf(':');
+		if (colon == Common::String::npos) {
+			warning("Neuro: Alert '%s' has no usable 'when'", section.name.c_str());
+			continue;
+		}
+		alert.kind = when.substr(0, colon);
+		alert.name = when.substr(colon + 1);
+		alert.kind.trim();
+		alert.name.trim();
+		alert.kind.toLowercase();
+		alert.name.toLowercase();
+		_alerts.push_back(alert);
+	}
+	return true;
 }
 
 Common::String NeuroData::get(const Common::String &section, const Common::String &key) const {

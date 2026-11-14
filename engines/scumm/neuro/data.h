@@ -41,6 +41,15 @@ namespace Scumm {
  *                          and an empty value hides the actor.
  *   spot.NAME = X,Y | TEXT a place with no object that she can walk to; the
  *                          optional text says what she sees when she does
+ * [alert.ID] sections turn a moment she must not miss into a prompt:
+ *   room      room number it applies to (omit for any room)
+ *   when      arrived: / left: (a character), appeared: / disappeared: (a
+ *             thing), gained: / lost: (an inventory item), then part of a name
+ *   lead      seconds after that moment at which her action should land;
+ *             the prompt goes out early by her expected reaction time
+ *   priority  low, medium, high or critical; how hard to interrupt her
+ *   say       what a player watching the screen would have just seen
+ *   ask       what she is asked to do about it
  * and two global sections:
  *   [actors]  ID = name    fallback names for unnamed actors
  *   [states]  object name = label for state 0, label for state 1, ...
@@ -69,10 +78,18 @@ public:
 
 	const Common::INIFile &ini() const { return _ini; }
 
+	struct Alert {
+		int room = 0;
+		uint32 leadMs = 0;
+		Common::String kind, name, priority, say, ask;
+	};
+	const Common::Array<Alert> &alerts() const { return _alerts; }
+
 private:
 	Common::String get(const Common::String &section, const Common::String &key) const;
 
 	Common::INIFile _ini;
+	Common::Array<Alert> _alerts;
 };
 
 } // End of namespace Scumm

@@ -136,7 +136,14 @@ private:
 	uint32 _commandStartedAt = 0;
 	void actionChooseDialogue(const Common::String &id, const Common::JSONValue *args);
 
-	void sendForce(const Common::String &state, const Common::String &query, const char *actionName);
+	void sendForce(const Common::String &state, const Common::String &query, const char *actionName, const Common::String &priority = Common::String());
+	void checkAlerts(const NeuroWorld &before, const NeuroWorld &after);
+	void fireAlert(const NeuroData::Alert &alert, const NeuroWorld &world);
+
+	// How long she takes from prompt to action; alerts are sent that much early
+	uint32 _reactionMs = 300;
+	int _pendingAlert = -1;
+	uint32 _pendingAlertDue = 0;
 	void updateForces(const NeuroWorld &world);
 
 	/** Finds a point in room coordinates where a click lands on the given object or actor. */

@@ -100,6 +100,12 @@ NeuroBridge::NeuroBridge(ScummEngine *vm, const Common::String &url) : _vm(vm), 
 	else if (fastMode.equalsIgnoreCase("scenes"))
 		_fastMode = kFastScenes;
 
+	const char *reaction = getenv("NEURO_REACTION_MS");
+	if (reaction && *reaction)
+		_reactionMs = atoi(reaction);
+	else if (ConfMan.hasKey("neuro_reaction_ms"))
+		_reactionMs = ConfMan.getInt("neuro_reaction_ms");
+
 	const char *idle = getenv("NEURO_IDLE_FORCE_SECONDS");
 	int idleSeconds = 45;
 	if (idle && *idle)
@@ -398,7 +404,7 @@ void NeuroBridge::sendContext(const Common::String &message, bool silent) {
 	send("context", &data);
 }
 
-void NeuroBridge::sendForce(const Common::String &state, const Common::String &query, const char *actionName) {
+void NeuroBridge::sendForce(const Common::String &state, const Common::String &query, const char *actionName, const Common::String &priority) {
 	Common::JSONArray names;
 	names.push_back(new Common::JSONValue(actionName));
 
@@ -406,6 +412,8 @@ void NeuroBridge::sendForce(const Common::String &state, const Common::String &q
 	data.setVal("state", new Common::JSONValue(state));
 	data.setVal("query", new Common::JSONValue(query));
 	data.setVal("ephemeral_context", new Common::JSONValue(true));
+	if (priority == "medium" || priority == "high" || priority == "critical")
+		data.setVal("priority", new Common::JSONValue(priority));
 	data.setVal("action_names", new Common::JSONValue(names));
 	send("actions/force", &data);
 

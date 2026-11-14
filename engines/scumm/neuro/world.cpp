@@ -421,6 +421,71 @@ Common::String NeuroBridge::describeChanges(const NeuroWorld &before, const Neur
 	return text;
 }
 
+static bool containsName(const NeuroThingList &things, const Common::String &name) {
+	for (const auto &thing : things) {
+		Common::String candidate = thing.name;
+		candidate.toLowercase();
+		if (candidate.contains(name))
+			return true;
+	}
+	return false;
+}
+
+/** Whether the situation an alert is about holds in the given world. */
+static bool alertHolds(const NeuroData::Alert &alert, const NeuroWorld &world) {
+	if (alert.kind == "arrived" || alert.kind == "left")
+		return containsName(world.actors, alert.name) == (alert.kind == "arrived");
+	if (alert.kind == "appeared" || alert.kind == "disappeared")
+		return containsName(world.objects, alert.name) == (alert.kind == "appeared");
+	if (alert.kind == "gained" || alert.kind == "lost")
+		return containsName(world.inventory, alert.name) == (alert.kind == "gained");
+	return false;
+}
+
+void NeuroBridge::fireAlert(const NeuroData::Alert &alert, const NeuroWorld &world) {
+	// Only one force may be outstanding; otherwise say it as plainly as context allows
+	if (!_forceActive && !world.inDialogue) {
+		sendForce(alert.say, alert.ask, "interact", alert.priority);
+		_lastActivity = g_system->getMillis();
+	} else {
+		sendContext(alert.say + " " + alert.ask, false);
+	}
+}
+
+void NeuroBridge::checkAlerts(const NeuroWorld &before, const NeuroWorld &after) {
+	const uint32 now = g_system->getMillis();
+	const Common::Array<NeuroData::Alert> &alerts = _data.alerts();
+
+	// An alert waiting for its moment
+	if (_pendingAlert >= 0) {
+		const NeuroData::Alert &alert = alerts[_pendingAlert];
+		if ((alert.room && alert.room != after.room) || !alertHolds(alert, after)) {
+			_pendingAlert = -1;
+		} else if (now >= _pendingAlertDue) {
+			_pendingAlert = -1;
+			fireAlert(alert, after);
+		}
+		return;
+	}
+
+	for (uint i = 0; i < alerts.size(); i++) {
+		const NeuroData::Alert &alert = alerts[i];
+		if (alert.room && alert.room != after.room)
+			continue;
+		// It has to have just become true
+		if (before.room != after.room || alertHolds(alert, before) || !alertHolds(alert, after))
+			continue;
+
+		if (alert.leadMs > _reactionMs) {
+			_pendingAlert = i;
+			_pendingAlertDue = now + alert.leadMs - _reactionMs;
+		} else {
+			fireAlert(alert, after);
+		}
+		return;
+	}
+}
+
 Common::String NeuroBridge::describeWorld() {
 	NeuroWorld world;
 	collectWorld(world);
@@ -483,6 +548,7 @@ void NeuroBridge::pollWorld() {
 		if (!changes.empty())
 			sendContext(changes, !(changes.contains("Arrived:") || changes.contains("Left:")));
 	}
+	checkAlerts(_described, world);
 
 	// The first verbs to appear are the game's normal ones
 	if (_standardVerbs.empty() && !world.verbs.empty()) {
