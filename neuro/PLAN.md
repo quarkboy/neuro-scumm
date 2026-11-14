@@ -168,6 +168,7 @@ The game has object names but no text describing a room. Proposal: a hand-writte
 - Can start any time after phase 1; listed late because nothing depends on it.
 
 **Later, after the slice is judged**
+- Grog and the jail lock (when assembling a crew): grog eats through each mug, so it has to be poured from mug to mug while walking from the SCUMM Bar to the jail, across several rooms. A two-step action is not enough. Candidates: let an action carry a longer list of steps, or slow the melt timer (ideally as an operator setting). Measure the real timer first.
 - Remaining rooms' descriptions; Mêlée map screen; insult sword fighting (it is dialogue choices, so mostly a context problem); timed puzzles (grog mugs, underwater); forest and cave mazes; saves and resume; hint or unstuck mechanism; Monkey Island 2.
 
 ## Risks
