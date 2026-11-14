@@ -227,6 +227,8 @@ void NeuroBridge::actionInteract(const Common::String &id, const Common::JSONVal
 	}
 
 	sendActionResult(id, true);
+	_lastTargets[0] = objects[0];
+	_lastTargets[1] = objects[1];
 	_vm->doSentence(verb->id, objects[0], objects[1]);
 }
 

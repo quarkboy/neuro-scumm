@@ -146,6 +146,9 @@ private:
 	uint32 _lastActivity = 0;
 	uint32 _idleForceMs = 0;
 	Common::String _forcedDialogue;
+
+	// What her last action was aimed at; only these are worth a note when their look changes
+	int _lastTargets[2] = {0, 0};
 	uint32 _controlSince = 0;
 	uint32 _nextWorldPoll = 0;
 
@@ -153,6 +156,8 @@ private:
 	bool _dialogueAsContext = false;
 	Common::String _pendingDialogue;
 	Common::String _lastLine;
+	Common::String _lastLineText;
+	uint _lastLineOffset = 0;
 	uint32 _lastTalkTime = 0;
 	void flushDialogue();
 

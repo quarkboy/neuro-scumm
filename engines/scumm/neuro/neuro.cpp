@@ -125,6 +125,8 @@ void NeuroBridge::flushDialogue() {
 		return;
 	Common::String text = _pendingDialogue;
 	_pendingDialogue.clear();
+	_lastLineText.clear();
+	_lastLineOffset = 0;
 	sendContext(text, false);
 }
 

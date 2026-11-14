@@ -292,7 +292,9 @@ Common::String NeuroBridge::describeChanges(const NeuroWorld &before, const Neur
 	NeuroThingList changed;
 	for (const auto &thing : after.objects) {
 		for (const auto &old : before.objects) {
-			if (old.id == thing.id && old.name == thing.name && old.state != thing.state)
+			// Doors that townspeople use and other background animation are noise
+			const bool hers = (thing.id == _lastTargets[0] || thing.id == _lastTargets[1]);
+			if (hers && old.id == thing.id && old.name == thing.name && old.state != thing.state)
 				changed.push_back(thing);
 		}
 	}
@@ -382,6 +384,12 @@ void NeuroBridge::onTalkStarted(int actor, const byte *text) {
 
 	_speechOpen = true;
 	if (_dialogueAsContext) {
+		// Text that is typed out a bit at a time ("Ps", "Pss", "Psssst.") is one line
+		if (!_lastLineText.empty() && line.hasPrefix(_lastLineText) && _lastLineOffset <= _pendingDialogue.size()
+				&& _pendingDialogue.substr(_lastLineOffset).hasPrefix(speaker + ": \"" + _lastLineText))
+			_pendingDialogue = _pendingDialogue.substr(0, _lastLineOffset);
+		_lastLineText = line;
+		_lastLineOffset = _pendingDialogue.size();
 		_pendingDialogue += Common::String::format("%s: \"%s\"\n", speaker.c_str(), line.c_str());
 		return;
 	}
