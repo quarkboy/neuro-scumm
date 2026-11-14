@@ -20,12 +20,14 @@ unverified, the matching work item starts with checking it in the game.
   hand at 300 (Neuro). Where GPT is too slow but the right prompt goes out at the right moment,
   the step counts as done.
 - **Rule for all text:** say what is on screen and what characters said; never how to solve
-  anything.
+  anything. The one exception is the hint action (E9), which she has to ask for, and which the
+  operator controls.
 
 ## The order, in one line
 
-E1 E2 E3 first (they unblock testing everything else), then the game in story order: P1 (rest of
-Part One), P2 (the voyage), P3 (Monkey Island), P4 (the finale), then a full unaided run.
+E1 E2 E3 first (they unblock testing everything else), E9 alongside them, then the game in story
+order: P1 (rest of Part One), P2 (the voyage), P3 (Monkey Island), P4 (the finale), then a full
+unaided run. Each P item also writes the hints for its puzzles (E9).
 
 ---
 
@@ -104,6 +106,30 @@ Sword fighting is won by remembering which comeback answers which insult across 
 ### E8. Human review of the description file (M, not engineering)
 81 rooms in draft. Review them on the review page, fix what is wrong, and mark them checked.
 Rooms in the part being worked on come first.
+
+### E9. Graduated hints: a `hint` action (M, plus writing per puzzle)
+A hint book in the style of the old Universal Hint System: each puzzle is a question ("How do I
+get into the kitchen?") with answers that go from a gentle nudge to the full solution. She asks
+for one level at a time, so she gets only as much help as she wants, and chat can watch her decide
+whether to look.
+- **Wording is our own.** The UHS hints are copyrighted text and were not saved; the research kept
+  facts only. Hints are drafted from the walkthrough reference and reviewed on the review page
+  like the room descriptions (add a hints view to it).
+- **Description file:** `[hint.ID]` sections with `question`, `when` (the triggers already used by
+  goals: an active goal, a room, an item held, a line heard), and `1`, `2`, `3` ... from vague to
+  explicit. The last level is always the full solution.
+- **Action:** `hint` with an optional `topic`. Without one, she gets the questions that apply right
+  now (by room, active goals and inventory). With one, she gets the next level she has not seen
+  for that question. Levels already seen are kept per savegame, like the journal.
+- **Operator controls** (console, and environment variables until then): hints on or off, a
+  cooldown between hints, the highest level she may reach, and whether each hint is also
+  announced to chat ("Neuro asked for a hint!").
+- **Questions to write**, at least: the kitchen, the seagull, the troll, the sword fights, finding
+  the Sword Master, the treasure route, the poodles, getting the idol, the underwater idol, the
+  safe, Otis and the grog, Meathook, Stan, the recipe, the cannon, the catapult, the dam, the
+  monkey, the cannibals, the catacombs, the ghost ship, the final fight.
+- **Done when:** with hints on, GPT stuck at the safe asks for hints and gets through using them;
+  with hints off, the action says hints are switched off.
 
 ---
 
@@ -245,8 +271,8 @@ Stan's.
 ## Risks
 
 - **Visual-only puzzles beyond E4.** If a puzzle turns out to need more than state labels (the
-  catapult's arc, the catacombs if the head's direction is only an animation), the fallback is a
-  plain-text hint written in the description file for that room, as a last resort.
+  catapult's arc, the catacombs if the head's direction is only an animation), the fallback is the
+  hint action (E9): she can always ask her way through.
 - **Context load in long dialogues.** Stan's haggle and the sword fights are long. Watch token use
   per decision in Gary; the 32,000-token repeat budget may need lowering.
 - **Walkthrough facts are second-hand.** Every work item starts by checking its facts in the game;
