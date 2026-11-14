@@ -65,6 +65,9 @@ struct NeuroCommand {
 
 	/** What she is told on success. */
 	Common::String note;
+
+	/** Not yet resolved: "VERB | TARGET | SECOND", worked out when it is due to run. */
+	Common::String preset;
 };
 
 /** Everything the player could see or use at one moment. */
@@ -132,6 +135,7 @@ private:
 	bool resolveCommand(const NeuroWorld &world, const Common::String &verbName, const Common::String &targetName,
 		const Common::String &secondName, NeuroCommand &command, Common::String &error);
 	void runCommand(const NeuroCommand &command);
+	bool resolvePreset(const NeuroWorld &world, const Common::String &preset, NeuroCommand &command);
 	void updateQueuedCommand();
 
 	// Development tool that dumps every room; see extract.cpp
@@ -180,6 +184,7 @@ private:
 	uint32 _reactionMs = 300;
 	// A yes/no question from an alert, and what saying yes does
 	Common::String _questionCommand;
+	Common::String _questionThen;
 	uint32 _questionAskedAt = 0;
 	void actionAnswer(const Common::String &id, const NeuroArgs &args);
 

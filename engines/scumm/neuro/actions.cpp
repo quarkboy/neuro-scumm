@@ -158,6 +158,17 @@ void NeuroBridge::actionChooseDialogue(const Common::String &id, const NeuroArgs
 	_vm->runInputScript(kVerbClickArea, world.verbs[option - 1].id, 1);
 }
 
+bool NeuroBridge::resolvePreset(const NeuroWorld &world, const Common::String &preset, NeuroCommand &command) {
+	Common::StringTokenizer parts(preset, "|");
+	Common::StringArray fields = parts.split();
+	for (auto &field : fields)
+		field.trim();
+	while (fields.size() < 3)
+		fields.push_back(Common::String());
+	Common::String error;
+	return resolveCommand(world, fields[0], fields[1], fields[2], command, error);
+}
+
 void NeuroBridge::actionAnswer(const Common::String &id, const NeuroArgs &args) {
 	Common::String answer = args.get("answer|response|reply|value|choice", true);
 	answer.toLowercase();
@@ -171,7 +182,9 @@ void NeuroBridge::actionAnswer(const Common::String &id, const NeuroArgs &args) 
 	}
 
 	const Common::String command = _questionCommand;
+	const Common::String thenCommand = _questionThen;
 	_questionCommand.clear();
+	_questionThen.clear();
 	// These questions are about a passing moment
 	if (command.empty() || g_system->getMillis() - _questionAskedAt > 20000) {
 		sendActionResult(id, true, "No question is waiting.");
@@ -182,24 +195,22 @@ void NeuroBridge::actionAnswer(const Common::String &id, const NeuroArgs &args) 
 		return;
 	}
 
-	Common::StringTokenizer parts(command, "|");
-	Common::StringArray fields = parts.split();
-	for (auto &field : fields)
-		field.trim();
-	while (fields.size() < 3)
-		fields.push_back(Common::String());
-
 	NeuroWorld world;
 	collectWorld(world);
 	NeuroCommand resolved;
-	Common::String error;
-	if (!playerHasControl() || !resolveCommand(world, fields[0], fields[1], fields[2], resolved, error)) {
+	if (!playerHasControl() || !resolvePreset(world, command, resolved)) {
 		// Not a failure she should retry: the moment has simply gone
 		sendActionResult(id, true, "Too late.");
 		return;
 	}
 	sendActionResult(id, true);
 	_queue.clear();
+	// The second step is checked when it runs: what it needs may only appear after the first
+	if (!thenCommand.empty()) {
+		NeuroCommand next;
+		next.preset = thenCommand;
+		_queue.push_back(next);
+	}
 	runCommand(resolved);
 }
 
@@ -346,7 +357,15 @@ void NeuroBridge::updateQueuedCommand() {
 	if (now - _queueIdleSince < _queue[0].settleMs)
 		return;
 
-	const NeuroCommand next = _queue.remove_at(0);
+	NeuroCommand next = _queue.remove_at(0);
+	if (!next.preset.empty()) {
+		NeuroWorld world;
+		collectWorld(world);
+		if (!resolvePreset(world, next.preset, next)) {
+			_queue.clear();
+			return;
+		}
+	}
 	debug(1, "Neuro: Running queued step after %u ms, Guybrush at %d,%d", elapsed,
 		_vm->_actors[_vm->VAR(_vm->VAR_EGO)]->getPos().x, _vm->_actors[_vm->VAR(_vm->VAR_EGO)]->getPos().y);
 	runCommand(next);

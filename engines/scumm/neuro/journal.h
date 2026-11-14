@@ -41,6 +41,8 @@ namespace Scumm {
  *   have: NAME     an inventory item's name contains the name
  *   room: N        she is in room N
  *   goal: ID       another goal was completed
+ * Several triggers separated by " | " mean any of them. A name starting
+ * with '=' must match exactly rather than be contained.
  * A goal without a start trigger is there from the beginning.
  *
  * [nudge.ID] sections suggest writing something down, once:

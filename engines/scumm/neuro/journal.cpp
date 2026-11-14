@@ -74,7 +74,21 @@ void NeuroJournal::setState(Goal &goal, State state) {
 		_news += (state == kActive ? "New goal: " : "Goal completed: ") + goal.text + "\n";
 }
 
+static bool matchesOne(const Common::String &trigger, const Common::String &kind, const Common::String &argument);
+
 static bool matches(const Common::String &trigger, const Common::String &kind, const Common::String &argument) {
+	size_t start = 0;
+	for (;;) {
+		const size_t bar = trigger.find(" | ", start);
+		if (matchesOne(trigger.substr(start, bar == Common::String::npos ? Common::String::npos : bar - start), kind, argument))
+			return true;
+		if (bar == Common::String::npos)
+			return false;
+		start = bar + 3;
+	}
+}
+
+static bool matchesOne(const Common::String &trigger, const Common::String &kind, const Common::String &argument) {
 	const size_t colon = trigger.findFirstOf(':');
 	if (colon == Common::String::npos)
 		return false;
@@ -87,6 +101,8 @@ static bool matches(const Common::String &trigger, const Common::String &kind, c
 
 	if (kind == "room" || kind == "goal")
 		return wantArgument.equalsIgnoreCase(argument);
+	if (wantArgument.hasPrefix("="))
+		return argument.equalsIgnoreCase(wantArgument.substr(1));
 
 	Common::String haystack = argument;
 	haystack.toLowercase();

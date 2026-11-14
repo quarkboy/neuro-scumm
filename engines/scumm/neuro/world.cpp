@@ -480,6 +480,7 @@ void NeuroBridge::fireAlert(const NeuroData::Alert &alert, const NeuroWorld &wor
 		const bool question = !alert.command.empty();
 		if (question) {
 			_questionCommand = alert.command;
+			_questionThen = alert.then;
 			_questionAskedAt = g_system->getMillis();
 		}
 		sendForce(alert.say, alert.ask, question ? "answer" : "interact", alert.priority);

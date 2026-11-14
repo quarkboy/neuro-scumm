@@ -56,6 +56,8 @@ namespace Scumm {
  *   do        optional "VERB | TARGET" (or "VERB | TARGET | SECOND TARGET").
  *             With it, ask must be a yes/no question, and answering yes
  *             carries out that command at once.
+ *   then      optional second command in the same form, run as soon as the
+ *             first one has played out
  * and two global sections:
  *   [actors]  ID = name    fallback names for unnamed actors
  *   [states]  object name = label for state 0, label for state 1, ...
@@ -89,7 +91,7 @@ public:
 	struct Alert {
 		int room = 0;
 		uint32 leadMs = 0;
-		Common::String kind, name, priority, say, ask, command;
+		Common::String kind, name, priority, say, ask, command, then;
 	};
 	const Common::Array<Alert> &alerts() const { return _alerts; }
 

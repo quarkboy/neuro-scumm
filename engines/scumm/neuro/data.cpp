@@ -55,6 +55,7 @@ bool NeuroData::load(const Common::String &path) {
 		alert.say = get(section.name, "say");
 		alert.ask = get(section.name, "ask");
 		alert.command = get(section.name, "do");
+		alert.then = get(section.name, "then");
 
 		const Common::String when = get(section.name, "when");
 		const size_t colon = when.findFirstOf(':');
