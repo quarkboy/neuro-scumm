@@ -97,6 +97,10 @@ Common::String NeuroData::objectNote(int room, int object) const {
 	return get(roomSection(room), Common::String::format("object.%d", object));
 }
 
+Common::String NeuroData::voiceName(int room, int color) const {
+	return get(roomSection(room), Common::String::format("voice.%d", color));
+}
+
 bool NeuroData::actorName(int room, int actor, Common::String &name) const {
 	const Common::String key = Common::String::format("actor.%d", actor);
 	if (_ini.hasSection(roomSection(room)) && _ini.getKey(key, roomSection(room), name)) {

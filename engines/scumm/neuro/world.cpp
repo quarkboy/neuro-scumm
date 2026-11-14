@@ -636,7 +636,11 @@ void NeuroBridge::onTalkStarted(int actor, const byte *text) {
 			}
 			speaker = Common::String::format("Stranger %u", index + 1);
 		} else {
-			speaker = "Narrator";
+			speaker = _data.voiceName(_vm->_currentRoom, _vm->_charsetColor);
+			if (speaker.empty()) {
+				speaker = "Narrator";
+				debug(1, "Neuro: Unattributed line in room %d, text colour %d: %s", _vm->_currentRoom, _vm->_charsetColor, line.c_str());
+			}
 		}
 	}
 

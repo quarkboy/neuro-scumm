@@ -39,6 +39,9 @@ namespace Scumm {
  *                          can be left over from another room. A leading '-'
  *                          names the speaker but keeps it out of the room list,
  *                          and an empty value hides the actor.
+ *   voice.COLOR            who is speaking when text of that colour appears
+ *                          without belonging to any actor (a dog that is
+ *                          part of the scenery, someone off screen)
  *   spot.NAME = X,Y | TEXT a place with no object that she can walk to; the
  *                          optional text says what she sees when she does
  * [alert.ID] sections turn a moment she must not miss into a prompt:
@@ -64,6 +67,8 @@ public:
 	Common::String roomName(int room) const;
 	Common::String roomDescription(int room) const;
 	Common::String objectNote(int room, int object) const;
+	Common::String voiceName(int room, int color) const;
+
 	/** Returns false if the file says nothing about this actor. */
 	bool actorName(int room, int actor, Common::String &name) const;
 
