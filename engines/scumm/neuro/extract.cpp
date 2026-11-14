@@ -196,6 +196,25 @@ void NeuroBridge::updateExtraction() {
 	case kExtractSettle:
 		if (++_extract.frames < kSettleFrames)
 			return;
+		// Guybrush was moved here only to enter the room; he is not part of it.
+		// Hiding him can leave his last image on screen where nothing redraws,
+		// so start again from the clean background and let the others redraw.
+		_vm->_actors[_vm->VAR(_vm->VAR_EGO)]->hideActor();
+		// A full redraw marks every actor in the room for drawing, hidden or not;
+		// only one without a costume is really left out
+		_vm->_actors[_vm->VAR(_vm->VAR_EGO)]->_costume = 0;
+		{
+			VirtScreen &vs = _vm->_virtscr[kMainVirtScreen];
+			if (vs.hasTwoBuffers) {
+				for (int y = 0; y < vs.h; y++)
+					memcpy(vs.getPixels(0, y), vs.getBackPixels(0, y), vs.pitch);
+			}
+			for (int i = 1; i < _vm->_numActors; i++) {
+				// A hidden actor that is marked for redrawing is drawn anyway
+				if (_vm->_actors[i]->_visible)
+					_vm->_actors[i]->_needRedraw = true;
+			}
+		}
 		_extract.width = MAX<int>(_vm->_roomWidth, _vm->_screenWidth);
 		_extract.height = _vm->_virtscr[kMainVirtScreen].h;
 		_extract.pixels.clear();
