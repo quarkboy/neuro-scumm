@@ -78,6 +78,9 @@ struct NeuroWorld {
 	NeuroThingList spots;
 	Common::Array<Common::Point> spotPositions;
 
+	/** Some things share a name and were numbered to tell them apart. */
+	bool numbered = false;
+
 	/** The verb area shows lines to say instead of verbs. */
 	bool inDialogue = false;
 };

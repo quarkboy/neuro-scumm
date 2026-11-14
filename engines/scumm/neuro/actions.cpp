@@ -68,7 +68,7 @@ static Common::String simplifyName(const Common::String &name) {
 	Common::String result;
 	for (uint i = 0; i < name.size(); i++) {
 		const char c = name[i];
-		if (Common::isAlnum(c) || c == ' ' || c == '#' || (c & 0x80))
+		if (Common::isAlnum(c) || c == ' ' || (c & 0x80))
 			result += Common::isAlpha(c) ? tolower(c) : c;
 	}
 	result.trim();
@@ -85,7 +85,7 @@ const NeuroThing *NeuroBridge::findThing(const NeuroThingList &things, const Com
 	// Accept a partial name as long as it is unambiguous
 	const NeuroThing *match = nullptr;
 	for (const auto &thing : things) {
-		// The note counts too: "kitchen" finds "door #2 (leads to the kitchen)"
+		// The note counts too: "kitchen" finds "door 2 (leads to the kitchen)"
 		const Common::String candidate = simplifyName(thing.name + " " + thing.note);
 		if (candidate.contains(needle)) {
 			if (match)
@@ -97,7 +97,7 @@ const NeuroThing *NeuroBridge::findThing(const NeuroThingList &things, const Com
 		return match;
 
 	// Last, every word she used appears somewhere in the name or note:
-	// "kitchen door" finds "door #2 (leads to the kitchen)"
+	// "kitchen door" finds "door 2 (leads to the kitchen)"
 	Common::StringTokenizer words(needle, " ");
 	Common::StringArray wanted = words.split();
 	if (wanted.empty())

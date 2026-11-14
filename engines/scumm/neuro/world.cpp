@@ -101,7 +101,8 @@ bool NeuroBridge::playerHasControl() const {
 }
 
 /** Things sharing a name get numbered from left to right. */
-static void numberDuplicates(NeuroThingList &objects, NeuroThingList &actors) {
+static bool numberDuplicates(NeuroThingList &objects, NeuroThingList &actors) {
+	bool numbered = false;
 	// A character is often both an actor and a clickable object. Keep the
 	// object, which is what a click finds first.
 	for (uint i = 0; i < actors.size();) {
@@ -128,11 +129,13 @@ static void numberDuplicates(NeuroThingList &objects, NeuroThingList &actors) {
 		int copies = 1;
 		for (uint j = i + 1; j < all.size(); j++) {
 			if (all[j]->name.equalsIgnoreCase(name))
-				all[j]->name = Common::String::format("%s #%d", name.c_str(), ++copies);
+				all[j]->name = Common::String::format("%s %d", name.c_str(), ++copies);
 		}
 		if (copies > 1)
-			all[i]->name += " #1";
+			all[i]->name += " 1";
+		numbered |= copies > 1;
 	}
+	return numbered;
 }
 
 void NeuroBridge::collectWorld(NeuroWorld &world) {
@@ -140,7 +143,7 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 	world.room = _vm->_currentRoom;
 
 	// Things that cannot be used right now still take part in numbering, so
-	// that "door #2" stays "door #2" when door #1 becomes unusable.
+	// that "door 2" stays "door 2" when door 1 becomes unusable.
 	Common::Array<bool> usable;
 
 	for (int i = 1; i < _vm->_numLocalObjects; i++) {
@@ -215,7 +218,7 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 			world.verbs.push_back(thing);
 	}
 
-	numberDuplicates(world.objects, world.actors);
+	world.numbered = numberDuplicates(world.objects, world.actors);
 
 	NeuroThingList usableObjects;
 	for (uint i = 0; i < world.objects.size(); i++) {
@@ -351,7 +354,7 @@ Common::String NeuroBridge::describeRoom(const NeuroWorld &world) const {
 	if (!world.spots.empty())
 		text += "- Places you can walk to: " + joinNames(world.spots) + "\n";
 	text += "- You are carrying: " + joinNames(world.inventory) + "\n";
-	if (text.contains(" #2"))
+	if (world.numbered)
 		text += "- Things with the same name are numbered from left to right.\n";
 	return text;
 }
@@ -613,7 +616,7 @@ void NeuroBridge::onTalkStarted(int actor, const byte *text) {
 			debug(1, "Neuro: Voice %u of '%s' (actor %d, room %d) uses text colour %d", index + 1, speaker.c_str(), actor, _vm->_currentRoom, color);
 		}
 		if (colors.size() > 1)
-			speaker += Common::String::format(" #%u", index + 1);
+			speaker += Common::String::format(" %u", index + 1);
 	}
 
 	if (_journal.heard(line) && !_dialogueAsContext)

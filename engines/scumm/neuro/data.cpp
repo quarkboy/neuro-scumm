@@ -25,6 +25,7 @@
 #include "common/stream.h"
 #include "common/textconsole.h"
 #include "common/tokenizer.h"
+#include "common/util.h"
 
 namespace Scumm {
 
@@ -132,11 +133,10 @@ Common::Array<NeuroData::Spot> NeuroData::spots(int room) const {
 }
 
 Common::String NeuroData::stateName(const Common::String &objectName, int state) const {
-	// "door #2" uses the entry for "door"
+	// "door 2" uses the entry for "door"
 	Common::String base = objectName;
-	const size_t hash = base.findFirstOf('#');
-	if (hash != Common::String::npos)
-		base = base.substr(0, hash);
+	while (!base.empty() && Common::isDigit(base.lastChar()))
+		base.deleteLastChar();
 	base.trim();
 
 	Common::StringTokenizer labels(get("states", base), ",");
