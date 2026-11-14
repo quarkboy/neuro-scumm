@@ -42,6 +42,11 @@ namespace Scumm {
  *   room: N        she is in room N
  *   goal: ID       another goal was completed
  * A goal without a start trigger is there from the beginning.
+ *
+ * [nudge.ID] sections suggest writing something down, once:
+ *   when    a trigger, as above
+ *   say     optional wording; the default just says it may be worth a note
+ * A nudge never says what to write: the note is hers.
  */
 class NeuroJournal {
 public:
@@ -75,6 +80,7 @@ private:
 	struct Goal {
 		Common::String id, text, start, done;
 		State state;
+		bool nudge;
 	};
 
 	bool fire(const Common::String &kind, const Common::String &argument);

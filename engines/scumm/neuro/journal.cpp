@@ -32,14 +32,19 @@ static const uint kMaxNoteLength = 300;
 void NeuroJournal::loadGoals(const Common::INIFile &ini) {
 	_goals.clear();
 	for (const auto &section : ini.getSections()) {
-		if (!section.name.hasPrefix("goal."))
+		const bool nudge = section.name.hasPrefix("nudge.");
+		if (!nudge && !section.name.hasPrefix("goal."))
 			continue;
 		Goal goal;
-		goal.id = section.name.substr(5);
-		if (const Common::INIFile::KeyValue *kv = section.getKey("text"))
+		goal.nudge = nudge;
+		// Nudges keep their prefix so that they cannot collide with a goal's id
+		goal.id = nudge ? section.name : section.name.substr(5);
+		if (const Common::INIFile::KeyValue *kv = section.getKey(nudge ? "say" : "text"))
 			goal.text = kv->value;
-		if (const Common::INIFile::KeyValue *kv = section.getKey("start"))
+		if (const Common::INIFile::KeyValue *kv = section.getKey(nudge ? "when" : "start"))
 			goal.start = kv->value;
+		if (nudge && goal.text.empty())
+			goal.text = "That sounded worth remembering. You can write it down with add_note.";
 		if (const Common::INIFile::KeyValue *kv = section.getKey("done"))
 			goal.done = kv->value;
 		goal.text.trim();
@@ -53,7 +58,7 @@ void NeuroJournal::loadGoals(const Common::INIFile &ini) {
 
 void NeuroJournal::reset() {
 	for (auto &goal : _goals)
-		goal.state = goal.start.empty() ? kActive : kHidden;
+		goal.state = (goal.start.empty() && !goal.nudge) ? kActive : kHidden;
 	_notes.clear();
 	_news.clear();
 	memos.clear();
@@ -63,7 +68,10 @@ void NeuroJournal::setState(Goal &goal, State state) {
 	if (goal.state == state)
 		return;
 	goal.state = state;
-	_news += (state == kActive ? "New goal: " : "Goal completed: ") + goal.text + "\n";
+	if (goal.nudge)
+		_news += goal.text + "\n";
+	else
+		_news += (state == kActive ? "New goal: " : "Goal completed: ") + goal.text + "\n";
 }
 
 static bool matches(const Common::String &trigger, const Common::String &kind, const Common::String &argument) {
@@ -144,7 +152,7 @@ void NeuroJournal::addNote(const Common::String &text) {
 
 bool NeuroJournal::isEmpty() const {
 	for (const auto &goal : _goals) {
-		if (goal.state != kHidden)
+		if (goal.state != kHidden && !goal.nudge)
 			return false;
 	}
 	return _notes.empty();
@@ -153,6 +161,8 @@ bool NeuroJournal::isEmpty() const {
 Common::String NeuroJournal::describe(bool withCompleted) const {
 	Common::String active, done;
 	for (const auto &goal : _goals) {
+		if (goal.nudge)
+			continue;
 		if (goal.state == kActive)
 			active += "- " + goal.text + "\n";
 		else if (goal.state == kDone)
