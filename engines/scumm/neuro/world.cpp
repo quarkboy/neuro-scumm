@@ -576,12 +576,14 @@ void NeuroBridge::pollWorld() {
 	sendJournalNews();
 
 	if (world.room != _described.room) {
-		bool seen = false;
-		for (const int room : _seenRooms)
-			seen |= room == world.room;
-		if (!seen)
-			_seenRooms.push_back(world.room);
-		sendContext(describeRoom(world, seen ? kRoomRevisit : kRoomFirstVisit), false);
+		// The opening explanation has scrolled out of her context by now
+		if (_tokensSent - _introSentAt > _contextTokens)
+			sendIntro();
+
+		const bool remembered = _seenRooms.contains(world.room) && _tokensSent - _seenRooms[world.room] <= _contextTokens;
+		if (!remembered)
+			_seenRooms[world.room] = _tokensSent;
+		sendContext(describeRoom(world, remembered ? kRoomRevisit : kRoomFirstVisit), false);
 	} else {
 		Common::String changes = describeChanges(_described, world);
 		// Someone coming or going may be her cue to act

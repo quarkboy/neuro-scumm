@@ -172,7 +172,15 @@ private:
 		kRoomStatus      ///< what is there and what she carries, for a reminder
 	};
 	Common::String describeRoom(const NeuroWorld &world, RoomDetail detail) const;
-	Common::Array<int> _seenRooms;
+
+	// Things said once are forgotten as her context scrolls on, so they are
+	// said again after roughly this many tokens of traffic.
+	uint32 _contextTokens = 32000;
+	uint64 _tokensSent = 0;
+	uint64 _introSentAt = 0;
+	/** Per room: the traffic count when its full description was last sent. */
+	Common::HashMap<int, uint64> _seenRooms;
+	void sendIntro();
 	Common::String describeChanges(const NeuroWorld &before, const NeuroWorld &after) const;
 
 	/** Converts game text to UTF-8, dropping control codes and name padding. */

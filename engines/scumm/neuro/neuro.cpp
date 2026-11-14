@@ -100,6 +100,12 @@ NeuroBridge::NeuroBridge(ScummEngine *vm, const Common::String &url) : _vm(vm), 
 	else if (fastMode.equalsIgnoreCase("scenes"))
 		_fastMode = kFastScenes;
 
+	const char *contextTokens = getenv("NEURO_CONTEXT_TOKENS");
+	if (contextTokens && *contextTokens)
+		_contextTokens = atoi(contextTokens);
+	else if (ConfMan.hasKey("neuro_context_tokens"))
+		_contextTokens = ConfMan.getInt("neuro_context_tokens");
+
 	const char *reaction = getenv("NEURO_REACTION_MS");
 	if (reaction && *reaction)
 		_reactionMs = atoi(reaction);
@@ -245,13 +251,7 @@ void NeuroBridge::onConnected() {
 	send("startup");
 	registerActions();
 
-	sendContext(Common::String::format(
-		"You are playing %s, a classic point-and-click adventure game. "
-		"You control Guybrush Threepwood, who wants to become a pirate. "
-		"You cannot see the screen, so each location and what is in it will be described to you. "
-		"Things that share a name are numbered from left to right. "
-		"Your goals are kept in a journal that you can read at any time with read_journal.",
-		_gameName.c_str()), true);
+	sendIntro();
 
 	// Describe the current room again from scratch
 	_described = NeuroWorld();
@@ -266,6 +266,17 @@ static Common::JSONValue *stringSchema() {
 	Common::JSONObject schema;
 	schema.setVal("type", new Common::JSONValue("string"));
 	return new Common::JSONValue(schema);
+}
+
+void NeuroBridge::sendIntro() {
+	sendContext(Common::String::format(
+		"You are playing %s, a classic point-and-click adventure game. "
+		"You control Guybrush Threepwood, who wants to become a pirate. "
+		"You cannot see the screen, so each location and what is in it will be described to you. "
+		"Things that share a name are numbered from left to right. "
+		"Your goals are kept in a journal that you can read at any time with read_journal.",
+		_gameName.c_str()), true);
+	_introSentAt = _tokensSent;
 }
 
 void NeuroBridge::registerActions(bool interactOnly) {
@@ -414,6 +425,8 @@ void NeuroBridge::send(const char *command, const Common::JSONObject *data) {
 		root.setVal("data", new Common::JSONValue(*data));
 
 	const Common::String text = Common::JSONValue(root).stringify();
+	// Close enough for deciding when she will have forgotten something
+	_tokensSent += text.size() / 4;
 	debug(2, "Neuro: > %s", text.c_str());
 	_ws.sendText(text);
 }
