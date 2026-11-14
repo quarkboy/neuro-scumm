@@ -97,6 +97,7 @@ class MusicEngine;
 class Player_Towns;
 class ScummEngine;
 class ScummDebugger;
+class NeuroBridge;
 class Sound;
 class Localizer;
 class GlyphRenderer_v7;
@@ -535,6 +536,7 @@ extern const char *const insaneKeymapId;
  */
 class ScummEngine : public Engine, public Common::Serializable {
 	friend class ScummDebugger;
+	friend class NeuroBridge;
 	friend class CharsetRenderer;
 	friend class CharsetRendererClassic;
 	friend class CharsetRendererTownsClassic;
@@ -558,6 +560,10 @@ public:
 	Sound *_sound = nullptr;
 
 	VerbSlot *_verbs = nullptr;
+
+#ifdef ENABLE_NEURO
+	NeuroBridge *_neuro = nullptr;
+#endif
 	ObjectData *_objs = nullptr;
 
 	// Core variables

@@ -120,6 +120,12 @@ MODULE_OBJS += \
 	m68k/bylerledecode_scaled_mode3.o
 endif
 
+ifdef ENABLE_NEURO
+MODULE_OBJS += \
+	neuro/neuro.o \
+	neuro/websocket.o
+endif
+
 ifdef ENABLE_SCUMM_7_8
 MODULE_OBJS += \
 	nut_renderer.o \

@@ -80,6 +80,9 @@
 #include "scumm/players/player_v4a.h"
 #include "scumm/players/player_he.h"
 #include "scumm/resource.h"
+#ifdef ENABLE_NEURO
+#include "scumm/neuro/neuro.h"
+#endif
 #include "scumm/he/resource_he.h"
 #include "scumm/he/basketball/basketball.h"
 #include "scumm/he/moonbase/moonbase.h"
@@ -486,6 +489,10 @@ ScummEngine::ScummEngine(OSystem *syst, const DetectorResult &dr)
 
 
 ScummEngine::~ScummEngine() {
+#ifdef ENABLE_NEURO
+	delete _neuro;
+#endif
+
 	delete _musicEngine;
 
 	// Delete the sound object earlier than the actors
@@ -2764,6 +2771,10 @@ int ScummEngine::getTalkSpeed() {
 #pragma mark -
 
 Common::Error ScummEngine::go() {
+#ifdef ENABLE_NEURO
+	_neuro = NeuroBridge::create(this);
+#endif
+
 #ifdef ENABLE_SCUMM_7_8
 	if (_game.id == GID_REBEL1) {
 		ScummEngine_v7 *vm7 = (ScummEngine_v7 *)this;
@@ -3145,6 +3156,11 @@ void ScummEngine_v0::scummLoop(int delta) {
 }
 
 void ScummEngine::scummLoop(int delta) {
+#ifdef ENABLE_NEURO
+	if (_neuro)
+		_neuro->update();
+#endif
+
 	// Notify the script about how much time has passed, in jiffies
 	if (VAR_TIMER != 0xFF)
 		VAR(VAR_TIMER) = delta;

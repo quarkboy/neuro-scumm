@@ -1,6 +1,6 @@
 # Neuro-sama plays The Secret of Monkey Island: development plan
 
-Status: survey done, no integration code written yet. 2026-11-13.
+Status: phases 0 (mostly) and 1 done; next is phase 2, observation. 2026-11-13.
 
 ## Decisions so far
 
@@ -79,7 +79,7 @@ neuro-scumm/
   build-linux/  build-win/
   ref/                        neuro-sdk, gary (reference only)
 ```
-Changes to existing upstream files are limited to a handful of one-line hooks behind `#ifdef USE_NEURO` (configure flag `--enable-neuro`), so rebasing on upstream stays cheap.
+Changes to existing upstream files are limited to a handful of one-line hooks behind `#ifdef ENABLE_NEURO`, so rebasing on upstream stays cheap.
 
 ### Action set (first draft, to be tuned against Gary)
 Registered once at startup:
@@ -117,14 +117,15 @@ The game has object names but no text describing a room. Proposal: a hand-writte
 
 **0. Foundation** (partly done)
 - [x] Clone sources, SCUMM-only Linux build, detect Steam data.
-- [ ] Turn `scummvm/` into a real fork: full history, your GitHub remote, `neuro` branch. Git repo for the outer project (plan, scripts, notes).
+- [x] Full history fetched, `upstream` remote, `neuro` branch. Plan and scripts live in `neuro/` inside the repo.
+- [ ] Push to a private GitHub repo (needs the repo created, or `gh auth login`).
 - [ ] Play to the SCUMM Bar manually in the Linux build to confirm video and audio under WSLg, and the remastered speech option.
-- [ ] Run script: launches the game with the right path, config and server URL.
+- [x] Run script: `neuro/run.sh`.
 
-**1. Transport**
+**1. Transport** (done)
 - WebSocket client, protocol layer, reconnect with re-`startup` and re-register.
-- `--enable-neuro` configure flag, URL from env or config.
-- Exit test: Gary shows the game connected with a dummy action and no diagnostics.
+- Built as a SCUMM sub-engine: `configure --disable-all-engines --enable-engine=scumm,neuro` (defines `ENABLE_NEURO`). URL from `NEURO_SDK_WS_URL` or the `neuro_ws_url` config key; without either the bridge stays off.
+- Exit test passed: Gary lists the game with its `wait` action, an action round trip works, and the only diagnostic is an info note caused by answering Gary's own `actions/reregister_all`.
 
 **2. Observation**
 - World snapshot and diffing; room-entry context; speech events; cutscene tracking.
