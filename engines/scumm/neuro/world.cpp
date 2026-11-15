@@ -286,6 +286,15 @@ void NeuroBridge::debugDump() {
 	debug("NEURODUMP state: control %d userPut %d cursor %d sentences %d speechOpen %d moving %d forceActive %d idle %u ms click %d queue %u",
 		playerHasControl(), _vm->_userPut, _vm->_cursor.state, _vm->_sentenceNum, _speechOpen,
 		_vm->_actors[_vm->VAR(_vm->VAR_EGO)]->_moving, _forceActive, g_system->getMillis() - _lastActivity, (int)_clickPhase, _queue.size());
+	debug("NEURODUMP verb script %d", _vm->VAR(_vm->VAR_VERB_SCRIPT));
+	for (int slot = 1; slot < _vm->_numVerbs; slot++) {
+		const VerbSlot &vs = _vm->_verbs[slot];
+		if (!vs.verbid)
+			continue;
+		debug("NEURODUMP verbslot %d id %d '%s' mode %d saveid %d type %d rect %d,%d-%d,%d imgindex %d", slot, vs.verbid,
+			cleanText(_vm->getResourceAddress(rtVerb, slot), true).c_str(), vs.curmode, vs.saveid, vs.type,
+			vs.curRect.left, vs.curRect.top, vs.curRect.right, vs.curRect.bottom, vs.imgindex);
+	}
 	for (int i = 1; i < _vm->_numLocalObjects; i++) {
 		const ObjectData &od = _vm->_objs[i];
 		if (od.obj_nr < 1)
@@ -622,14 +631,16 @@ void NeuroBridge::finishAction(const NeuroWorld &world) {
 		return;
 
 	// Still going: a click not yet made, steps queued, walking, the game's own script
-	const bool busy = _clickPhase != kClickIdle || !_queue.empty()
+	// (what a click sets off takes a moment to show)
+	const bool busy = _clickPhase != kClickIdle || !_queue.empty() || !_clickQueue.empty()
+		|| g_system->getMillis() - _lastClickAt < 1000
 		|| _vm->_actors[_vm->VAR(_vm->VAR_EGO)]->_moving
 		|| _vm->isScriptRunning(_vm->VAR(_vm->VAR_SENTENCE_SCRIPT));
 	if (busy || g_system->getMillis() - _commandStartedAt < 600)
 		return;
 	// After someone has spoken, lines to choose from may be about to appear;
 	// they bring their own prompt, so give them a moment first.
-	if (_outcomeSpoken && !world.inDialogue && g_system->getMillis() - _controlSince < 1200)
+	if (_outcomeSpoken && !world.inDialogue && g_system->getMillis() - _controlSince < 2500)
 		return;
 
 	_awaitingOutcome = false;

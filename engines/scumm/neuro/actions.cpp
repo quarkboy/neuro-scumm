@@ -27,6 +27,7 @@
 
 #include "scumm/actor.h"
 #include "scumm/object.h"
+#include "scumm/resource.h"
 #include "scumm/scumm.h"
 #include "scumm/verbs.h"
 
@@ -306,6 +307,13 @@ bool NeuroBridge::resolveCommand(const NeuroWorld &world, const Common::String &
 		error = Common::String::format("Walk to something in the room: %s.", listNames(room, world.spots).c_str());
 		return false;
 	}
+	// Normally the thing acted on has its own script for the verb, and running
+	// the sentence directly reaches it. Where it has none, and the room has
+	// swapped in its own mouse handler for a scene (giving the circus brothers
+	// a helmet), only that handler knows what to do, and it only sees clicks.
+	const bool handled = !_vm->objIsActor(command.objects[0]) && _vm->getVerbEntrypoint(command.objects[0], command.verb) != 0;
+	if (!command.walk && !handled && needsClicks() && !planClicks(world, command))
+		debug(1, "Neuro: Room %d has its own mouse handler, but this command could not be made as clicks", world.room);
 	return true;
 }
 
@@ -322,6 +330,11 @@ void NeuroBridge::runCommand(const NeuroCommand &command) {
 	}
 	_lastTargets[0] = command.objects[0];
 	_lastTargets[1] = command.objects[1];
+	if (!command.clicks.empty()) {
+		_clickQueue = command.clicks;
+		clickAt(_clickQueue.remove_at(0));
+		return;
+	}
 	_vm->doSentence(command.verb, command.objects[0], command.objects[1]);
 }
 
@@ -504,10 +517,78 @@ bool NeuroBridge::findClickPoint(int thing, int &x, int &y) const {
 }
 
 void NeuroBridge::clickInRoom(int x, int y) {
-	_clickX = x;
-	_clickY = y;
+	NeuroClick click;
+	click.x = x;
+	click.y = y;
+	clickAt(click);
+}
+
+void NeuroBridge::clickAt(const NeuroClick &click) {
+	_clickX = click.x;
+	_clickY = click.y;
+	_clickScreen = click.screen;
 	_clickPhase = kClickHover;
 	_clickFrames = 0;
+}
+
+bool NeuroBridge::needsClicks() const {
+	// Scripts numbered past the global ones belong to the current room
+	return _vm->VAR(_vm->VAR_VERB_SCRIPT) >= _vm->_numGlobalScripts;
+}
+
+bool NeuroBridge::verbButton(int verbId, NeuroClick &click) const {
+	for (int slot = 1; slot < _vm->_numVerbs; slot++) {
+		const VerbSlot &vs = _vm->_verbs[slot];
+		if (vs.verbid != verbId || vs.curmode != 1 || vs.saveid != 0 || vs.curRect.isEmpty())
+			continue;
+		click.x = (vs.curRect.left + vs.curRect.right) / 2;
+		click.y = (vs.curRect.top + vs.curRect.bottom) / 2;
+		click.screen = true;
+		return true;
+	}
+	return false;
+}
+
+/**
+ * Turns a sentence into the clicks a player would make: the verb, then each
+ * thing, in the inventory or in the room.
+ */
+bool NeuroBridge::planClicks(const NeuroWorld &world, NeuroCommand &command) {
+	// Monkey Island's inventory: picture buttons 200 and up, filled in order
+	static const int kFirstInventoryButton = 200;
+
+	command.clicks.clear();
+	NeuroClick click;
+	if (!verbButton(command.verb, click))
+		return false;
+	command.clicks.push_back(click);
+
+	for (const int thing : command.objects) {
+		if (!thing)
+			break;
+		int index = -1;
+		for (uint i = 0; i < world.inventory.size(); i++) {
+			if (world.inventory[i].id == thing)
+				index = i;
+		}
+		if (index >= 0) {
+			if (!verbButton(kFirstInventoryButton + index, click))
+				return false;
+		} else {
+			int x, y;
+			if (!findClickPoint(thing, x, y))
+				return false;
+			// Only what is on screen can be clicked
+			const int screenX = x - _vm->_virtscr[kMainVirtScreen].xstart;
+			if (screenX < 0 || screenX >= _vm->_screenWidth)
+				return false;
+			click.x = x;
+			click.y = y;
+			click.screen = false;
+		}
+		command.clicks.push_back(click);
+	}
+	return true;
 }
 
 void NeuroBridge::updateClick() {
@@ -523,6 +604,12 @@ void NeuroBridge::updateClick() {
 	case kClickRelease:
 		_vm->_leftBtnPressed &= ~kMouseDown;
 		_clickPhase = kClickIdle;
+		_lastClickAt = g_system->getMillis();
+		// The next click of the same command, once the game has taken this one in
+		if (!_clickQueue.empty()) {
+			clickAt(_clickQueue.remove_at(0));
+			_clickFrames = -3;
+		}
 		break;
 	default:
 		break;
@@ -536,6 +623,14 @@ void NeuroBridge::overridePointer() {
 	// The target may be scrolled out of view, so only the room position is
 	// exact; the screen position just has to be somewhere over the room.
 	const VirtScreen &vs = _vm->_virtscr[kMainVirtScreen];
+	if (_clickScreen) {
+		// On the verbs or the inventory, below the room
+		_vm->_mouse.x = _clickX;
+		_vm->_mouse.y = _clickY;
+		_vm->_virtualMouse.x = _clickX + vs.xstart;
+		_vm->_virtualMouse.y = (_clickY >= vs.topline && _clickY < vs.topline + vs.h) ? _clickY - vs.topline : -1;
+		return;
+	}
 	_vm->_virtualMouse.x = _clickX;
 	_vm->_virtualMouse.y = _clickY;
 	_vm->_mouse.x = CLIP<int>(_clickX - vs.xstart, 0, _vm->_screenWidth - 1);

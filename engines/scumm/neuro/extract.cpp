@@ -148,6 +148,10 @@ void NeuroBridge::extractWriteRoom() {
 	root.setVal("height", new Common::JSONValue((long long int)_extract.height));
 	// The room's own scripts may have moved the game elsewhere while it was being drawn
 	root.setVal("stayed", new Common::JSONValue(_vm->_currentRoom == room));
+	// A room with its own mouse handler (a script numbered past the global
+	// ones) only understands real clicks while that handler is in place
+	root.setVal("verb_script", new Common::JSONValue((long long int)_vm->VAR(_vm->VAR_VERB_SCRIPT)));
+	root.setVal("own_mouse_handler", new Common::JSONValue(_vm->VAR(_vm->VAR_VERB_SCRIPT) >= _vm->_numGlobalScripts));
 	root.setVal("objects", new Common::JSONValue(objects));
 	root.setVal("actors", new Common::JSONValue(actors));
 	writeText(base + ".json", Common::JSONValue(root).stringify(true));

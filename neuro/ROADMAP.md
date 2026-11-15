@@ -108,6 +108,21 @@ Sword fighting is won by remembering which comeback answers which insult across 
 81 rooms in draft. Review them on the review page, fix what is wrong, and mark them checked.
 Rooms in the part being worked on come first.
 
+### E11. Rooms with their own mouse handler (S, ongoing)
+Found 2026-11-14 at the circus: giving the pot to the Fettucini Brothers did nothing as a direct
+sentence, but worked with the mouse. Some rooms replace the game's mouse handler with a script of
+their own, and things only that script knows how to handle never reach the normal sentence path.
+- **Built:** when the thing acted on has no script of its own for the verb and the room has its own
+  handler, the command is carried out as real clicks: verb button, inventory picture, the thing in
+  the room. Tested on the circus pot.
+- **Rooms that install their own handler on entry** (from the extractor, which now records it):
+  2 Monkey Island map (south coast), 18 the crack, 21 jungle with the monkey, 28 SCUMM Bar,
+  42 underwater, 51 circus tent, 57 troll bridge, 85 Mêlée Island map. Rooms that only do so
+  mid-scene, and the 18 rooms not yet captured, are not in this list.
+- **Limits to fix when they bite:** the inventory picture must be on the first page (eight
+  items; no scrolling yet), and a thing in the room must be on screen.
+- Check each listed room when the story reaches it (P1-2 troll, P1-6 underwater, P3 monkey).
+
 ### E9. Graduated hints: a `hint` action (M, plus writing per puzzle)
 A hint book in the style of the old Universal Hint System: each puzzle is a question ("How do I
 get into the kitchen?") with answers that go from a gentle nudge to the full solution. She asks

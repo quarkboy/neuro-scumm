@@ -50,6 +50,12 @@ struct NeuroThing {
 
 typedef Common::Array<NeuroThing> NeuroThingList;
 
+/** A simulated mouse click, in room or screen coordinates. */
+struct NeuroClick {
+	int x = 0, y = 0;
+	bool screen = false;
+};
+
 /** A validated verb sentence or walk, ready to run. */
 struct NeuroCommand {
 	bool walk = false;
@@ -68,6 +74,9 @@ struct NeuroCommand {
 
 	/** Not yet resolved: "VERB | TARGET | SECOND", worked out when it is due to run. */
 	Common::String preset;
+
+	/** When set, the command is carried out as these clicks, as a player would. */
+	Common::Array<NeuroClick> clicks;
 };
 
 /** Everything the player could see or use at one moment. */
@@ -261,6 +270,18 @@ private:
 	ClickPhase _clickPhase = kClickIdle;
 	int _clickFrames = 0;
 	int _clickX = 0, _clickY = 0;
+	bool _clickScreen = false;
+	uint32 _lastClickAt = 0;
+	// Clicks still to make for the command being carried out, one after another
+	Common::Array<NeuroClick> _clickQueue;
+	void clickAt(const NeuroClick &click);
+
+	// Some rooms swap in their own mouse handler for a scene, and only that
+	// one knows what clicking there should do, so her commands then have to
+	// be real clicks.
+	bool needsClicks() const;
+	bool planClicks(const NeuroWorld &world, NeuroCommand &command);
+	bool verbButton(int verbId, NeuroClick &click) const;
 
 	NeuroWorld _described;
 
