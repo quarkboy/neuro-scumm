@@ -740,6 +740,15 @@ void NeuroBridge::pollWorld() {
 		const NeuroThingList left = departed(world);
 		if (!left.empty())
 			text += "- Just left: " + joinNames(left) + "\n";
+		// What changed hands in a scene that ended somewhere else
+		if (_described.room) {
+			const NeuroThingList got = difference(_described.inventory, world.inventory);
+			const NeuroThingList lost = difference(world.inventory, _described.inventory);
+			if (!got.empty())
+				text += "Got: " + joinNames(got) + "\n";
+			if (!lost.empty())
+				text += "Lost: " + joinNames(lost) + "\n";
+		}
 		sendContext(text, false);
 		_outcomeTold = true;
 	} else {

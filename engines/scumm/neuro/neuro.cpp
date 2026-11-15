@@ -31,6 +31,7 @@
 #include "common/textconsole.h"
 
 #include "scumm/actor.h"
+#include "scumm/object.h"
 #include "scumm/scumm.h"
 
 #ifndef USE_BASIC_NET
@@ -578,6 +579,19 @@ void NeuroBridge::handleDebugAction(const Common::String &id, const Common::Stri
 		}
 		debug("NEURODUMP %s", text.c_str());
 		if (!quiet) sendActionResult(id, true, text);
+		return;
+	}
+	if (name == "debug_give") {
+		// "OBJECT ROOM": put an object from that room into the inventory, as picking it up does
+		int object = 0, room = 0;
+		if (sscanf(data.c_str(), "%d %d", &object, &room) == 2) {
+			_vm->addObjectToInventory(object, room);
+			_vm->putOwner(object, _vm->VAR(_vm->VAR_EGO));
+			_vm->putClass(object, kObjectClassUntouchable, 1);
+			_vm->putState(object, 1);
+			_vm->runInventoryScript(1);
+		}
+		if (!quiet) sendActionResult(id, true);
 		return;
 	}
 	if (name == "debug_var" || name == "debug_bit") {
