@@ -63,9 +63,15 @@ bool NeuroData::load(const Common::String &path) {
 		alert.command = get(section.name, "do");
 		alert.then = get(section.name, "then");
 		alert.holdVar = atoi(get(section.name, "hold").c_str());
+		sscanf(get(section.name, "while").c_str(), "script %d", &alert.whileScript);
 
 		const Common::String when = get(section.name, "when");
 		const size_t colon = when.findFirstOf(':');
+		if (when.equalsIgnoreCase("entered") && alert.room) {
+			alert.kind = "entered";
+			_alerts.push_back(alert);
+			continue;
+		}
 		if (colon == Common::String::npos) {
 			warning("Neuro: Alert '%s' has no usable 'when'", section.name.c_str());
 			continue;
@@ -124,6 +130,14 @@ int NeuroData::descriptionRoom(int room) const {
 
 Common::String NeuroData::roomName(int room) const {
 	return roomGet(room, "name");
+}
+
+bool NeuroData::quietComings(int room) const {
+	return roomGet(room, "comings").equalsIgnoreCase("quiet");
+}
+
+bool NeuroData::doorQuestion() const {
+	return !get("game", "door_question").equalsIgnoreCase("no");
 }
 
 Common::String NeuroData::roomDescription(int room) const {

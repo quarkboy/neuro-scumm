@@ -245,8 +245,14 @@ private:
 		Common::String name;
 	};
 	Common::HashMap<int, SeenActor> _actorSeen;
-	/** Named characters seen in this room who are no longer in it; each is reported once. */
-	NeuroThingList departed(const NeuroWorld &world);
+	/**
+	 * Named characters seen in this room who are no longer in it; each is reported once.
+	 * With known, only those among them: who came and went during a scene is not news.
+	 */
+	NeuroThingList departed(const NeuroWorld &world, const NeuroThingList *known = nullptr);
+
+	// A door she has just opened, to ask whether she wants to go through
+	Common::String _openedDoor;
 	Common::HashMap<Common::String, Common::String> _leftAt;
 	Common::String lastSeenAt(int actor, const NeuroWorld &world) const;
 

@@ -48,6 +48,8 @@ namespace Scumm {
  *                          drops such text (labels drawn under the pointer)
  *   voice.ACTOR.COLOR      who is speaking when that actor's text has that
  *                          colour (one actor standing in for a group)
+ *   comings = quiet        characters wander in and out of sight all the time here
+ *                          (dots on the island map); do not report each one
  *   spot.NAME = X,Y | TEXT a place with no object that she can walk to; the
  *                          optional text says what she sees when she does
  * A room that the game draws from another room's data (the forest screens)
@@ -55,7 +57,9 @@ namespace Scumm {
  * [alert.ID] sections turn a moment she must not miss into a prompt:
  *   room      room number it applies to (omit for any room)
  *   when      arrived: / left: (a character), appeared: / disappeared: (a
- *             thing), gained: / lost: (an inventory item), then part of a name
+ *             thing), gained: / lost: (an inventory item), then part of a name;
+ *             or just "entered", for walking into the room
+ *   while     optional "script N": only while that game script is running
  *   lead      seconds after that moment at which her action should land;
  *             the prompt goes out early by her expected reaction time
  *   priority  low, medium, high or critical; how hard to interrupt her
@@ -73,6 +77,8 @@ namespace Scumm {
  * actor nor the text colour settles it (sound effects shown as text, say):
  *   text      the line, exactly as it is sent
  *   speaker   the name to use; "-" drops the line altogether
+ * A [game] section holds switches:
+ *   door_question = no     do not ask "Go through it?" after she opens a door
  * and two global sections:
  *   [actors]  ID = name    fallback names for unnamed actors
  *   [states]  object name = label for state 0, label for state 1, ...
@@ -88,6 +94,8 @@ public:
 	int descriptionRoom(int room) const;
 
 	Common::String roomName(int room) const;
+	bool quietComings(int room) const;
+	bool doorQuestion() const;
 	Common::String roomDescription(int room) const;
 	Common::String objectNote(int room, int object) const;
 	/** Returns false if the file does not rename this object; an empty name hides it. */
@@ -119,6 +127,7 @@ public:
 		int room = 0;
 		uint32 leadMs = 0;
 		int holdVar = 0;
+		int whileScript = 0;
 		Common::String kind, name, priority, say, ask, command, then;
 	};
 	const Common::Array<Alert> &alerts() const { return _alerts; }

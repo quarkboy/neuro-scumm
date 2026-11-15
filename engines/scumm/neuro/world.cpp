@@ -435,7 +435,7 @@ Common::String NeuroBridge::lastSeenAt(int actor, const NeuroWorld &world) const
 	return nearest;
 }
 
-NeuroThingList NeuroBridge::departed(const NeuroWorld &world) {
+NeuroThingList NeuroBridge::departed(const NeuroWorld &world, const NeuroThingList *known) {
 	// Not only those she was told about: someone can cross the screen and be
 	// gone before the game hands control back
 	NeuroThingList result;
@@ -446,6 +446,11 @@ NeuroThingList NeuroBridge::departed(const NeuroWorld &world) {
 		if (actor->_visible && actor->isInCurrentRoom())
 			continue;
 		gone.push_back(seen._key);
+		bool wanted = !known;
+		for (uint i = 0; known && i < known->size(); i++)
+			wanted |= (*known)[i].id == seen._key;
+		if (!wanted)
+			continue;
 
 		NeuroThing thing;
 		thing.id = seen._key;
@@ -490,12 +495,14 @@ Common::String NeuroBridge::describeChanges(const NeuroWorld &before, const Neur
 		{"Appeared", appeared},
 		{"Gone", gone},
 		{"Arrived", difference(before.actors, after.actors)},
-		{"Left", departed(after)}
+		{"Left", departed(after, &before.actors)}
 	};
+	const bool quiet = _data.quietComings(after.room);
 
 	Common::String text;
 	for (const auto &line : lines) {
-		if (!line.things.empty())
+		const bool comings = &line == &lines[4] || &line == &lines[5];
+		if (!line.things.empty() && !(quiet && comings))
 			text += Common::String::format("%s: %s\n", line.label, joinNames(line.things).c_str());
 	}
 
@@ -523,6 +530,8 @@ Common::String NeuroBridge::describeChanges(const NeuroWorld &before, const Neur
 			continue;
 		}
 		text += Common::String::format("Now %s: %s\n", label.c_str(), changed[i].name.c_str());
+		if (label == "open")
+			_openedDoor = changed[i].name;
 		changed.remove_at(i);
 	}
 	if (!changed.empty())
@@ -546,6 +555,8 @@ static bool alertHolds(const NeuroData::Alert &alert, const NeuroWorld &world) {
 		return containsName(world.actors, alert.name) == (alert.kind == "arrived");
 	if (alert.kind == "appeared" || alert.kind == "disappeared")
 		return containsName(world.objects, alert.name) == (alert.kind == "appeared");
+	if (alert.kind == "entered")
+		return true;
 	if (alert.kind == "gained" || alert.kind == "lost")
 		return containsName(world.inventory, alert.name) == (alert.kind == "gained");
 	return false;
@@ -613,8 +624,13 @@ void NeuroBridge::checkAlerts(const NeuroWorld &before, const NeuroWorld &after)
 		const NeuroData::Alert &alert = alerts[i];
 		if (alert.room && alert.room != after.room)
 			continue;
+		if (alert.whileScript && !_vm->isScriptRunning(alert.whileScript))
+			continue;
 		// It has to have just become true
-		if (alert.kind == "left") {
+		if (alert.kind == "entered") {
+			if (before.room == after.room)
+				continue;
+		} else if (alert.kind == "left") {
 			bool left = false;
 			for (const auto &who : _leftAt)
 				left |= who._key.contains(alert.name);
@@ -733,6 +749,21 @@ void NeuroBridge::pollWorld() {
 	}
 	finishAction(world);
 	checkAlerts(_described, world);
+
+	// Opening a door is nearly always the first half of walking through it, and
+	// townspeople using the same door shut it behind them
+	if (!_openedDoor.empty()) {
+		// Not when the opening was itself the first half of an answer
+		if (_data.doorQuestion() && _queue.empty() && !_forceActive && !world.inDialogue && world.room == _described.room) {
+			_questionCommand = "Open | " + _openedDoor;
+			_questionThen = "Walk to | " + _openedDoor;
+			_questionAskedAt = now;
+			_questionHoldVar = 0;
+			sendForce("You opened: " + _openedDoor + ".", "Go through it?", "answer");
+			_lastActivity = now;
+		}
+		_openedDoor.clear();
+	}
 
 	// The first verbs to appear are the game's normal ones
 	if (_standardVerbs.empty() && !world.verbs.empty()) {
