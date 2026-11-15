@@ -166,6 +166,7 @@ void NeuroBridge::update() {
 			_vm->writeVar(_questionHoldVar, _questionHoldValue);
 	}
 
+	flushDrawnText();
 	updateSpeed();
 	updateClick();
 	updatePager();
@@ -485,7 +486,10 @@ void NeuroBridge::sendActionResult(const Common::String &id, bool success, const
 	flushDialogue();
 
 	// A force is over once the forced action succeeds; the server retries a failed one itself
-	if (success && _forceActive && _currentAction == _forceAction)
+	// She may answer a prompt with a different action than the one it named
+	// (leaving a close-up by skipping it); anything that did something settles it
+	const bool passive = _currentAction == "read_journal" || _currentAction == "add_note";
+	if (success && _forceActive && (_currentAction == _forceAction || !passive))
 		_forceActive = false;
 	Common::JSONObject data;
 	data.setVal("id", new Common::JSONValue(id));

@@ -122,6 +122,9 @@ public:
 	void onTalkStarted(int actor, const byte *text);
 	void onTalkStopped();
 
+	/** Text was drawn on the screen that nobody says (a sign in close-up, a title). */
+	void onTextDrawn(const byte *text, int color);
+
 	/** A script gave an actor a name. */
 	void onActorNamed(int actor);
 
@@ -361,6 +364,11 @@ private:
 	Common::String _forcedDialogue;
 	// What she is answering when asked to pick a line
 	Common::String _lastHeard;
+	// Text drawn on screen, gathered until the frame is over
+	Common::String _drawnText;
+	Common::String _lastDrawnText;
+	void flushDrawnText();
+	uint32 _lastQueuedStepAt = 0;
 	uint32 _lastHeardAt = 0;
 
 	// What her last action was aimed at; only these are worth a note when their look changes

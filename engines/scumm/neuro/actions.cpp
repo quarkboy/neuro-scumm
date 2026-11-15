@@ -346,7 +346,7 @@ void NeuroBridge::updateForces(const NeuroWorld &world) {
 	const uint32 now = g_system->getMillis();
 
 	// A force that was never answered must not block the game forever
-	if (_forceActive && now - _forceSentAt > 300000)
+	if (_forceActive && now - _forceSentAt > 90000)
 		_forceActive = false;
 
 	if (world.inDialogue) {
@@ -531,6 +531,7 @@ void NeuroBridge::updateQueuedCommand() {
 	}
 	debug(1, "Neuro: Running queued step after %u ms, Guybrush at %d,%d", elapsed,
 		_vm->_actors[_vm->VAR(_vm->VAR_EGO)]->getPos().x, _vm->_actors[_vm->VAR(_vm->VAR_EGO)]->getPos().y);
+	_lastQueuedStepAt = g_system->getMillis();
 	runCommand(next);
 }
 

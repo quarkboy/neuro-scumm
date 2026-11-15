@@ -44,6 +44,7 @@
 #include "scumm/he/sound_he.h"
 
 #include "scumm/ks_check.h"
+#include "scumm/neuro/neuro.h"
 
 namespace Scumm {
 
@@ -110,6 +111,8 @@ void ScummEngine::printString(int m, const byte *msg) {
 #ifdef USE_TTS
 		_voiceNextString = true;
 #endif
+		if (_neuro)
+			_neuro->onTextDrawn(msg, _string[1].color);
 		drawString(1, msg);
 		break;
 	case 2:

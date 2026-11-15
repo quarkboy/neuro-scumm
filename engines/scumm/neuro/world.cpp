@@ -766,7 +766,7 @@ void NeuroBridge::pollWorld() {
 	// townspeople using the same door shut it behind them
 	if (!_openedDoor.empty()) {
 		// Not when the opening was itself the first half of an answer
-		if (_data.doorQuestion() && _queue.empty() && !_forceActive && !world.inDialogue && world.room == _described.room) {
+		if (_data.doorQuestion() && _queue.empty() && now - _lastQueuedStepAt > 5000 && !_forceActive && !world.inDialogue && world.room == _described.room) {
 			_questionCommand = "Open | " + _openedDoor;
 			_questionThen = "Walk to | " + _openedDoor;
 			_questionAskedAt = now;
@@ -965,6 +965,29 @@ void NeuroBridge::onTalkStarted(int actor, const byte *text) {
 	// Only a safety net in case the end message is lost: generous reading time
 	data.setVal("expected_duration_ms", new Common::JSONValue((long long int)(3000 + line.size() * 150)));
 	send("speech/started", &data);
+}
+
+void NeuroBridge::onTextDrawn(const byte *text, int color) {
+	const Common::String line = cleanText(text, true);
+	if (line.empty() || !_ws.isConnected())
+		return;
+	Common::String source = _data.voiceName(_vm->_currentRoom, color);
+	if (source == "-")
+		return;
+	if (source.empty())
+		source = "Text on the screen";
+	_journal.heard(line);
+	_drawnText += source + ": \"" + line + "\"\n";
+}
+
+void NeuroBridge::flushDrawnText() {
+	if (_drawnText.empty())
+		return;
+	// A screen that redraws its text every frame says it once
+	if (_drawnText != _lastDrawnText)
+		sendContext(_drawnText, true);
+	_lastDrawnText = _drawnText;
+	_drawnText.clear();
 }
 
 void NeuroBridge::onTalkStopped() {
