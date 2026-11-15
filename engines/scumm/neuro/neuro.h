@@ -300,6 +300,8 @@ private:
 	// Game variables whose rise is worth a sentence, with the value last seen
 	Common::HashMap<int, int> _watched;
 	void checkWatches();
+	/** Fills in {varN} and {pickN: a | b | c} from the game's variables. */
+	Common::String expandText(const Common::String &text) const;
 	void saveJournal(int slot);
 	void loadJournal(int slot);
 	int _saveLoadSlot = -1;

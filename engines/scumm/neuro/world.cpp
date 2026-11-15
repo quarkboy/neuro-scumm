@@ -24,6 +24,7 @@
 #include "common/algorithm.h"
 #include "common/debug.h"
 #include "common/system.h"
+#include "common/tokenizer.h"
 
 #include "scumm/actor.h"
 #include "scumm/charset.h"
@@ -579,7 +580,8 @@ static bool containsName(const NeuroThingList &things, const Common::String &nam
 	for (const auto &thing : things) {
 		Common::String candidate = thing.name;
 		candidate.toLowercase();
-		if (candidate.contains(name))
+		// "=rock" is the rock itself, not the heap o' rocks beside it
+		if (name.hasPrefix("=") ? candidate == name.substr(1) : candidate.contains(name))
 			return true;
 	}
 	return false;
@@ -611,6 +613,7 @@ static bool fillExit(Common::String &text, const Common::String &exit) {
 
 void NeuroBridge::fireAlert(const NeuroData::Alert &original, const NeuroWorld &world) {
 	NeuroData::Alert alert = original;
+	alert.say = expandText(alert.say);
 	Common::String exit;
 	for (const auto &left : _leftAt) {
 		if (alert.kind == "left" && left._key.contains(alert.name))
@@ -619,6 +622,10 @@ void NeuroBridge::fireAlert(const NeuroData::Alert &original, const NeuroWorld &
 	if (!fillExit(alert.say, exit) || !fillExit(alert.command, exit))
 		return;
 
+	if (alert.ask.empty()) {
+		sendContext(alert.say, false);
+		return;
+	}
 	// Only one force may be outstanding; otherwise say it as plainly as context allows
 	if (!_forceActive && !world.inDialogue) {
 		const bool question = !alert.command.empty();
@@ -840,13 +847,43 @@ void NeuroBridge::pollWorld() {
 	_described = world;
 }
 
+Common::String NeuroBridge::expandText(const Common::String &text) const {
+	Common::String result = text;
+	for (;;) {
+		size_t open = result.find("{var");
+		const bool pick = open == Common::String::npos;
+		if (pick)
+			open = result.find("{pick");
+		const size_t close = open == Common::String::npos ? open : result.find('}', open);
+		if (close == Common::String::npos)
+			return result;
+		const int value = _vm->readVar(atoi(result.c_str() + open + (pick ? 5 : 4)));
+		Common::String replacement = Common::String::format("%d", value);
+		if (pick) {
+			replacement.clear();
+			const size_t colon = result.find(':', open);
+			if (colon != Common::String::npos && colon < close) {
+				Common::StringTokenizer options(result.substr(colon + 1, close - colon - 1), "|");
+				for (int i = 1; !options.empty(); i++) {
+					Common::String option = options.nextToken();
+					option.trim();
+					if (i == value)
+						replacement = option;
+				}
+			}
+		}
+		result.replace(open, close - open + 1, replacement);
+	}
+}
+
 void NeuroBridge::checkWatches() {
 	Common::String text;
 	for (const auto &watch : _data.watches()) {
 		const int value = _vm->readVar(watch.var);
 		// The first look only sets the starting point
-		if (_watched.contains(watch.var) && value > _watched[watch.var]) {
-			Common::String say = watch.say;
+		const bool changed = _watched.contains(watch.var) && (watch.anyChange ? value != _watched[watch.var] : value > _watched[watch.var]);
+		if (changed) {
+			Common::String say = expandText(watch.say);
 			const size_t at = say.find("{value}");
 			if (at != Common::String::npos)
 				say.replace(at, 7, Common::String::format("%d", value));

@@ -56,6 +56,7 @@ bool NeuroData::load(const Common::String &path) {
 			Watch watch;
 			watch.var = atoi(get(section.name, "var").c_str());
 			watch.say = get(section.name, "say");
+			watch.anyChange = get(section.name, "change").equalsIgnoreCase("any");
 			if (watch.var && !watch.say.empty())
 				_watches.push_back(watch);
 			continue;

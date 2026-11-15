@@ -78,7 +78,11 @@ namespace Scumm {
  * [watch.ID] sections put into words something the game only shows as animation
  * and keeps as a number (who won an exchange of a sword fight):
  *   var       the game variable
- *   say       what she is told when it goes up; {value} is the new value
+ *   change    "any" to speak whenever it changes, not only when it goes up
+ *   say       what she is told; {value} is the new value
+ * In what an alert or a watch says, {varN} is the value of game variable N and
+ * {pickN: one | two | three} is the text for its value, counting from 1.
+ * An alert with no "ask" only tells her what happened.
  * [line.ID] sections name who says one particular line, where neither the
  * actor nor the text colour settles it (sound effects shown as text, say):
  *   text      the line, exactly as it is sent
@@ -141,6 +145,7 @@ public:
 
 	struct Watch {
 		int var = 0;
+		bool anyChange = false;
 		Common::String say;
 	};
 	const Common::Array<Watch> &watches() const { return _watches; }
