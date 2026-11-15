@@ -87,6 +87,7 @@ button.danger { color: #c62828; }
 .line:hover { background: var(--panel); }
 .line.open { background: var(--panel); border-bottom: 0; }
 .swatch { width: 30px; height: 20px; border-radius: 3px; border: 1px solid var(--line); font-size: 10px; display: grid; place-items: center; color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000; }
+.swatch.likely { border: 2px dashed var(--warn); }
 .swatch.unknown { background: repeating-linear-gradient(45deg, var(--line), var(--line) 3px, transparent 3px, transparent 6px); color: var(--muted); text-shadow: none; }
 .speaker { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-top: 1px; }
 .speaker.guess { color: var(--warn); font-style: italic; }
@@ -321,6 +322,17 @@ function speakerOf(line) {
 	}
 	return { name: "set while playing", cls: "guess" };
 }
+const COLOR_SOURCES = {
+	print: "given with the line itself",
+	ego: "Guybrush's talk colour",
+	actor: "this actor's talk colour, set in this room",
+	"actor-elsewhere": "this actor's talk colour, set in another room",
+	style: "from an earlier instruction in the same script",
+	"room-style": "from the room's entry script",
+};
+function colorSource(line) {
+	return (line.color_sure ? "certain, " : "likely (dashed border), ") + (COLOR_SOURCES[line.color_from] || "from the scripts");
+}
 function colorOf(line) {
 	if (line.color == null || typeof line.color !== "number") return null;
 	return (lineRooms[line.room]?.palette || EGA)[line.color] || EGA[line.color % 16];
@@ -370,7 +382,7 @@ function renderLines() {
 function lineRow(line) {
 	const color = colorOf(line), who = speakerOf(line), open = openLine === line.index;
 	const row = el("div", { class: "line" + (open ? " open" : ""), onclick: () => { openLine = open ? null : line.index; renderLines(); } },
-		el("div", { class: "swatch" + (color ? "" : " unknown"), style: color ? `background:${color}` : null, title: color ? `text colour ${line.color}` : "colour set while playing" }, line.color != null && typeof line.color === "number" ? line.color : "?"),
+		el("div", { class: "swatch" + (color ? (line.color_sure ? "" : " likely") : " unknown"), style: color ? `background:${color}` : null, title: color ? `text colour ${line.color}: ${colorSource(line)}` : "colour not in the scripts; set while playing" }, line.color != null && typeof line.color === "number" ? line.color : "?"),
 		el("div", { class: "speaker " + who.cls, title: who.name }, line.op === "say" ? who.name : ""),
 		el("div", {}, line.op !== "say" ? el("span", { class: "kind" }, KIND_LABEL[line.op]) : "", line.text,
 			line.has_substitution ? el("span", { class: "badge subst", title: "Part of this line is filled in while playing" }, "varies") : "",
@@ -402,7 +414,7 @@ function lineEditor(line) {
 		const override = journal.lines.find(l => l.text === line.text);
 		const who = el("input", { value: override?.speaker || "", placeholder: "e.g. cook, sound effect; - drops the line" });
 		parts.push(el("div", { class: "stack" }, el("h4", {}, "Who says it"),
-			el("div", { class: "note" }, `In the script: ${line.actor === "ego" ? "Guybrush" : typeof line.actor === "number" ? (line.actor >= 252 ? "printed on screen, no actor" : `actor ${line.actor}${line.speaker ? ` (${line.speaker})` : ""}`) : "an actor chosen while playing"}; text colour ${line.color ?? "set while playing"}${line.color_from ? " (the actor's own)" : ""}.`),
+			el("div", { class: "note" }, `In the script: ${line.actor === "ego" ? "Guybrush" : typeof line.actor === "number" ? (line.actor >= 252 ? "printed on screen, no actor" : `actor ${line.actor}${line.speaker ? ` (${line.speaker})` : ""}`) : "an actor chosen while playing"}; text colour ${line.color != null ? `${line.color}: ${colorSource(line)}` : "not in the scripts; set while playing"}.`),
 			el("div", { class: "pair" }, el("label", {}, "This line only", who),
 				el("button", { class: "primary", type: "button", onclick: async () => {
 					const section = "line." + (override?.id || slug(line.text));

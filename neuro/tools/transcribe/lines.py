@@ -118,7 +118,11 @@ def parse_print(r, opcode, with_actor):
     while True:
         sub = r.byte()
         if sub == 0xFF:
-            raise Bad          # a print without text is of no interest
+            # No text: this only sets the style that later prints of this kind start from.
+            # Worth keeping when it sets a colour (and long enough not to be a chance match).
+            if not isinstance(color, int):
+                raise Bad
+            return [{"op": "style", "actor": actor, "color": color}]
         kind = sub & 0x0F
         if kind == 0:
             r.word(), r.word()
@@ -333,29 +337,96 @@ def main():
                     info["talk_color"] = item["talk_color"]
             lines.append(item)
 
-    # Who says each line, as far as the scripts show
+    # Talk colours by actor over the whole game, for actors whose colour is set
+    # in another room or in a script that runs everywhere.
+    everywhere, anywhere = {}, {}
+    for item in lines:
+        if item["op"] == "actor" and isinstance(item.get("talk_color"), int):
+            key = json.dumps(item["actor"])
+            anywhere.setdefault(key, []).append(item["talk_color"])
+            if item["room"] == 0:
+                everywhere.setdefault(key, []).append(item["talk_color"])
+
+    def most_common(values):
+        return max(set(values), key=values.count)
+
+    # Guybrush is actor 1, usually reached through the "ego" variable (variable 1)
+    ego_colors = [c for key in ("1", json.dumps(["var", 1])) for c in anywhere.get(key, [])]
+    ego_color = most_common(ego_colors) if ego_colors else None
+
+    def text_slot(actor):
+        """Prints share remembered styles by slot: three special ones and one for everything else."""
+        return {252: 3, 253: 2, 254: 1}.get(actor, 0) if isinstance(actor, int) else 0
+
+    def script_key(item):
+        w = item["where"]
+        return (item["room"], w["kind"], w.get("script"), w.get("object"))
+
+    styles = {}        # script -> [(offset, slot, colour)]
+    for item in lines:
+        if item["op"] == "style":
+            styles.setdefault(script_key(item), []).append((item["offset"], text_slot(item["actor"]), item["color"]))
+    entry_styles = {}  # room -> last colour its entry script sets, per slot
+    for (room, kind, _, _), found in styles.items():
+        if kind == "enter":
+            for _, slot, color in sorted(found):
+                entry_styles[(room, slot)] = color
+
+    # Who says each line and in what colour, as far as the scripts show.
+    # color_sure is false where the script only makes a colour likely.
     for item in lines:
         if item["op"] != "say":
             continue
         actor = item["actor"]
+        if item["color"] is not None and not isinstance(item["color"], int):
+            item["color"] = None                       # a colour taken from a variable
+        if isinstance(item["color"], int):
+            item["color_from"], item["color_sure"] = "print", True
+
         if actor == "ego":
             item["speaker"] = "Guybrush"
-        elif isinstance(actor, int):
-            info = actor_info.get((item["room"], json.dumps(actor))) or {}
+            if item["color"] is None and ego_color is not None:
+                item["color"], item["color_from"] = ego_color, "ego"
+                item["color_sure"] = len(set(ego_colors)) == 1
+        elif isinstance(actor, int) and actor < 252:
+            key = json.dumps(actor)
+            info = actor_info.get((item["room"], key)) or {}
             item["speaker"] = info.get("name", "")
             if item["color"] is None and "talk_color" in info:
-                item["color"] = info["talk_color"]
-                item["color_from"] = "actor"
-            if actor >= 252:
-                item["speaker"] = ""       # printed on screen, not by a character
+                item["color"], item["color_from"] = info["talk_color"], "actor"
+                # one actor can stand in for several people, each with a colour
+                item["color_sure"] = len({l["talk_color"] for l in lines if l["op"] == "actor" and l["room"] == item["room"]
+                                          and json.dumps(l["actor"]) == key and isinstance(l.get("talk_color"), int)}) == 1
+            elif item["color"] is None:
+                found = everywhere.get(key) or anywhere.get(key)
+                if found:
+                    item["color"], item["color_from"] = most_common(found), "actor-elsewhere"
+                    item["color_sure"] = False
+        elif isinstance(actor, int):
+            item["speaker"] = ""                       # printed on screen, not by a character
+            if item["color"] is None:
+                slot = text_slot(actor)
+                earlier = [c for offset, s, c in sorted(styles.get(script_key(item), [])) if s == slot and offset < item["offset"]]
+                if earlier:
+                    item["color"], item["color_from"] = earlier[-1], "style"
+                elif (item["room"], slot) in entry_styles:
+                    item["color"], item["color_from"] = entry_styles[(item["room"], slot)], "room-style"
+                if item["color"] is not None:
+                    item["color_sure"] = False
         else:
             item["speaker"] = ""
 
-    json.dump({"rooms": {str(k): v for k, v in sorted(rooms.items())}, "lines": lines}, open(out, "w"), ensure_ascii=False)
+    lines = [l for l in lines if l["op"] != "style"]
+    for index, item in enumerate(lines):
+        item.pop("index", None)
     said = [l for l in lines if l["op"] == "say"]
+    sure = sum(1 for l in said if l.get("color_sure"))
+    likely = sum(1 for l in said if isinstance(l.get("color"), int) and not l.get("color_sure"))
+    print(f"text colour: {sure} certain, {likely} likely, {len(said) - sure - likely} unknown")
     print(f"{len(rooms)} rooms, {len(sources)} scripts, {len(lines)} text items: {len(said)} lines said, "
           f"{sum(1 for l in lines if l['op'] == 'choice')} dialogue choices, "
           f"{sum(1 for l in said if isinstance(l['actor'], int) and l['actor'] >= 252)} printed with no actor")
+    json.dump({"rooms": {str(k): v for k, v in sorted(rooms.items())}, "lines": lines}, open(out, "w"), ensure_ascii=False)
 
 
 if __name__ == "__main__":
