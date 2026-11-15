@@ -72,6 +72,16 @@ public:
 
 	void addNote(const Common::String &text);
 
+	/**
+	 * A clue can quote a game variable as {varN}, for what was only shown
+	 * as animation (how often a handle was pulled).
+	 */
+	typedef int (*VarReader)(void *context, int var);
+	void setVarReader(VarReader reader, void *context) {
+		_readVar = reader;
+		_readVarContext = context;
+	}
+
 	Common::String describe(bool withCompleted = false) const;
 
 	/** The clues noted for one unfinished goal, named by its title, id or opening words. */
@@ -85,6 +95,10 @@ public:
 	void load(const Common::String &fileName);
 
 private:
+	VarReader _readVar = nullptr;
+	void *_readVarContext = nullptr;
+	Common::String expand(const Common::String &text) const;
+
 	enum State {
 		kHidden,
 		kActive,

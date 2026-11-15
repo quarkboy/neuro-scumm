@@ -133,6 +133,18 @@ static bool matchesOne(const Common::String &trigger, const Common::String &kind
 	return haystack.contains(wantArgument);
 }
 
+Common::String NeuroJournal::expand(const Common::String &text) const {
+	Common::String result = text;
+	for (;;) {
+		const size_t open = result.find("{var");
+		const size_t close = open == Common::String::npos ? open : result.find('}', open);
+		if (close == Common::String::npos || !_readVar)
+			return result;
+		const int value = _readVar(_readVarContext, atoi(result.c_str() + open + 4));
+		result.replace(open, close - open + 1, Common::String::format("%d", value));
+	}
+}
+
 Common::String NeuroJournal::goalTitle(const Common::String &id) const {
 	for (const auto &goal : _goals) {
 		if (goal.id != id)
@@ -161,7 +173,7 @@ bool NeuroJournal::fire(const Common::String &kind, const Common::String &argume
 		if (!clue.found && matches(clue.when, kind, argument)) {
 			clue.found = true;
 			changed = true;
-			_news += "Clue noted (" + goalTitle(clue.goal) + "): " + clue.text + "\n";
+			_news += "Clue noted (" + goalTitle(clue.goal) + "): " + expand(clue.text) + "\n";
 		}
 	}
 	for (uint i = 0; i < _goals.size(); i++) {
@@ -257,7 +269,7 @@ Common::String NeuroJournal::describeClues(const Common::String &which) const {
 	bool any = false;
 	for (const auto &clue : _clues) {
 		if (clue.found && clue.goal == match->id) {
-			text += "- " + clue.text + "\n";
+			text += "- " + expand(clue.text) + "\n";
 			any = true;
 		}
 	}

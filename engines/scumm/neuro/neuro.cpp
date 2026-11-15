@@ -90,6 +90,7 @@ NeuroBridge::NeuroBridge(ScummEngine *vm, const Common::String &url) : _vm(vm), 
 		_data.load(ConfMan.get("neuro_descriptions"));
 
 	_journal.loadGoals(_data.ini());
+	_journal.setVarReader([](void *vm, int var) { return ((ScummEngine *)vm)->readVar(var); }, _vm);
 	// Starting straight from a savegame (-x) loads it before the first frame
 	if (ConfMan.hasKey("save_slot") && ConfMan.getInt("save_slot") >= 0)
 		loadJournal(ConfMan.getInt("save_slot"));
