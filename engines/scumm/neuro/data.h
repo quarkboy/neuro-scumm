@@ -36,17 +36,22 @@ namespace Scumm {
  * The file is an INI file with one [roomN] section per room:
  *   name, description      the room itself
  *   object.ID              a note shown after the object's name
+ *   name.ID                a name for an object in place of the game's own;
+ *                          an empty value hides the object
  *   actor.ID               a name for an actor; overrides the game's own, which
  *                          can be left over from another room. A leading '-'
  *                          names the speaker but keeps it out of the room list,
  *                          and an empty value hides the actor.
  *   voice.COLOR            who is speaking when text of that colour appears
  *                          without belonging to any actor (a dog that is
- *                          part of the scenery, someone off screen)
+ *                          part of the scenery, someone off screen); "-"
+ *                          drops such text (labels drawn under the pointer)
  *   voice.ACTOR.COLOR      who is speaking when that actor's text has that
  *                          colour (one actor standing in for a group)
  *   spot.NAME = X,Y | TEXT a place with no object that she can walk to; the
  *                          optional text says what she sees when she does
+ * A room that the game draws from another room's data (the forest screens)
+ * uses that room's section for whatever its own section does not say.
  * [alert.ID] sections turn a moment she must not miss into a prompt:
  *   room      room number it applies to (omit for any room)
  *   when      arrived: / left: (a character), appeared: / disappeared: (a
@@ -58,7 +63,10 @@ namespace Scumm {
  *   ask       what she is asked to do about it
  *   do        optional "VERB | TARGET" (or "VERB | TARGET | SECOND TARGET").
  *             With it, ask must be a yes/no question, and answering yes
- *             carries out that command at once.
+ *             carries out that command at once. For a character who left,
+ *             {exit} in say and do stands for the thing they were last seen at.
+ *   hold      optional number of a game variable (a timer) that is kept from
+ *             changing while the question is open
  *   then      optional second command in the same form, run as soon as the
  *             first one has played out
  * [line.ID] sections name who says one particular line, where neither the
@@ -73,9 +81,17 @@ class NeuroData {
 public:
 	bool load(const Common::String &path);
 
+	/** Says which room's data the game is drawing the given room from. */
+	void setRoomResource(int room, int resource);
+
+	/** The room whose section supplies the description: the room itself or the one it is drawn from. */
+	int descriptionRoom(int room) const;
+
 	Common::String roomName(int room) const;
 	Common::String roomDescription(int room) const;
 	Common::String objectNote(int room, int object) const;
+	/** Returns false if the file does not rename this object; an empty name hides it. */
+	bool objectName(int room, int object, Common::String &name) const;
 	/** actor: the actor number, or 0 for text that belongs to no actor. */
 	Common::String voiceName(int room, int color, int actor = 0) const;
 
@@ -102,12 +118,18 @@ public:
 	struct Alert {
 		int room = 0;
 		uint32 leadMs = 0;
+		int holdVar = 0;
 		Common::String kind, name, priority, say, ask, command, then;
 	};
 	const Common::Array<Alert> &alerts() const { return _alerts; }
 
 private:
 	Common::String get(const Common::String &section, const Common::String &key) const;
+	/** Looks in the room's own section, then in that of the room it is drawn from. */
+	bool roomKey(int room, const Common::String &key, Common::String &value) const;
+	Common::String roomGet(int room, const Common::String &key) const;
+
+	Common::HashMap<int, int> _roomResources;
 
 	Common::INIFile _ini;
 	Common::Array<Alert> _alerts;

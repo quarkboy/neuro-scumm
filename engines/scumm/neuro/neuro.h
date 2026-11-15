@@ -38,6 +38,9 @@ namespace Scumm {
 
 class ScummEngine;
 
+/** How long a yes/no question about a passing moment can still be answered. */
+static const uint32 kQuestionOpenMs = 20000;
+
 struct NeuroThing {
 	int id = 0;
 	int x = 0;
@@ -197,6 +200,9 @@ private:
 	Common::String _questionCommand;
 	Common::String _questionThen;
 	uint32 _questionAskedAt = 0;
+	// A game timer that stands still while the question is open
+	int _questionHoldVar = 0;
+	int _questionHoldValue = 0;
 	void actionAnswer(const Common::String &id, const NeuroArgs &args);
 
 	int _pendingAlert = -1;
@@ -230,6 +236,19 @@ private:
 	Common::HashMap<int, uint64> _seenRooms;
 	void sendIntro();
 	Common::String describeChanges(const NeuroWorld &before, const NeuroWorld &after);
+
+	// Where each character in the room was last seen, and from that the thing
+	// each one who left was standing at (by lower-case name)
+	int _actorSeenRoom = 0;
+	struct SeenActor {
+		Common::Point pos;
+		Common::String name;
+	};
+	Common::HashMap<int, SeenActor> _actorSeen;
+	/** Named characters seen in this room who are no longer in it; each is reported once. */
+	NeuroThingList departed(const NeuroWorld &world);
+	Common::HashMap<Common::String, Common::String> _leftAt;
+	Common::String lastSeenAt(int actor, const NeuroWorld &world) const;
 
 	/** Converts game text to UTF-8, dropping control codes and name padding. */
 	Common::String cleanText(const byte *text, bool resolveCodes);

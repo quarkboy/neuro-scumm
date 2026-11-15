@@ -62,6 +62,7 @@ bool NeuroData::load(const Common::String &path) {
 		alert.ask = get(section.name, "ask");
 		alert.command = get(section.name, "do");
 		alert.then = get(section.name, "then");
+		alert.holdVar = atoi(get(section.name, "hold").c_str());
 
 		const Common::String when = get(section.name, "when");
 		const size_t colon = when.findFirstOf(':');
@@ -92,16 +93,49 @@ static Common::String roomSection(int room) {
 	return Common::String::format("room%d", room);
 }
 
+void NeuroData::setRoomResource(int room, int resource) {
+	if (room != resource)
+		_roomResources[room] = resource;
+}
+
+bool NeuroData::roomKey(int room, const Common::String &key, Common::String &value) const {
+	const int rooms[2] = {room, _roomResources.getValOrDefault(room, 0)};
+	for (const int candidate : rooms) {
+		const Common::String section = roomSection(candidate);
+		if (candidate && _ini.hasSection(section) && _ini.getKey(key, section, value)) {
+			value.trim();
+			return true;
+		}
+	}
+	return false;
+}
+
+Common::String NeuroData::roomGet(int room, const Common::String &key) const {
+	Common::String value;
+	roomKey(room, key, value);
+	return value;
+}
+
+int NeuroData::descriptionRoom(int room) const {
+	if (get(roomSection(room), "description").empty() && _roomResources.contains(room))
+		return _roomResources[room];
+	return room;
+}
+
 Common::String NeuroData::roomName(int room) const {
-	return get(roomSection(room), "name");
+	return roomGet(room, "name");
 }
 
 Common::String NeuroData::roomDescription(int room) const {
-	return get(roomSection(room), "description");
+	return roomGet(room, "description");
 }
 
 Common::String NeuroData::objectNote(int room, int object) const {
-	return get(roomSection(room), Common::String::format("object.%d", object));
+	return roomGet(room, Common::String::format("object.%d", object));
+}
+
+bool NeuroData::objectName(int room, int object, Common::String &name) const {
+	return roomKey(room, Common::String::format("name.%d", object), name);
 }
 
 bool NeuroData::lineSpeaker(const Common::String &text, Common::String &speaker) const {
@@ -113,16 +147,13 @@ bool NeuroData::lineSpeaker(const Common::String &text, Common::String &speaker)
 
 Common::String NeuroData::voiceName(int room, int color, int actor) const {
 	if (actor)
-		return get(roomSection(room), Common::String::format("voice.%d.%d", actor, color));
-	return get(roomSection(room), Common::String::format("voice.%d", color));
+		return roomGet(room, Common::String::format("voice.%d.%d", actor, color));
+	return roomGet(room, Common::String::format("voice.%d", color));
 }
 
 bool NeuroData::actorName(int room, int actor, Common::String &name) const {
-	const Common::String key = Common::String::format("actor.%d", actor);
-	if (_ini.hasSection(roomSection(room)) && _ini.getKey(key, roomSection(room), name)) {
-		name.trim();
+	if (roomKey(room, Common::String::format("actor.%d", actor), name))
 		return true;
-	}
 	if (_ini.hasSection("actors") && _ini.getKey(Common::String::format("%d", actor), "actors", name)) {
 		name.trim();
 		return true;
@@ -132,6 +163,8 @@ bool NeuroData::actorName(int room, int actor, Common::String &name) const {
 
 Common::Array<NeuroData::Spot> NeuroData::spots(int room) const {
 	Common::Array<Spot> result;
+	if (!_ini.hasSection(roomSection(room)))
+		room = _roomResources.getValOrDefault(room, 0);
 	if (!_ini.hasSection(roomSection(room)))
 		return result;
 

@@ -187,7 +187,7 @@ void NeuroBridge::actionAnswer(const Common::String &id, const NeuroArgs &args) 
 	_questionCommand.clear();
 	_questionThen.clear();
 	// These questions are about a passing moment
-	if (command.empty() || g_system->getMillis() - _questionAskedAt > 20000) {
+	if (command.empty() || g_system->getMillis() - _questionAskedAt > kQuestionOpenMs) {
 		sendActionResult(id, true, "No question is waiting.");
 		return;
 	}

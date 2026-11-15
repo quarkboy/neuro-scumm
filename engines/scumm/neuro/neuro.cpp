@@ -158,6 +158,13 @@ void NeuroBridge::update() {
 	while (_ws.receive(message))
 		handleMessage(message);
 
+	if (_questionHoldVar) {
+		if (_questionCommand.empty() || g_system->getMillis() - _questionAskedAt > kQuestionOpenMs)
+			_questionHoldVar = 0;
+		else
+			_vm->writeVar(_questionHoldVar, _questionHoldValue);
+	}
+
 	updateSpeed();
 	updateClick();
 	updateQueuedCommand();

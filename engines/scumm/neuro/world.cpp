@@ -141,6 +141,7 @@ static bool numberDuplicates(NeuroThingList &objects, NeuroThingList &actors) {
 void NeuroBridge::collectWorld(NeuroWorld &world) {
 	world = NeuroWorld();
 	world.room = _vm->_currentRoom;
+	_data.setRoomResource(world.room, _vm->_roomResource);
 
 	// Things that cannot be used right now still take part in numbering, so
 	// that "door 2" stays "door 2" when door 1 becomes unusable.
@@ -149,6 +150,9 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 	for (int i = 1; i < _vm->_numLocalObjects; i++) {
 		const ObjectData &od = _vm->_objs[i];
 		if (od.obj_nr < 1 || od.width == 0 || od.height == 0)
+			continue;
+		// Scripts park what a screen does not use beyond the edge of the room
+		if (od.x_pos >= _vm->_roomWidth || od.x_pos + od.width <= 0)
 			continue;
 		const bool available = !_vm->getClass(od.obj_nr, kObjectClassUntouchable) && _vm->whereIsObject(od.obj_nr) == WIO_ROOM;
 
@@ -170,7 +174,8 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 		thing.id = od.obj_nr;
 		thing.x = od.x_pos + od.width / 2;
 		thing.state = od.state;
-		thing.name = cleanText(_vm->getObjOrActorName(od.obj_nr), true);
+		if (!_data.objectName(world.room, od.obj_nr, thing.name))
+			thing.name = cleanText(_vm->getObjOrActorName(od.obj_nr), true);
 		thing.note = _data.objectNote(world.room, od.obj_nr);
 		if (!thing.name.empty()) {
 			world.objects.push_back(thing);
@@ -303,10 +308,19 @@ void NeuroBridge::debugDump() {
 			cleanText(_vm->getObjOrActorName(od.obj_nr), true).c_str(), od.x_pos, od.y_pos, od.width, od.height,
 			od.state, _vm->getClass(od.obj_nr, kObjectClassUntouchable));
 	}
+	Common::String running;
+	for (int i = 0; i < NUM_SCRIPT_SLOT; i++) {
+		if (_vm->vm.slot[i].status != ssDead && _vm->vm.slot[i].where == WIO_GLOBAL)
+			running += Common::String::format(" %d", _vm->vm.slot[i].number);
+	}
+	debug("NEURODUMP global scripts running:%s", running.c_str());
 	for (int i = 1; i < _vm->_numActors; i++) {
 		Actor *actor = _vm->_actors[i];
-		if (!actor->isInCurrentRoom())
+		if (!actor->isInCurrentRoom()) {
+			if (actor->_room)
+				debug("NEURODUMP actor.%d is in room %d", i, actor->_room);
 			continue;
+		}
 		debug("NEURODUMP actor.%d '%s' at %d,%d costume %d visible %d untouchable %d", i,
 			cleanText(actor->getActorName(), true).c_str(), actor->getPos().x, actor->getPos().y,
 			actor->_costume, actor->_visible, _vm->getClass(i, kObjectClassUntouchable));
@@ -395,6 +409,60 @@ static Common::String baseName(const Common::String &name) {
 	return base;
 }
 
+Common::String NeuroBridge::lastSeenAt(int actor, const NeuroWorld &world) const {
+	if (!_actorSeen.contains(actor))
+		return Common::String();
+	const Common::Point pos = _actorSeen[actor].pos;
+
+	// Someone leaving walks up to the way out first, as she would
+	Common::String nearest;
+	int best = 30;
+	for (const auto &thing : world.objects) {
+		const int index = _vm->getObjectIndex(thing.id);
+		if (index <= 0)
+			continue;
+		const ObjectData &od = _vm->_objs[index];
+		const int dx = MAX(MAX<int>(od.x_pos - pos.x, pos.x - (od.x_pos + od.width)), 0);
+		const int dy = MAX(MAX<int>(od.y_pos - pos.y, pos.y - (od.y_pos + od.height)), 0);
+		const int walk = MAX(ABS(od.walk_x - pos.x), ABS(od.walk_y - pos.y));
+		// Standing inside a thing's outline says less than standing where one walks to use it
+		const int distance = MIN(walk, MAX(dx, dy) + 12);
+		if (distance < best) {
+			best = distance;
+			nearest = thing.name;
+		}
+	}
+	return nearest;
+}
+
+NeuroThingList NeuroBridge::departed(const NeuroWorld &world) {
+	// Not only those she was told about: someone can cross the screen and be
+	// gone before the game hands control back
+	NeuroThingList result;
+	Common::Array<int> gone;
+	_leftAt.clear();
+	for (const auto &seen : _actorSeen) {
+		const Actor *actor = _vm->_actors[seen._key];
+		if (actor->_visible && actor->isInCurrentRoom())
+			continue;
+		gone.push_back(seen._key);
+
+		NeuroThing thing;
+		thing.id = seen._key;
+		thing.name = seen._value.name;
+		Common::String key = thing.name;
+		key.toLowercase();
+		const Common::String exit = lastSeenAt(seen._key, world);
+		_leftAt[key] = exit;
+		if (!exit.empty())
+			thing.name += " (last seen at: " + exit + ")";
+		result.push_back(thing);
+	}
+	for (const int actor : gone)
+		_actorSeen.erase(actor);
+	return result;
+}
+
 Common::String NeuroBridge::describeChanges(const NeuroWorld &before, const NeuroWorld &after) {
 	const NeuroThingList got = difference(before.inventory, after.inventory);
 	const NeuroThingList lost = difference(after.inventory, before.inventory);
@@ -422,7 +490,7 @@ Common::String NeuroBridge::describeChanges(const NeuroWorld &before, const Neur
 		{"Appeared", appeared},
 		{"Gone", gone},
 		{"Arrived", difference(before.actors, after.actors)},
-		{"Left", difference(after.actors, before.actors)}
+		{"Left", departed(after)}
 	};
 
 	Common::String text;
@@ -483,7 +551,27 @@ static bool alertHolds(const NeuroData::Alert &alert, const NeuroWorld &world) {
 	return false;
 }
 
-void NeuroBridge::fireAlert(const NeuroData::Alert &alert, const NeuroWorld &world) {
+/** Fills in {exit}; false if the alert needs it and nobody was seen leaving. */
+static bool fillExit(Common::String &text, const Common::String &exit) {
+	const size_t at = text.find("{exit}");
+	if (at == Common::String::npos)
+		return true;
+	if (exit.empty())
+		return false;
+	text.replace(at, 6, exit);
+	return true;
+}
+
+void NeuroBridge::fireAlert(const NeuroData::Alert &original, const NeuroWorld &world) {
+	NeuroData::Alert alert = original;
+	Common::String exit;
+	for (const auto &left : _leftAt) {
+		if (alert.kind == "left" && left._key.contains(alert.name))
+			exit = left._value;
+	}
+	if (!fillExit(alert.say, exit) || !fillExit(alert.command, exit))
+		return;
+
 	// Only one force may be outstanding; otherwise say it as plainly as context allows
 	if (!_forceActive && !world.inDialogue) {
 		const bool question = !alert.command.empty();
@@ -491,6 +579,9 @@ void NeuroBridge::fireAlert(const NeuroData::Alert &alert, const NeuroWorld &wor
 			_questionCommand = alert.command;
 			_questionThen = alert.then;
 			_questionAskedAt = g_system->getMillis();
+			_questionHoldVar = alert.holdVar;
+			if (_questionHoldVar)
+				_questionHoldValue = _vm->readVar(_questionHoldVar);
 		}
 		sendForce(alert.say, alert.ask, question ? "answer" : "interact", alert.priority);
 		_lastActivity = g_system->getMillis();
@@ -523,8 +614,15 @@ void NeuroBridge::checkAlerts(const NeuroWorld &before, const NeuroWorld &after)
 		if (alert.room && alert.room != after.room)
 			continue;
 		// It has to have just become true
-		if (before.room != after.room || alertHolds(alert, before) || !alertHolds(alert, after))
+		if (alert.kind == "left") {
+			bool left = false;
+			for (const auto &who : _leftAt)
+				left |= who._key.contains(alert.name);
+			if (!left)
+				continue;
+		} else if (before.room != after.room || alertHolds(alert, before) || !alertHolds(alert, after)) {
 			continue;
+		}
 
 		if (alert.leadMs > _reactionMs) {
 			_pendingAlert = i;
@@ -551,6 +649,21 @@ void NeuroBridge::pollWorld() {
 	if (now < _nextWorldPoll)
 		return;
 	_nextWorldPoll = now + kWorldPollIntervalMs;
+
+	// Where each character was last seen, to say which way one went
+	if (_actorSeenRoom != _vm->_currentRoom) {
+		_actorSeenRoom = _vm->_currentRoom;
+		_actorSeen.clear();
+	}
+	const int ego = _vm->VAR(_vm->VAR_EGO);
+	for (int i = 1; i < _vm->_numActors; i++) {
+		const Actor *actor = _vm->_actors[i];
+		if (i == ego || !actor->_visible || !actor->isInCurrentRoom() || _vm->getClass(i, kObjectClassUntouchable))
+			continue;
+		const Common::String name = actorName(i, true);
+		if (!name.empty())
+			_actorSeen[i] = {actor->getPos(), name};
+	}
 
 	// Only report once things have settled: mid-cutscene and mid-action
 	// states are noise.
@@ -599,10 +712,16 @@ void NeuroBridge::pollWorld() {
 		if (_tokensSent - _introSentAt > _contextTokens)
 			sendIntro();
 
-		const bool remembered = _seenRooms.contains(world.room) && _tokensSent - _seenRooms[world.room] <= _contextTokens;
+		// Screens that share one description (the forest) are told it once
+		const int seenAs = _data.descriptionRoom(world.room);
+		const bool remembered = _seenRooms.contains(seenAs) && _tokensSent - _seenRooms[seenAs] <= _contextTokens;
 		if (!remembered)
-			_seenRooms[world.room] = _tokensSent;
-		sendContext(describeRoom(world, remembered ? kRoomRevisit : kRoomFirstVisit), false);
+			_seenRooms[seenAs] = _tokensSent;
+		Common::String text = describeRoom(world, remembered ? kRoomRevisit : kRoomFirstVisit);
+		const NeuroThingList left = departed(world);
+		if (!left.empty())
+			text += "- Just left: " + joinNames(left) + "\n";
+		sendContext(text, false);
 		_outcomeTold = true;
 	} else {
 		Common::String changes = describeChanges(_described, world);
@@ -623,6 +742,7 @@ void NeuroBridge::pollWorld() {
 
 	updateForces(world);
 
+	_leftAt.clear();
 	_described = world;
 }
 
@@ -680,6 +800,8 @@ void NeuroBridge::onTalkStarted(int actor, const byte *text) {
 			speaker = Common::String::format("Stranger %u", index + 1);
 		} else {
 			speaker = _data.voiceName(_vm->_currentRoom, _vm->_charsetColor);
+			if (speaker == "-")
+				return;
 			if (speaker.empty()) {
 				speaker = "Narrator";
 				debug(1, "Neuro: Unattributed line in room %d, text colour %d: %s", _vm->_currentRoom, _vm->_charsetColor, line.c_str());
