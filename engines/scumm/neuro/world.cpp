@@ -174,9 +174,24 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 		thing.id = od.obj_nr;
 		thing.x = od.x_pos + od.width / 2;
 		thing.state = od.state;
-		if (!_data.objectName(world.room, od.obj_nr, thing.name))
+		const bool renamed = _data.objectName(world.room, od.obj_nr, thing.name);
+		if (!renamed)
 			thing.name = cleanText(_vm->getObjOrActorName(od.obj_nr), true);
 		thing.note = _data.objectNote(world.room, od.obj_nr);
+		// Several objects given one name and note are one thing to her (the
+		// strips along a map's edge that lead the same way); whichever can be used stands for all
+		bool merged = false;
+		for (uint j = 0; renamed && j < world.objects.size(); j++) {
+			if (world.objects[j].name != thing.name || world.objects[j].note != thing.note)
+				continue;
+			merged = true;
+			if (!usable[j] && available && reachable) {
+				world.objects[j] = thing;
+				usable[j] = true;
+			}
+		}
+		if (merged)
+			continue;
 		if (!thing.name.empty()) {
 			world.objects.push_back(thing);
 			usable.push_back(available && reachable);
@@ -409,7 +424,8 @@ static NeuroThingList difference(const NeuroThingList &from, const NeuroThingLis
 	for (const auto &thing : to) {
 		bool found = false;
 		for (const auto &other : from) {
-			if (other.id == thing.id && other.name == thing.name) {
+			// By name: what replaces a thing under the same name is the same thing to her
+			if (other.name == thing.name) {
 				found = true;
 				break;
 			}
