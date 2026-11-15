@@ -50,6 +50,10 @@ namespace Scumm {
  *                          colour (one actor standing in for a group)
  *   prompt                 what she is asked when picking a line to say here, in
  *                          place of "Pick a line to say."
+ *   layout = shifting      the room is redrawn as a new place without being left
+ *                          (the catacombs); list it afresh when things change
+ *   relative = yes         say whether each thing lies to the left or the right of
+ *                          Guybrush (the navigator's head points one way or the other)
  *   comings = quiet        characters wander in and out of sight all the time here
  *                          (dots on the island map); do not report each one
  *   spot.NAME = X,Y | TEXT a place with no object that she can walk to; the
@@ -105,6 +109,8 @@ public:
 
 	Common::String roomName(int room) const;
 	bool quietComings(int room) const;
+	bool shiftingLayout(int room) const;
+	bool relativePlaces(int room) const;
 	Common::String roomPrompt(int room) const;
 	bool doorQuestion() const;
 	Common::String roomDescription(int room) const;

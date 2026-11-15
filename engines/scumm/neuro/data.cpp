@@ -145,6 +145,14 @@ bool NeuroData::quietComings(int room) const {
 	return roomGet(room, "comings").equalsIgnoreCase("quiet");
 }
 
+bool NeuroData::shiftingLayout(int room) const {
+	return roomGet(room, "layout").equalsIgnoreCase("shifting");
+}
+
+bool NeuroData::relativePlaces(int room) const {
+	return roomGet(room, "relative").equalsIgnoreCase("yes");
+}
+
 Common::String NeuroData::roomPrompt(int room) const {
 	return roomGet(room, "prompt");
 }

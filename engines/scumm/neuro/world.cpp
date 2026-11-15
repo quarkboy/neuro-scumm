@@ -179,6 +179,13 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 		if (!renamed)
 			thing.name = cleanText(_vm->getObjOrActorName(od.obj_nr), true);
 		thing.note = _data.objectNote(world.room, od.obj_nr);
+		if (_data.relativePlaces(world.room)) {
+			// Left or right is all the game's own pointer tells apart (an actor turned
+			// to face its goal only ever turns sideways)
+			const Common::Point ego = _vm->_actors[_vm->VAR(_vm->VAR_EGO)]->getPos();
+			const char *where = od.x_pos + od.width / 2 < ego.x ? "to Guybrush's left" : "to Guybrush's right";
+			thing.note = thing.note.empty() ? Common::String(where) : thing.note + "; " + where;
+		}
 		// Several objects given one name and note are one thing to her (the
 		// strips along a map's edge that lead the same way); whichever can be used stands for all
 		bool merged = false;
@@ -799,6 +806,9 @@ void NeuroBridge::pollWorld() {
 		_outcomeTold = true;
 	} else {
 		Common::String changes = describeChanges(_described, world);
+		// A room redrawn as somewhere else is told like a new room
+		if (_data.shiftingLayout(world.room) && (changes.contains("Appeared:") || changes.contains("Gone:")))
+			changes = "The place has changed around Guybrush.\n" + describeRoom(world, kRoomRevisit);
 		// Her cue to act: someone coming or going, or the result of what she just did
 		if (!changes.empty()) {
 			sendContext(changes, !(_awaitingOutcome || changes.contains("Arrived:") || changes.contains("Left:")));
