@@ -51,7 +51,7 @@ namespace Scumm {
  *   text    the clue as a short note in plain words
  * A clue is noted once, announced at the next pause, and listed under its
  * goal for as long as that goal is unfinished. A goal's optional "title" is
- * the few words used to refer to it there.
+ * the few words she uses to ask for its clues.
  *
  * [nudge.ID] sections suggest writing something down, once:
  *   when    a trigger, as above
@@ -72,7 +72,10 @@ public:
 
 	void addNote(const Common::String &text);
 
-	Common::String describe(bool withCompleted = false, bool withClues = false) const;
+	Common::String describe(bool withCompleted = false) const;
+
+	/** The clues noted for one unfinished goal, named by its title, id or opening words. */
+	Common::String describeClues(const Common::String &which) const;
 	bool isEmpty() const;
 
 	/** Bridge state that has to survive a save and load along with the goals. */

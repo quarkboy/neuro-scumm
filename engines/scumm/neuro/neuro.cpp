@@ -370,14 +370,12 @@ void NeuroBridge::registerActions(bool interactOnly) {
 	Common::JSONObject readJournal;
 	readJournal.setVal("name", new Common::JSONValue("read_journal"));
 	readJournal.setVal("description", new Common::JSONValue(
-		"Read your goals and notes. show_clues adds the clues noted for each goal; show_completed adds finished goals."));
+		"Read your goals and notes. clues_for: name a goal to read its clues instead. show_completed adds finished goals."));
 	Common::JSONObject completedType;
 	completedType.setVal("type", new Common::JSONValue("boolean"));
 	Common::JSONObject journalProperties;
 	journalProperties.setVal("show_completed", new Common::JSONValue(completedType));
-	Common::JSONObject cluesType;
-	cluesType.setVal("type", new Common::JSONValue("boolean"));
-	journalProperties.setVal("show_clues", new Common::JSONValue(cluesType));
+	journalProperties.setVal("clues_for", stringSchema());
 	Common::JSONObject journalSchema;
 	journalSchema.setVal("type", new Common::JSONValue("object"));
 	journalSchema.setVal("properties", new Common::JSONValue(journalProperties));
@@ -625,10 +623,12 @@ void NeuroBridge::handleAction(const Common::String &id, const Common::String &r
 	if (name == "read_journal") {
 		Common::String completed = args.get("show_completed|completed|show_done|all", true);
 		completed.toLowercase();
-		Common::String clues = args.get("show_clues|clues");
-		clues.toLowercase();
-		sendActionResult(id, true, _journal.describe(completed == "true" || completed == "yes" || completed == "1",
-			clues == "true" || clues == "yes" || clues == "1"));
+		// One goal's clues at a time: all of them together would be a wall of text
+		const Common::String cluesFor = args.get("clues_for|clues|goal|show_clues");
+		if (!cluesFor.empty())
+			sendActionResult(id, true, _journal.describeClues(cluesFor));
+		else
+			sendActionResult(id, true, _journal.describe(completed == "true" || completed == "yes" || completed == "1"));
 		return;
 	}
 	if (name == "add_note") {

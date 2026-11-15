@@ -226,22 +226,59 @@ bool NeuroJournal::isEmpty() const {
 	return _notes.empty();
 }
 
-Common::String NeuroJournal::describe(bool withCompleted, bool withClues) const {
+Common::String NeuroJournal::describeClues(const Common::String &which) const {
+	Common::String wanted = which;
+	wanted.toLowercase();
+	wanted.trim();
+
+	// By id, by title, or by any words of the goal itself; the first unfinished one that fits
+	const Goal *match = nullptr;
+	Common::String titles;
+	for (int pass = 0; pass < 2 && !match; pass++) {
+		for (const auto &goal : _goals) {
+			if (goal.nudge || goal.state != kActive)
+				continue;
+			Common::String title = goalTitle(goal.id), text = goal.text;
+			if (pass == 0)
+				titles += (titles.empty() ? "" : ", ") + title;
+			title.toLowercase();
+			text.toLowercase();
+			const bool fits = pass == 0 ? (wanted == goal.id || wanted == title) : (title.contains(wanted) || wanted.contains(title) || text.contains(wanted));
+			if (fits && !wanted.empty()) {
+				match = &goal;
+				break;
+			}
+		}
+	}
+	if (!match)
+		return titles.empty() ? Common::String("You have no goals yet.") : "Say which goal: " + titles + ".";
+
+	Common::String text = "## Clues: " + goalTitle(match->id) + "\n\n";
+	bool any = false;
+	for (const auto &clue : _clues) {
+		if (clue.found && clue.goal == match->id) {
+			text += "- " + clue.text + "\n";
+			any = true;
+		}
+	}
+	return any ? text : text + "None noted yet.\n";
+}
+
+Common::String NeuroJournal::describe(bool withCompleted) const {
 	Common::String active, done;
 	uint hiddenClues = 0;
 	for (const auto &goal : _goals) {
 		if (goal.nudge)
 			continue;
 		if (goal.state == kActive) {
-			active += "- " + goal.text + "\n";
-			for (const auto &clue : _clues) {
-				if (!clue.found || clue.goal != goal.id)
-					continue;
-				if (withClues)
-					active += "  - clue: " + clue.text + "\n";
-				else
-					hiddenClues++;
-			}
+			uint clues = 0;
+			for (const auto &clue : _clues)
+				clues += (clue.found && clue.goal == goal.id) ? 1 : 0;
+			active += "- " + goal.text;
+			if (clues)
+				active += Common::String::format(" (%u clue%s)", clues, clues == 1 ? "" : "s");
+			active += "\n";
+			hiddenClues += clues;
 		} else if (goal.state == kDone)
 			done += "- " + goal.text + "\n";
 	}
@@ -249,7 +286,7 @@ Common::String NeuroJournal::describe(bool withCompleted, bool withClues) const 
 	Common::String text = "## Your journal\n\n";
 	text += "Current goals:\n" + (active.empty() ? Common::String("- none yet\n") : active);
 	if (hiddenClues)
-		text += Common::String::format("(%u clues noted; show_clues lists them.)\n", hiddenClues);
+		text += "(To read a goal's clues, set clues_for to the goal.)\n";
 	// Finished goals are left out unless asked for: seeing them invites doing them again
 	if (withCompleted)
 		text += "\nCompleted goals:\n" + (done.empty() ? Common::String("- none yet\n") : done);
