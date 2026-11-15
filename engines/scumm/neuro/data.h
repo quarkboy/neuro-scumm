@@ -48,6 +48,8 @@ namespace Scumm {
  *                          drops such text (labels drawn under the pointer)
  *   voice.ACTOR.COLOR      who is speaking when that actor's text has that
  *                          colour (one actor standing in for a group)
+ *   prompt                 what she is asked when picking a line to say here, in
+ *                          place of "Pick a line to say."
  *   comings = quiet        characters wander in and out of sight all the time here
  *                          (dots on the island map); do not report each one
  *   spot.NAME = X,Y | TEXT a place with no object that she can walk to; the
@@ -73,6 +75,10 @@ namespace Scumm {
  *             changing while the question is open
  *   then      optional second command in the same form, run as soon as the
  *             first one has played out
+ * [watch.ID] sections put into words something the game only shows as animation
+ * and keeps as a number (who won an exchange of a sword fight):
+ *   var       the game variable
+ *   say       what she is told when it goes up; {value} is the new value
  * [line.ID] sections name who says one particular line, where neither the
  * actor nor the text colour settles it (sound effects shown as text, say):
  *   text      the line, exactly as it is sent
@@ -95,6 +101,7 @@ public:
 
 	Common::String roomName(int room) const;
 	bool quietComings(int room) const;
+	Common::String roomPrompt(int room) const;
 	bool doorQuestion() const;
 	Common::String roomDescription(int room) const;
 	Common::String objectNote(int room, int object) const;
@@ -132,6 +139,12 @@ public:
 	};
 	const Common::Array<Alert> &alerts() const { return _alerts; }
 
+	struct Watch {
+		int var = 0;
+		Common::String say;
+	};
+	const Common::Array<Watch> &watches() const { return _watches; }
+
 private:
 	Common::String get(const Common::String &section, const Common::String &key) const;
 	/** Looks in the room's own section, then in that of the room it is drawn from. */
@@ -142,6 +155,7 @@ private:
 
 	Common::INIFile _ini;
 	Common::Array<Alert> _alerts;
+	Common::Array<Watch> _watches;
 	Common::StringMap _lineSpeakers;
 };
 

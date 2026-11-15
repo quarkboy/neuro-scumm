@@ -52,6 +52,14 @@ bool NeuroData::load(const Common::String &path) {
 				_lineSpeakers[text] = get(section.name, "speaker");
 			continue;
 		}
+		if (section.name.hasPrefix("watch.")) {
+			Watch watch;
+			watch.var = atoi(get(section.name, "var").c_str());
+			watch.say = get(section.name, "say");
+			if (watch.var && !watch.say.empty())
+				_watches.push_back(watch);
+			continue;
+		}
 		if (!section.name.hasPrefix("alert."))
 			continue;
 		Alert alert;
@@ -134,6 +142,10 @@ Common::String NeuroData::roomName(int room) const {
 
 bool NeuroData::quietComings(int room) const {
 	return roomGet(room, "comings").equalsIgnoreCase("quiet");
+}
+
+Common::String NeuroData::roomPrompt(int room) const {
+	return roomGet(room, "prompt");
 }
 
 bool NeuroData::doorQuestion() const {

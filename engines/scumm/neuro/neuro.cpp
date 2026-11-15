@@ -167,6 +167,7 @@ void NeuroBridge::update() {
 
 	updateSpeed();
 	updateClick();
+	updatePager();
 	updateQueuedCommand();
 
 	// Saving and loading happen between frames. The journal travels with
@@ -242,6 +243,9 @@ void NeuroBridge::resetAfterLoad() {
 	_recentLines.clear();
 	_lastActivity = g_system->getMillis();
 	_seenRooms.clear();
+	_watched.clear();
+	_pagerState = kPagerIdle;
+	_pagerLines.clear();
 	sendContext("A saved game was loaded. Forget where you were; your situation is described again below.", true);
 }
 

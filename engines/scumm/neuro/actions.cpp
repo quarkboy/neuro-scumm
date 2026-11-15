@@ -123,13 +123,132 @@ static Common::String listDialogue(const NeuroThingList &lines) {
 	return text;
 }
 
+void NeuroBridge::scrollArrows(const NeuroWorld &world, int &up, int &down) {
+	up = down = 0;
+	if (!world.inDialogue || world.verbs.empty())
+		return;
+	int firstLine = 0x7FFF;
+	for (int slot = 1; slot < _vm->_numVerbs; slot++) {
+		const VerbSlot &vs = _vm->_verbs[slot];
+		if (vs.verbid == world.verbs[0].id)
+			firstLine = vs.curRect.top;
+	}
+	for (int slot = 1; slot < _vm->_numVerbs; slot++) {
+		const VerbSlot &vs = _vm->_verbs[slot];
+		if (!vs.verbid || vs.saveid != 0 || vs.curmode != 1 || vs.type != kTextVerbType)
+			continue;
+		if (!cleanText(_vm->getResourceAddress(rtVerb, slot), true).empty())
+			continue;
+		// An arrow has no text; the one level with the first line scrolls up
+		if (vs.curRect.top <= firstLine + 4)
+			up = vs.verbid;
+		else
+			down = vs.verbid;
+	}
+}
+
+bool NeuroBridge::pagerCovers(const NeuroWorld &world) const {
+	if (_pagerLines.empty() || world.verbs.empty())
+		return false;
+	for (const auto &verb : world.verbs) {
+		bool listed = false;
+		for (const auto &line : _pagerLines)
+			listed |= line.name == verb.name;
+		if (!listed)
+			return false;
+	}
+	return true;
+}
+
+void NeuroBridge::pressArrow(int verb, const NeuroWorld &world) {
+	_pagerSaw = world.verbs[0].name;
+	_pagerPressedAt = g_system->getMillis();
+	_vm->runInputScript(kVerbClickArea, verb, 1);
+}
+
+void NeuroBridge::updatePager() {
+	if (_pagerState == kPagerIdle)
+		return;
+
+	NeuroWorld world;
+	collectWorld(world);
+	if (!playerHasControl() || !world.inDialogue || world.verbs.empty()) {
+		_pagerState = kPagerIdle;
+		_pagerLines.clear();
+		return;
+	}
+	// The list moves a frame or so after an arrow is pressed
+	const uint32 sincePress = g_system->getMillis() - _pagerPressedAt;
+	if (_pagerPressedAt && world.verbs[0].name == _pagerSaw && sincePress < 1000)
+		return;
+	_pagerPressedAt = 0;
+
+	int up, down;
+	scrollArrows(world, up, down);
+
+	if (_pagerState == kPagerToTop) {
+		if (up) {
+			pressArrow(up, world);
+			return;
+		}
+		_pagerLines.clear();
+		_pagerState = kPagerDown;
+	}
+	if (_pagerState == kPagerDown) {
+		for (const auto &verb : world.verbs) {
+			bool listed = false;
+			for (const auto &line : _pagerLines)
+				listed |= line.name == verb.name;
+			if (!listed)
+				_pagerLines.push_back(verb);
+		}
+		if (down)
+			pressArrow(down, world);
+		else
+			_pagerState = kPagerIdle;
+		return;
+	}
+
+	// Seeking the line she chose
+	for (const auto &verb : world.verbs) {
+		if (verb.name == _pagerTarget) {
+			_pagerState = kPagerIdle;
+			_pagerLines.clear();
+			_commandStartedAt = g_system->getMillis();
+			_vm->runInputScript(kVerbClickArea, verb.id, 1);
+			return;
+		}
+	}
+	uint target = 0, first = 0;
+	for (uint i = 0; i < _pagerLines.size(); i++) {
+		if (_pagerLines[i].name == _pagerTarget)
+			target = i;
+		if (_pagerLines[i].name == world.verbs[0].name)
+			first = i;
+	}
+	const int arrow = target < first ? up : down;
+	if (!arrow) {
+		warning("Neuro: Could not scroll to the line '%s'", _pagerTarget.c_str());
+		_pagerState = kPagerIdle;
+		_pagerLines.clear();
+		return;
+	}
+	pressArrow(arrow, world);
+}
+
 void NeuroBridge::actionChooseDialogue(const Common::String &id, const NeuroArgs &args) {
 	NeuroWorld world;
 	collectWorld(world);
-	if (!playerHasControl() || !world.inDialogue) {
+	if (!playerHasControl() || !world.inDialogue || _pagerState != kPagerIdle) {
 		sendActionResult(id, false, "Nothing to choose now.");
 		return;
 	}
+	// The whole list, where only part of it is on screen
+	int up, down;
+	scrollArrows(world, up, down);
+	const bool paged = (up || down) && pagerCovers(world);
+	if (paged)
+		world.verbs = _pagerLines;
 
 	// A number, possibly dressed up ("option 3", "3."), or the line itself
 	const Common::String choice = args.get("option|choice|line|number|index|id|text", true);
@@ -156,6 +275,14 @@ void NeuroBridge::actionChooseDialogue(const Common::String &id, const NeuroArgs
 	_awaitingOutcome = true;
 	_outcomeTold = false;
 	_outcomeSpoken = false;
+	// Answered; it is not what her next choice is about
+	_lastHeard.clear();
+	if (paged) {
+		_pagerTarget = world.verbs[option - 1].name;
+		_pagerState = kPagerSeek;
+		return;
+	}
+	_pagerLines.clear();
 	_vm->runInputScript(kVerbClickArea, world.verbs[option - 1].id, 1);
 }
 
@@ -223,17 +350,40 @@ void NeuroBridge::updateForces(const NeuroWorld &world) {
 		_forceActive = false;
 
 	if (world.inDialogue) {
-		const Common::String lines = listDialogue(world.verbs);
+		if (_pagerState != kPagerIdle)
+			return;
+		int up, down;
+		scrollArrows(world, up, down);
+		const bool covered = (up || down) && pagerCovers(world);
+		if ((up || down) && !covered) {
+			// Wait out the moment in which her last choice is still on screen
+			if (!_forceActive && now - _lastActionAt > 1000) {
+				_pagerPressedAt = 0;
+				_pagerState = kPagerToTop;
+			}
+			return;
+		}
+		if (!covered)
+			_pagerLines.clear();
+		const Common::String lines = listDialogue(covered ? _pagerLines : world.verbs);
 		// A second force while one is outstanding confuses the server, even if the lines have changed
 		// The chosen line can stay on screen for a moment after she picks it
 		const bool fresh = lines != _forcedDialogue || now - _lastActionAt > 3000;
 		if (!_forceActive && fresh) {
 			_forcedDialogue = lines;
-			sendForce(lines, "Pick a line to say.", "choose_dialogue");
+			// The line she is answering goes with the choice, so it cannot be missed
+			Common::String state = lines;
+			if (!_lastHeard.empty() && now - _lastHeardAt < 30000)
+				state = "Last said to you: " + _lastHeard + "\n\n" + lines;
+			Common::String query = _data.roomPrompt(world.room);
+			if (query.empty())
+				query = "Pick a line to say.";
+			sendForce(state, query, "choose_dialogue");
 		}
 		return;
 	}
 	_forcedDialogue.clear();
+	_pagerLines.clear();
 
 	if (_idleForceMs && !_forceActive && now - _lastActivity > _idleForceMs) {
 		_lastActivity = now;

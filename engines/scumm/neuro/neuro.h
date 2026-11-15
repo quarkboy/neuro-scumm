@@ -190,6 +190,26 @@ private:
 	uint32 _commandStartedAt = 0;
 	void actionChooseDialogue(const Common::String &id, const NeuroArgs &args);
 
+	// The game shows a long list of lines a few at a time, with arrows to
+	// scroll it. She is given the whole list, read by scrolling through it,
+	// and her choice is scrolled into view before it is clicked.
+	enum PagerState {
+		kPagerIdle,
+		kPagerToTop,
+		kPagerDown,
+		kPagerSeek
+	};
+	PagerState _pagerState = kPagerIdle;
+	NeuroThingList _pagerLines;
+	Common::String _pagerTarget;
+	Common::String _pagerSaw;
+	uint32 _pagerPressedAt = 0;
+	/** The arrows that scroll the lines on screen; 0 for one that cannot be used now. */
+	void scrollArrows(const NeuroWorld &world, int &up, int &down);
+	bool pagerCovers(const NeuroWorld &world) const;
+	void pressArrow(int verb, const NeuroWorld &world);
+	void updatePager();
+
 	void sendForce(const Common::String &state, const Common::String &query, const char *actionName, const Common::String &priority = Common::String());
 	void checkAlerts(const NeuroWorld &before, const NeuroWorld &after);
 	void fireAlert(const NeuroData::Alert &alert, const NeuroWorld &world);
@@ -271,6 +291,9 @@ private:
 	NeuroJournal _journal;
 	Common::String journalFileName(int slot) const;
 	void sendJournalNews();
+	// Game variables whose rise is worth a sentence, with the value last seen
+	Common::HashMap<int, int> _watched;
+	void checkWatches();
 	void saveJournal(int slot);
 	void loadJournal(int slot);
 	int _saveLoadSlot = -1;
@@ -336,6 +359,9 @@ private:
 	uint32 _lastActivity = 0;
 	uint32 _idleForceMs = 0;
 	Common::String _forcedDialogue;
+	// What she is answering when asked to pick a line
+	Common::String _lastHeard;
+	uint32 _lastHeardAt = 0;
 
 	// What her last action was aimed at; only these are worth a note when their look changes
 	int _lastTargets[2] = {0, 0};

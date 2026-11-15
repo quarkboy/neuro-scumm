@@ -681,6 +681,9 @@ void NeuroBridge::pollWorld() {
 			_actorSeen[i] = {actor->getPos(), name};
 	}
 
+	// Between the lines of a scene, so that it reads in the order it happened
+	checkWatches();
+
 	// Only report once things have settled: mid-cutscene and mid-action
 	// states are noise.
 	if (!playerHasControl() || _vm->_sentenceNum > 0) {
@@ -777,13 +780,39 @@ void NeuroBridge::pollWorld() {
 	_described = world;
 }
 
+void NeuroBridge::checkWatches() {
+	Common::String text;
+	for (const auto &watch : _data.watches()) {
+		const int value = _vm->readVar(watch.var);
+		// The first look only sets the starting point
+		if (_watched.contains(watch.var) && value > _watched[watch.var]) {
+			Common::String say = watch.say;
+			const size_t at = say.find("{value}");
+			if (at != Common::String::npos)
+				say.replace(at, 7, Common::String::format("%d", value));
+			text += say + "\n";
+		}
+		_watched[watch.var] = value;
+	}
+	if (text.empty())
+		return;
+	if (_dialogueAsContext) {
+		if (_pendingDialogue.empty())
+			_pendingSince = g_system->getMillis();
+		_pendingDialogue += text;
+		_lastLineText.clear();
+	} else {
+		sendContext(text, true);
+	}
+}
+
 void NeuroBridge::finishAction(const NeuroWorld &world) {
 	if (!_awaitingOutcome)
 		return;
 
 	// Still going: a click not yet made, steps queued, walking, the game's own script
 	// (what a click sets off takes a moment to show)
-	const bool busy = _clickPhase != kClickIdle || !_queue.empty() || !_clickQueue.empty()
+	const bool busy = _clickPhase != kClickIdle || !_queue.empty() || !_clickQueue.empty() || _pagerState != kPagerIdle
 		|| g_system->getMillis() - _lastClickAt < 1000
 		|| _vm->_actors[_vm->VAR(_vm->VAR_EGO)]->_moving
 		|| _vm->isScriptRunning(_vm->VAR(_vm->VAR_SENTENCE_SCRIPT));
@@ -871,6 +900,10 @@ void NeuroBridge::onTalkStarted(int actor, const byte *text) {
 
 	// Any news waits until the conversation is over (see pollWorld)
 	_journal.heard(line);
+	if (actor != _vm->VAR(_vm->VAR_EGO)) {
+		_lastHeard = speaker + ": \"" + line + "\"";
+		_lastHeardAt = g_system->getMillis();
+	}
 
 	// Crowds shout the same line once per member; report it once
 	const Common::String spoken = speaker + ": " + line;
