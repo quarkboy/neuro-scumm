@@ -249,6 +249,16 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 		world.spotPositions.push_back(Common::Point(spots[i].x, spots[i].y));
 	}
 
+	// A close-up of something she is reading has nothing in it; a click anywhere puts it away
+	if (world.objects.empty() && world.actors.empty() && world.spots.empty()) {
+		NeuroThing thing;
+		thing.id = -1;
+		thing.x = _vm->_roomWidth / 2;
+		thing.name = "away (stop looking at this)";
+		world.spots.push_back(thing);
+		world.spotPositions.push_back(Common::Point(_vm->_roomWidth / 2, _vm->_roomHeight / 2));
+	}
+
 	// Conversation lines replace the normal verbs while they are shown
 	if (!world.verbs.empty() && !_standardVerbs.empty()) {
 		world.inDialogue = true;
@@ -680,6 +690,8 @@ void NeuroBridge::pollWorld() {
 	if (_actorSeenRoom != _vm->_currentRoom) {
 		_actorSeenRoom = _vm->_currentRoom;
 		_actorSeen.clear();
+		// Reading the same sheet again shows the same text again
+		_lastDrawnText.clear();
 	}
 	const int ego = _vm->VAR(_vm->VAR_EGO);
 	for (int i = 1; i < _vm->_numActors; i++) {
