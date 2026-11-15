@@ -57,6 +57,9 @@ typedef Common::Array<NeuroThing> NeuroThingList;
 struct NeuroClick {
 	int x = 0, y = 0;
 	bool screen = false;
+
+	/** A character to stay on: one that keeps moving is not where it was when the click was planned. */
+	int follow = 0;
 };
 
 /** A validated verb sentence or walk, ready to run. */
@@ -329,6 +332,7 @@ private:
 	int _clickFrames = 0;
 	int _clickX = 0, _clickY = 0;
 	bool _clickScreen = false;
+	int _clickFollow = 0;
 	uint32 _lastClickAt = 0;
 	// Clicks still to make for the command being carried out, one after another
 	Common::Array<NeuroClick> _clickQueue;

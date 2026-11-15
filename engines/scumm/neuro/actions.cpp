@@ -678,6 +678,7 @@ void NeuroBridge::clickAt(const NeuroClick &click) {
 	_clickX = click.x;
 	_clickY = click.y;
 	_clickScreen = click.screen;
+	_clickFollow = click.follow;
 	_clickPhase = kClickHover;
 	_clickFrames = 0;
 }
@@ -723,7 +724,21 @@ bool NeuroBridge::planClicks(const NeuroWorld &world, NeuroCommand &command) {
 				index = i;
 		}
 		if (index >= 0) {
-			if (!verbButton(kFirstInventoryButton + index, click))
+			// Eight things carried are shown at a time, the newest by default. The
+			// game keeps which object each button stands for in variables 133 to
+			// 140, and buttons 208 and 209 scroll a row up and down.
+			static const int kShownVar = 133, kShown = 8, kScrollUp = 208, kScrollDown = 209;
+			int button = -1;
+			for (int pass = 0; pass < 24 && button < 0; pass++) {
+				for (int i = 0; i < kShown; i++) {
+					if (_vm->readVar(kShownVar + i) == thing)
+						button = i;
+				}
+				// First all the way up, then down a row at a time
+				if (button < 0)
+					_vm->runInputScript(kVerbClickArea, pass < 8 ? kScrollUp : kScrollDown, 1);
+			}
+			if (button < 0 || !verbButton(kFirstInventoryButton + button, click))
 				return false;
 		} else {
 			int x, y;
@@ -736,8 +751,10 @@ bool NeuroBridge::planClicks(const NeuroWorld &world, NeuroCommand &command) {
 			click.x = x;
 			click.y = y;
 			click.screen = false;
+			click.follow = _vm->objIsActor(thing) ? thing : 0;
 		}
 		command.clicks.push_back(click);
+		click.follow = 0;
 	}
 	return true;
 }
@@ -774,6 +791,8 @@ void NeuroBridge::overridePointer() {
 	// The target may be scrolled out of view, so only the room position is
 	// exact; the screen position just has to be somewhere over the room.
 	const VirtScreen &vs = _vm->_virtscr[kMainVirtScreen];
+	if (_clickFollow)
+		findClickPoint(_clickFollow, _clickX, _clickY);
 	if (_clickScreen) {
 		// On the verbs or the inventory, below the room
 		_vm->_mouse.x = _clickX;

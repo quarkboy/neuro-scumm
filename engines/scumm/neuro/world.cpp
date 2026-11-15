@@ -420,13 +420,14 @@ Common::String NeuroBridge::describeRoom(const NeuroWorld &world, RoomDetail det
 }
 
 /** Lists the things in 'to' that have no counterpart in 'from'. */
-static NeuroThingList difference(const NeuroThingList &from, const NeuroThingList &to) {
+static NeuroThingList difference(const NeuroThingList &from, const NeuroThingList &to, bool byName = false) {
 	NeuroThingList result;
 	for (const auto &thing : to) {
 		bool found = false;
 		for (const auto &other : from) {
-			// By name: what replaces a thing under the same name is the same thing to her
-			if (other.name == thing.name) {
+			// In a room, what replaces a thing under the same name is the same thing
+			// to her; of five bananas carried, each is its own
+			if (other.name == thing.name && (byName || other.id == thing.id)) {
 				found = true;
 				break;
 			}
@@ -508,8 +509,8 @@ NeuroThingList NeuroBridge::departed(const NeuroWorld &world, const NeuroThingLi
 Common::String NeuroBridge::describeChanges(const NeuroWorld &before, const NeuroWorld &after) {
 	const NeuroThingList got = difference(before.inventory, after.inventory);
 	const NeuroThingList lost = difference(after.inventory, before.inventory);
-	const NeuroThingList appeared = difference(before.objects, after.objects);
-	NeuroThingList gone = difference(after.objects, before.objects);
+	const NeuroThingList appeared = difference(before.objects, after.objects, true);
+	NeuroThingList gone = difference(after.objects, before.objects, true);
 
 	// Picking something up makes it vanish from the room; saying so twice is noise
 	for (uint i = 0; i < gone.size();) {
