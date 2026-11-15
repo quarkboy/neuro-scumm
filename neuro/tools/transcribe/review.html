@@ -415,7 +415,7 @@ function lineEditor(line) {
 		const who = el("input", { value: override?.speaker || "", placeholder: "e.g. cook, sound effect; - drops the line" });
 		parts.push(el("div", { class: "stack" }, el("h4", {}, "Who says it"),
 			el("div", { class: "note" }, `In the script: ${line.actor === "ego" ? "Guybrush" : typeof line.actor === "number" ? (line.actor >= 252 ? "printed on screen, no actor" : `actor ${line.actor}${line.speaker ? ` (${line.speaker})` : ""}`) : "an actor chosen while playing"}; text colour ${line.color != null ? `${line.color}: ${colorSource(line)}` : "not in the scripts; set while playing"}.`),
-			el("div", { class: "pair" }, el("label", {}, "This line only", who),
+			el("div", { class: "pair" }, el("label", {}, "Override the speaker for this line", who),
 				el("button", { class: "primary", type: "button", onclick: async () => {
 					const section = "line." + (override?.id || slug(line.text));
 					const ok = who.value.trim() ? await saveSection(section, { text: line.text, speaker: who.value }) : await deleteSection(section);
@@ -426,7 +426,7 @@ function lineEditor(line) {
 			const voice = el("input", { value: (journal.rooms[line.room] || {})[key] || "", placeholder: "name for this voice" });
 			const same = lines.filter(l => l.room === line.room && l.op === "say" && l.actor === line.actor && l.color === line.color).length;
 			parts[0].append(el("div", { class: "pair" },
-				el("label", {}, `Every line in this room ${line.actor < 128 ? `by actor ${line.actor} ` : "with no actor "}in colour ${line.color} (${same} lines)`, voice),
+				el("label", {}, `Speaker for every line in this room ${line.actor < 128 ? `by actor ${line.actor} ` : "with no actor "}in colour ${line.color} (${same} lines)`, voice),
 				el("button", { class: "primary", type: "button", onclick: async () => { if (await saveSection("room" + line.room, { [key]: voice.value.trim() || null })) done(); } }, "Save")));
 		}
 	}
