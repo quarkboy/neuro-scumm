@@ -8,18 +8,17 @@
 :root {
 	--bg: #f6f5f2; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6a66; --line: #dddbd5;
 	--accent: #2f6fb3; --object: #4f9cf0; --actor: #f08a4b; --hidden: #a8a59e; --hot: #ffd400;
-	--ok: #2e7d32; --warn: #b26a00; --todo: #8a8780;
+	--ok: #2e7d32; --warn: #b26a00; --todo: #8a8780; --goal: #7b3fb3; --clue: #0d7d6c;
 }
 @media (prefers-color-scheme: dark) {
 	:root { --bg: #161615; --panel: #201f1d; --text: #ecebe7; --muted: #a09e98; --line: #3a3935;
-		--accent: #6fa8e8; --ok: #6cc070; --warn: #e0a040; --todo: #8a8780; }
+		--accent: #6fa8e8; --ok: #6cc070; --warn: #e0a040; --todo: #8a8780; --goal: #c08cf0; --clue: #4fd0b8; }
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, sans-serif;
-	display: grid; grid-template-columns: 210px minmax(0, 1.5fr) minmax(360px, 1fr); }
+	display: grid; grid-template-columns: 210px minmax(0, 1.2fr) minmax(420px, 1fr); }
 
-/* Room list */
 nav { border-right: 1px solid var(--line); overflow-y: auto; background: var(--panel); }
 nav .filters { padding: 8px; border-bottom: 1px solid var(--line); display: flex; gap: 4px; flex-wrap: wrap; position: sticky; top: 0; background: var(--panel); z-index: 1; }
 nav button.room { display: flex; width: 100%; text-align: left; gap: 8px; padding: 5px 10px; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; align-items: baseline; }
@@ -30,9 +29,9 @@ nav button.current .num { color: #fff; }
 nav .label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; align-self: center; background: var(--todo); }
 .dot.checked { background: var(--ok); } .dot.needs-work { background: var(--warn); } .dot.draft { background: var(--accent); }
+.dot.none { background: transparent; border: 1px solid var(--todo); }
 
-/* Picture: pinned, scrolls on its own if the room is wide */
-#picturePane { height: 100vh; overflow: auto; background: #000; position: relative; }
+#picturePane { height: 100vh; overflow: auto; background: #000; position: relative; color: #aaa; }
 .toolbar { position: sticky; top: 0; left: 0; z-index: 2; display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
 	padding: 8px 10px; background: rgba(0, 0, 0, 0.75); color: #ddd; font-size: 13px; }
 .toolbar .info { margin-left: auto; color: #aaa; }
@@ -41,42 +40,69 @@ nav .label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: no
 .frame img { display: block; image-rendering: pixelated; }
 .frame.fit img { width: 100%; height: auto; }
 .frame svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-/* Transparent fill so the whole area answers the mouse, not just the outline */
 .box { fill: rgba(0, 0, 0, 0); stroke: var(--object); stroke-width: 1.5; vector-effect: non-scaling-stroke; cursor: pointer; pointer-events: all; }
 .box.hidden { stroke: var(--hidden); stroke-dasharray: 3 3; }
 .box:hover, .box.hot { fill: rgba(255, 212, 0, 0.25); stroke: var(--hot); stroke-width: 3; }
 .marker { fill: var(--actor); stroke: #000; stroke-width: 1; vector-effect: non-scaling-stroke; cursor: pointer; pointer-events: all; }
 .marker.hot, .marker:hover { fill: var(--hot); }
 #tooltip { position: fixed; pointer-events: none; background: #111; color: #fff; padding: 3px 7px; border-radius: 4px; font-size: 12px; display: none; z-index: 5; white-space: nowrap; }
+.nopicture { padding: 24px; }
 
-/* Entries */
-main { overflow-y: auto; height: 100vh; padding: 14px 18px 40px; border-left: 1px solid var(--line); }
+main { overflow-y: auto; height: 100vh; border-left: 1px solid var(--line); }
+.tabs { display: flex; gap: 2px; position: sticky; top: 0; background: var(--bg); padding: 8px 18px 0; border-bottom: 1px solid var(--line); z-index: 3; }
+.tabs button { border: 1px solid var(--line); border-bottom: 0; background: var(--panel); color: var(--muted); padding: 6px 14px; border-radius: 6px 6px 0 0; font: inherit; cursor: pointer; }
+.tabs button.on { color: var(--text); font-weight: 600; background: var(--bg); position: relative; top: 1px; }
+#view { padding: 14px 18px 60px; }
 h1 { font-size: 17px; margin: 0 0 2px; } .sub { color: var(--muted); margin-bottom: 12px; font-size: 13px; }
-h3 { margin: 16px 0 4px; font-size: 14px; }
-form { display: grid; gap: 10px; }
+h3 { margin: 18px 0 4px; font-size: 14px; }
+form.stack, .stack { display: grid; gap: 10px; }
 label { display: grid; gap: 3px; font-weight: 600; font-size: 13px; }
+label.inline { display: flex; align-items: center; gap: 5px; font-weight: 400; }
 input, textarea, select { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--text); width: 100%; }
-textarea { min-height: 110px; resize: vertical; }
-.row { display: flex; gap: 10px; } .row > label { flex: 1; }
+input[type=checkbox] { width: auto; }
+textarea { min-height: 110px; resize: vertical; } textarea.short { min-height: 54px; }
+.row { display: flex; gap: 10px; align-items: end; } .row > label { flex: 1; }
 table { border-collapse: collapse; width: 100%; }
 th, td { text-align: left; padding: 3px 4px; border-bottom: 1px solid var(--line); vertical-align: middle; }
-th { font-size: 12px; color: var(--muted); font-weight: 600; }
 td.id { font-variant-numeric: tabular-nums; color: var(--muted); width: 3.2em; }
 td.name { width: 34%; }
 tr.hidden td.name { color: var(--hidden); text-decoration: line-through; }
 tr.hot { background: color-mix(in srgb, var(--hot) 28%, transparent); }
-.savebar { position: sticky; bottom: -40px; background: var(--bg); padding: 10px 0; display: flex; align-items: center; gap: 10px; }
-button.primary { background: var(--accent); color: #fff; border: 0; border-radius: 5px; padding: 8px 16px; font: inherit; font-weight: 600; cursor: pointer; }
+.savebar { display: flex; align-items: center; gap: 10px; padding-top: 6px; }
+button.primary { background: var(--accent); color: #fff; border: 0; border-radius: 5px; padding: 7px 14px; font: inherit; font-weight: 600; cursor: pointer; }
 button.small { border: 1px solid #555; background: #222; color: #ddd; border-radius: 5px; padding: 2px 8px; font: inherit; font-size: 12px; cursor: pointer; }
 button.small.on { background: var(--accent); color: #fff; border-color: var(--accent); }
-nav button.small { border-color: var(--line); background: var(--panel); color: inherit; }
-nav button.small.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+nav button.small, main button.small { border-color: var(--line); background: var(--panel); color: inherit; }
+nav button.small.on, main button.small.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+button.danger { color: #c62828; }
 .saved { color: var(--ok); } .other { color: var(--muted); font-size: 12px; white-space: pre-wrap; }
 .note { color: var(--muted); font-size: 12px; font-style: italic; }
 
-@media (max-width: 900px) {
+/* Lines */
+.linefilters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+.linefilters input[type=search] { flex: 1; min-width: 140px; }
+.linefilters select { width: auto; }
+.group { margin-top: 14px; font-size: 12px; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: 2px; }
+.line { display: grid; grid-template-columns: 34px 120px 1fr; gap: 8px; padding: 4px 4px; border-bottom: 1px solid var(--line); cursor: pointer; align-items: start; }
+.line:hover { background: var(--panel); }
+.line.open { background: var(--panel); border-bottom: 0; }
+.swatch { width: 30px; height: 20px; border-radius: 3px; border: 1px solid var(--line); font-size: 10px; display: grid; place-items: center; color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000; }
+.swatch.unknown { background: repeating-linear-gradient(45deg, var(--line), var(--line) 3px, transparent 3px, transparent 6px); color: var(--muted); text-shadow: none; }
+.speaker { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-top: 1px; }
+.speaker.guess { color: var(--warn); font-style: italic; }
+.speaker.set { font-weight: 600; }
+.kind { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; margin-right: 5px; }
+.badge { display: inline-block; font-size: 11px; border-radius: 3px; padding: 0 5px; margin-left: 5px; color: #fff; background: var(--goal); }
+.badge.clue { background: var(--clue); } .badge.subst { background: var(--warn); }
+.editor { grid-column: 1 / -1; padding: 10px 10px 14px; border: 1px solid var(--line); border-top: 0; background: var(--panel); margin-bottom: 6px; display: grid; gap: 12px; cursor: default; }
+.editor h4 { margin: 0; font-size: 13px; }
+.editor .pair { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: end; }
+.card { border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: var(--panel); display: grid; gap: 8px; margin-bottom: 8px; }
+.card .head { display: flex; justify-content: space-between; align-items: center; font-weight: 600; }
+
+@media (max-width: 1000px) {
 	body { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; height: auto; }
-	nav { max-height: 30vh; } #picturePane { height: auto; max-height: 50vh; } main { height: auto; }
+	nav { max-height: 30vh; } #picturePane { height: auto; max-height: 45vh; } main { height: auto; }
 }
 </style>
 </head>
@@ -86,21 +112,28 @@ nav button.small.on { background: var(--accent); color: #fff; border-color: var(
 	<div id="list"></div>
 </nav>
 <section id="picturePane"></section>
-<main id="main"><p>Loading…</p></main>
+<main>
+	<div class="tabs" id="tabs"></div>
+	<div id="view"><p>Loading…</p></div>
+</main>
 <div id="tooltip"></div>
 <script>
 const STATUSES = ["", "draft", "needs-work", "checked"];
 const STATUS_LABEL = { "": "not written", draft: "draft", "needs-work": "needs work", checked: "checked" };
-let rooms = [], current = 0, filter = "all", zoom = "fit", showHidden = false;
+const EGA = ["#000000", "#0000aa", "#00aa00", "#00aaaa", "#aa0000", "#aa00aa", "#aa5500", "#aaaaaa", "#555555", "#5555ff", "#55ff55", "#55ffff", "#ff5555", "#ff55ff", "#ffff55", "#ffffff"];
+let rooms = [], roomById = new Map(), lineRooms = {}, lines = [], journal = { goals: [], clues: [], lines: [], rooms: {} };
+let roomIds = [], current = 0, filter = "all", zoom = "fit", showHidden = false, view = "room";
+let lineFilter = { search: "", kind: "say", unattributed: false, marked: false }, openLine = null;
 const tooltip = document.getElementById("tooltip");
 
 function el(tag, attrs = {}, ...children) {
 	const node = document.createElement(tag);
 	for (const [k, v] of Object.entries(attrs)) {
 		if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
+		else if (k === "value" && tag !== "option") node.value = v ?? "";
 		else if (v !== false && v != null) node.setAttribute(k, v === true ? "" : v);
 	}
-	node.append(...children);
+	node.append(...children.filter(c => c !== null && c !== undefined && c !== ""));
 	return node;
 }
 function svgEl(tag, attrs) {
@@ -108,42 +141,72 @@ function svgEl(tag, attrs) {
 	for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
 	return node;
 }
+async function post(url, body) {
+	const res = await fetch(url, { method: "POST", body: JSON.stringify(body) });
+	if (!res.ok) alert("Save failed: " + (await res.text()));
+	return res.ok;
+}
+const saveSection = (section, set) => post("api/section", { section, set });
+const deleteSection = section => post("api/section", { section, delete: true });
 
 async function load() {
-	rooms = await (await fetch("api/rooms")).json();
-	const index = rooms.findIndex(r => r.room === parseInt(location.hash.slice(1)));
-	current = index >= 0 ? index : 0;
-	renderFilters(); renderList(); renderRoom();
+	const [r, l, j] = await Promise.all([fetch("api/rooms"), fetch("api/lines"), fetch("api/journal")]);
+	rooms = await r.json();
+	const lineData = await l.json();
+	journal = await j.json();
+	lineRooms = lineData.rooms; lines = lineData.lines;
+	lines.forEach((line, i) => line.index = i);
+	roomById = new Map(rooms.map(room => [room.room, room]));
+	const ids = new Set([...rooms.map(room => room.room), ...Object.keys(lineRooms).map(Number)]);
+	if (lines.some(line => line.room === 0)) ids.add(0);
+	roomIds = [...ids].sort((a, b) => a - b);
+	const fromHash = parseInt(location.hash.slice(1));
+	current = roomIds.includes(fromHash) ? fromHash : (roomIds.find(id => id > 0) ?? 0);
+	renderFilters(); renderList(); render();
 }
+async function reloadJournal() { journal = await (await fetch("api/journal")).json(); }
+
+function roomName(id) {
+	if (id === 0) return "Scripts used everywhere";
+	return roomById.get(id)?.ini.name || journal.rooms[id]?.name || "";
+}
+function roomStatus(id) { return roomById.get(id)?.ini.status || ""; }
 
 function renderFilters() {
 	document.getElementById("filters").replaceChildren(...["all", ...STATUSES].map(s => el("button", {
 		class: "small" + (filter === s ? " on" : ""),
 		onclick: () => { filter = s; renderFilters(); renderList(); },
-	}, s === "all" ? `all ${rooms.length}` : `${STATUS_LABEL[s]} ${rooms.filter(r => (r.ini.status || "") === s).length}`)));
+	}, s === "all" ? `all ${roomIds.length}` : `${STATUS_LABEL[s]} ${roomIds.filter(id => roomById.has(id) && roomStatus(id) === s).length}`)));
 }
-
 function renderList() {
-	const shown = rooms.map((r, i) => [r, i]).filter(([r]) => filter === "all" || (r.ini.status || "") === filter);
-	document.getElementById("list").replaceChildren(...shown.map(([r, i]) => el("button", {
-		class: "room" + (i === current ? " current" : ""), onclick: () => go(i),
-	}, el("span", { class: "dot " + (r.ini.status || "") }), el("span", { class: "num" }, r.room),
-		el("span", { class: "label" }, r.ini.name || r.objects.filter(o => o.name && !o.untouchable).slice(0, 3).map(o => o.name).join(", ") || "—"))));
+	const shown = roomIds.filter(id => filter === "all" || (roomById.has(id) && roomStatus(id) === filter));
+	document.getElementById("list").replaceChildren(...shown.map(id => el("button", {
+		class: "room" + (id === current ? " current" : ""), onclick: () => go(id),
+	}, el("span", { class: "dot " + (roomById.has(id) ? roomStatus(id) : "none") }), el("span", { class: "num" }, id || "·"),
+		el("span", { class: "label" }, roomName(id) || "—"))));
 	document.querySelector("nav button.current")?.scrollIntoView({ block: "nearest" });
 }
-
-function go(index) {
-	if (index < 0 || index >= rooms.length) return;
-	current = index;
-	history.replaceState(null, "", "#" + rooms[index].room);
-	renderList(); renderRoom();
+function go(id) {
+	if (!roomIds.includes(id)) return;
+	current = id; openLine = null;
+	history.replaceState(null, "", "#" + id);
+	renderList(); render();
+}
+function step(delta) {
+	const i = roomIds.indexOf(current) + delta;
+	if (i >= 0 && i < roomIds.length) go(roomIds[i]);
 }
 
-/** Lights up a thing in the picture and its row in the list. */
-function highlight(key, on) {
-	document.querySelectorAll(`[data-thing="${key}"]`).forEach(n => n.classList.toggle("hot", on));
+function render() {
+	const counts = lines.filter(line => line.room === current && line.op === "say").length;
+	document.getElementById("tabs").replaceChildren(...[["room", "Room"], ["lines", `Lines (${counts})`], ["journal", `Goals and clues (${journal.goals.length + journal.clues.length})`]]
+		.map(([key, label]) => el("button", { class: view === key ? "on" : "", onclick: () => { view = key; render(); } }, label)));
+	renderPicture();
+	if (view === "room") renderRoom(); else if (view === "lines") renderLines(); else renderJournal();
 }
-/** From the picture to its entry: scroll the row into view and put the cursor in it. */
+
+/* ---------- picture ---------- */
+function highlight(key, on) { document.querySelectorAll(`[data-thing="${key}"]`).forEach(n => n.classList.toggle("hot", on)); }
 function focusEntry(key) {
 	const input = document.getElementById(key);
 	if (!input) return;
@@ -154,18 +217,23 @@ function hover(node, key, text) {
 	node.addEventListener("mouseenter", () => { highlight(key, true); tooltip.textContent = text; tooltip.style.display = "block"; });
 	node.addEventListener("mousemove", e => { tooltip.style.left = e.clientX + 12 + "px"; tooltip.style.top = e.clientY + 12 + "px"; });
 	node.addEventListener("mouseleave", () => { highlight(key, false); tooltip.style.display = "none"; });
-	node.addEventListener("click", () => focusEntry(key));
+	node.addEventListener("click", () => { if (view !== "room") { view = "room"; render(); } focusEntry(key); });
 }
-
-function renderPicture(r, objects) {
+function renderPicture() {
+	const pane = document.getElementById("picturePane"), r = roomById.get(current);
+	if (!r) {
+		pane.replaceChildren(el("div", { class: "nopicture" }, current === 0
+			? "These scripts are not tied to one room: Guybrush's stock replies, the inventory, and scenes that run in several places."
+			: "No picture was captured for this room."));
+		return;
+	}
+	const objects = r.objects.filter(o => showHidden || (o.name && !o.untouchable));
 	const fit = zoom === "fit";
 	const frame = el("div", { class: "frame" + (fit ? " fit" : "") });
 	const img = el("img", { src: r.image, alt: `Room ${r.room}`, ...(fit ? {} : { width: r.width * zoom, height: r.height * zoom }) });
 	const svg = svgEl("svg", { viewBox: `0 0 ${r.width} ${r.height}`, preserveAspectRatio: "none" });
-	// Biggest first, so small things drawn on top of big ones can still be pointed at
 	for (const o of [...objects].sort((a, b) => b.w * b.h - a.w * a.h)) {
-		const box = svgEl("rect", { x: o.x, y: o.y, width: Math.max(o.w, 2), height: Math.max(o.h, 2),
-			class: "box" + (o.untouchable ? " hidden" : ""), "data-thing": "o" + o.id });
+		const box = svgEl("rect", { x: o.x, y: o.y, width: Math.max(o.w, 2), height: Math.max(o.h, 2), class: "box" + (o.untouchable ? " hidden" : ""), "data-thing": "o" + o.id });
 		hover(box, "o" + o.id, `${o.name || "(no name)"} · object ${o.id}`);
 		svg.append(box);
 	}
@@ -175,71 +243,269 @@ function renderPicture(r, objects) {
 		svg.append(dot);
 	}
 	frame.append(img, svg);
-
-	const zoomButton = z => el("button", { class: "small" + (z === zoom ? " on" : ""), type: "button", onclick: () => { zoom = z; renderRoom(); } }, z === "fit" ? "fit" : `${z}×`);
-	document.getElementById("picturePane").replaceChildren(
-		el("div", { class: "toolbar" }, ...["fit", 2, 3, 4].map(zoomButton),
-			el("button", { class: "small" + (showHidden ? " on" : ""), type: "button", onclick: () => { showHidden = !showHidden; renderRoom(); } }, "untouchable"),
-			el("span", { class: "info" }, `${r.width}×${r.height}`)),
-		frame);
+	const zoomButton = z => el("button", { class: "small" + (z === zoom ? " on" : ""), type: "button", onclick: () => { zoom = z; renderPicture(); } }, z === "fit" ? "fit" : `${z}×`);
+	pane.replaceChildren(el("div", { class: "toolbar" }, ...["fit", 2, 3, 4].map(zoomButton),
+		el("button", { class: "small" + (showHidden ? " on" : ""), type: "button", onclick: () => { showHidden = !showHidden; render(); } }, "untouchable"),
+		el("span", { class: "info" }, `${r.width}×${r.height}`)), frame);
 }
 
+/* ---------- room ---------- */
 function renderRoom() {
-	const r = rooms[current], ini = r.ini;
-	const objects = r.objects.filter(o => showHidden || (o.name && !o.untouchable));
-	renderPicture(r, objects);
-
-	const field = (key, labelText, tag = "input") => el("label", {}, labelText,
-		tag === "textarea" ? el("textarea", { name: key }, ini[key]) : el("input", { name: key, value: ini[key] }));
+	const r = roomById.get(current), main = document.getElementById("view");
+	if (!r) { main.replaceChildren(el("h1", {}, current === 0 ? "Scripts used everywhere" : `Room ${current}`), el("p", { class: "sub" }, "Nothing to describe here; see the Lines tab.")); return; }
+	const ini = r.ini, objects = r.objects.filter(o => showHidden || (o.name && !o.untouchable));
+	const field = (key, labelText, tag = "input") => el("label", {}, labelText, tag === "textarea" ? el("textarea", { name: key }, ini[key]) : el("input", { name: key, value: ini[key] }));
 	const status = el("select", { name: "status" }, ...STATUSES.map(s => el("option", { value: s, selected: (ini.status || "") === s }, STATUS_LABEL[s])));
 	const rowEvents = key => ({ "data-thing": key, onmouseenter: () => highlight(key, true), onmouseleave: () => highlight(key, false) });
-
 	const objectRows = objects.filter(o => o.name).map(o => el("tr", { class: o.untouchable ? "hidden" : "", ...rowEvents("o" + o.id) },
 		el("td", { class: "id" }, o.id), el("td", { class: "name" }, o.name + (o.state ? ` (state ${o.state})` : "")),
 		el("td", {}, el("input", { id: "o" + o.id, "data-object": o.id, value: ini.objects[o.id] || "", placeholder: "note after the name" }))));
 	const actorRows = r.actors.map(a => el("tr", rowEvents("a" + a.id),
 		el("td", { class: "id" }, a.id), el("td", { class: "name" }, (a.name || "—") + ` (costume ${a.costume})`),
 		el("td", {}, el("input", { id: "a" + a.id, "data-actor": a.id, value: ini.actors[a.id] || "", placeholder: "name; leading - = speaker only" }))));
-
 	const saved = el("span", { class: "saved" });
-	const form = el("form", { onsubmit: e => { e.preventDefault(); save(form, saved); } },
+	const form = el("form", { class: "stack", onsubmit: e => { e.preventDefault(); saveRoom(form, saved); } },
 		el("div", { class: "row" }, field("name", "Room name"), el("label", {}, "Status", status)),
 		field("description", "Description (what is on screen; no solutions)", "textarea"),
 		field("review_note", "Reviewer note (not shown to her)"),
-		el("h3", {}, "Objects"),
-		objectRows.length ? el("table", {}, ...objectRows) : el("p", { class: "note" }, "No named objects."),
-		el("h3", {}, "Actors"),
-		actorRows.length ? el("table", {}, ...actorRows) : el("p", { class: "note" }, "None in this room when it was captured."),
+		el("h3", {}, "Objects"), objectRows.length ? el("table", {}, ...objectRows) : el("p", { class: "note" }, "No named objects."),
+		el("h3", {}, "Actors"), actorRows.length ? el("table", {}, ...actorRows) : el("p", { class: "note" }, "None in this room when it was captured."),
 		Object.keys(ini.other).length ? el("div", { class: "other" }, "Also in the file (not edited here):\n" + Object.entries(ini.other).map(([k, v]) => `${k} = ${v}`).join("\n")) : "",
-		el("div", { class: "savebar" }, el("button", { class: "primary", type: "submit" }, "Save"), saved,
-			el("span", { class: "note" }, "ctrl+s save · j/k next/previous room")));
-
-	document.getElementById("main").replaceChildren(
-		el("h1", {}, `Room ${r.room}${ini.name ? ": " + ini.name : ""}`),
-		el("div", { class: "sub" }, `${r.objects.filter(o => o.name && !o.untouchable).length} usable objects · ${r.actors.length} actors${r.stayed ? "" : " · the game left this room while it was captured"}`),
-		form);
-	document.getElementById("main").scrollTop = 0;
+		el("div", { class: "savebar" }, el("button", { class: "primary", type: "submit" }, "Save"), saved, el("span", { class: "note" }, "ctrl+s save · j/k next/previous room")));
+	main.replaceChildren(el("h1", {}, `Room ${r.room}${ini.name ? ": " + ini.name : ""}`),
+		el("div", { class: "sub" }, `${r.objects.filter(o => o.name && !o.untouchable).length} usable objects · ${r.actors.length} actors${r.stayed ? "" : " · the game left this room while it was captured"}`), form);
 }
-
-async function save(form, saved) {
-	const r = rooms[current], data = Object.fromEntries(new FormData(form));
+async function saveRoom(form, saved) {
+	const r = roomById.get(current), data = Object.fromEntries(new FormData(form));
 	data.objects = {}; data.actors = {};
 	form.querySelectorAll("[data-object]").forEach(i => data.objects[i.dataset.object] = i.value);
 	form.querySelectorAll("[data-actor]").forEach(i => data.actors[i.dataset.actor] = i.value);
-	const res = await fetch(`api/room/${r.room}`, { method: "POST", body: JSON.stringify(data) });
-	if (!res.ok) { saved.textContent = "Save failed"; return; }
+	if (!await post(`api/room/${r.room}`, data)) return;
 	Object.assign(r.ini, { name: data.name, description: data.description, status: data.status, review_note: data.review_note });
 	for (const [k, v] of Object.entries(data.objects)) v ? r.ini.objects[k] = v : delete r.ini.objects[k];
 	for (const [k, v] of Object.entries(data.actors)) v ? r.ini.actors[k] = v : delete r.ini.actors[k];
+	await reloadJournal();
 	saved.textContent = "Saved";
 	renderFilters(); renderList();
+}
+
+/* ---------- lines ---------- */
+const triggers = value => (value || "").split(" | ").map(t => t.trim()).filter(t => t.toLowerCase().startsWith("heard:")).map(t => t.slice(6).trim().toLowerCase()).filter(Boolean);
+const hears = (value, text) => triggers(value).some(t => text.toLowerCase().includes(t));
+function marksOf(line) {
+	const text = line.text || "", out = [];
+	for (const g of journal.goals) {
+		if (hears(g.start, text)) out.push({ kind: "goal", label: `starts ${g.id}` });
+		if (hears(g.done, text)) out.push({ kind: "goal", label: `completes ${g.id}` });
+	}
+	for (const c of journal.clues) if (hears(c.when, text)) out.push({ kind: "clue", label: `clue for ${c.goal}` });
+	return out;
+}
+/** Who the game will say spoke this line, and how sure that is: mirrors the bridge's own order of checks. */
+function speakerOf(line) {
+	if (line.op !== "say") return { name: "", cls: "" };
+	const override = journal.lines.find(l => l.text === line.text);
+	if (override) return { name: override.speaker === "-" ? "(dropped)" : override.speaker, cls: "set" };
+	const room = journal.rooms[line.room] || {};
+	if (line.actor === "ego") return { name: "Guybrush", cls: "" };
+	if (typeof line.actor === "number" && line.actor < 128) {
+		const voice = line.color != null && room[`voice.${line.actor}.${line.color}`];
+		if (voice) return { name: voice, cls: "set" };
+		const named = room[`actor.${line.actor}`];
+		if (named) return { name: named.replace(/^-/, ""), cls: "set" };
+		return line.speaker ? { name: line.speaker, cls: "" } : { name: `actor ${line.actor}?`, cls: "guess" };
+	}
+	if (typeof line.actor === "number") {
+		const voice = line.color != null && room[`voice.${line.color}`];
+		return voice ? { name: voice, cls: "set" } : { name: "Narrator?", cls: "guess" };
+	}
+	return { name: "set while playing", cls: "guess" };
+}
+function colorOf(line) {
+	if (line.color == null || typeof line.color !== "number") return null;
+	return (lineRooms[line.room]?.palette || EGA)[line.color] || EGA[line.color % 16];
+}
+function sourceOf(line) {
+	const w = line.where;
+	if (w.kind === "object") return `${w.object_name || "object"} (${w.object}) · ${w.verb_name || "?"}`;
+	if (w.kind === "enter") return "On entering the room";
+	if (w.kind === "exit") return "On leaving the room";
+	return (w.kind === "global" ? "Script " : "Room script ") + w.script;
+}
+const KIND_LABEL = { say: "said", choice: "choice", actor: "actor name", object_name: "object name", string: "stored text" };
+
+function renderLines() {
+	const main = document.getElementById("view");
+	const all = lines.filter(line => line.room === current && line.text);
+	const shown = all.filter(line => {
+		if (lineFilter.kind === "say" && line.op !== "say") return false;
+		if (lineFilter.kind === "choice" && line.op !== "choice") return false;
+		if (lineFilter.kind === "say+choice" && !["say", "choice"].includes(line.op)) return false;
+		if (lineFilter.search && !line.text.toLowerCase().includes(lineFilter.search.toLowerCase())) return false;
+		if (lineFilter.unattributed && speakerOf(line).cls !== "guess") return false;
+		if (lineFilter.marked && !marksOf(line).length) return false;
+		return true;
+	});
+	const search = el("input", { type: "search", placeholder: "Search this room's lines", value: lineFilter.search, oninput: e => { lineFilter.search = e.target.value; drawList(); } });
+	const kind = el("select", { onchange: e => { lineFilter.kind = e.target.value; renderLines(); } },
+		...[["say", "What is said"], ["choice", "Dialogue choices"], ["say+choice", "Both"], ["all", "Everything, names too"]].map(([v, t]) => el("option", { value: v, selected: lineFilter.kind === v }, t)));
+	const check = (key, text) => el("label", { class: "inline" }, el("input", { type: "checkbox", checked: lineFilter[key], onchange: e => { lineFilter[key] = e.target.checked; renderLines(); } }), text);
+	const list = el("div");
+	function drawList() {
+		const visible = shown.filter(line => !lineFilter.search || line.text.toLowerCase().includes(lineFilter.search.toLowerCase()));
+		const out = []; let lastSource = null;
+		for (const line of visible) {
+			const source = sourceOf(line);
+			if (source !== lastSource) { out.push(el("div", { class: "group" }, source)); lastSource = source; }
+			out.push(lineRow(line));
+		}
+		list.replaceChildren(...(out.length ? out : [el("p", { class: "note" }, "No lines match.")]));
+	}
+	drawList();
+	main.replaceChildren(el("h1", {}, `${current === 0 ? "Scripts used everywhere" : "Room " + current}${roomName(current) && current ? ": " + roomName(current) : ""}`),
+		el("div", { class: "sub" }, `${all.filter(l => l.op === "say").length} lines said, ${all.filter(l => l.op === "choice").length} dialogue choices found in this room's scripts. Click a line to name its speaker or mark it as a goal or clue.`),
+		el("div", { class: "linefilters" }, search, kind, check("unattributed", "speaker unsure"), check("marked", "marked")), list);
+}
+
+function lineRow(line) {
+	const color = colorOf(line), who = speakerOf(line), open = openLine === line.index;
+	const row = el("div", { class: "line" + (open ? " open" : ""), onclick: () => { openLine = open ? null : line.index; renderLines(); } },
+		el("div", { class: "swatch" + (color ? "" : " unknown"), style: color ? `background:${color}` : null, title: color ? `text colour ${line.color}` : "colour set while playing" }, line.color != null && typeof line.color === "number" ? line.color : "?"),
+		el("div", { class: "speaker " + who.cls, title: who.name }, line.op === "say" ? who.name : ""),
+		el("div", {}, line.op !== "say" ? el("span", { class: "kind" }, KIND_LABEL[line.op]) : "", line.text,
+			line.has_substitution ? el("span", { class: "badge subst", title: "Part of this line is filled in while playing" }, "varies") : "",
+			...marksOf(line).map(m => el("span", { class: "badge " + m.kind }, m.label))));
+	if (!open) return row;
+	const wrap = el("div"); wrap.append(row, lineEditor(line));
+	return wrap;
+}
+
+function slug(text) {
+	let hash = 0;
+	for (const ch of text) hash = (hash * 31 + ch.codePointAt(0)) >>> 0;
+	return (text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 28) || "line") + "-" + (hash % 46656).toString(36);
+}
+/** The longest stretch of a line that is always the same, to listen for. */
+function steadyPart(text) {
+	return text.split(/\{[a-z]+\}/).map(s => s.trim()).sort((a, b) => b.length - a.length)[0] || text;
+}
+function addTrigger(existing, phrase) {
+	const wanted = `heard: ${phrase}`;
+	if ((existing || "").toLowerCase().includes(wanted.toLowerCase())) return existing;
+	return existing ? `${existing} | ${wanted}` : wanted;
+}
+
+function lineEditor(line) {
+	const done = async () => { await reloadJournal(); render(); };
+	const parts = [];
+	if (line.op === "say") {
+		const override = journal.lines.find(l => l.text === line.text);
+		const who = el("input", { value: override?.speaker || "", placeholder: "e.g. cook, sound effect; - drops the line" });
+		parts.push(el("div", { class: "stack" }, el("h4", {}, "Who says it"),
+			el("div", { class: "note" }, `In the script: ${line.actor === "ego" ? "Guybrush" : typeof line.actor === "number" ? (line.actor >= 252 ? "printed on screen, no actor" : `actor ${line.actor}${line.speaker ? ` (${line.speaker})` : ""}`) : "an actor chosen while playing"}; text colour ${line.color ?? "set while playing"}${line.color_from ? " (the actor's own)" : ""}.`),
+			el("div", { class: "pair" }, el("label", {}, "This line only", who),
+				el("button", { class: "primary", type: "button", onclick: async () => {
+					const section = "line." + (override?.id || slug(line.text));
+					const ok = who.value.trim() ? await saveSection(section, { text: line.text, speaker: who.value }) : await deleteSection(section);
+					if (ok) done();
+				} }, "Save"))));
+		if (line.room && typeof line.color === "number" && typeof line.actor === "number") {
+			const key = line.actor < 128 ? `voice.${line.actor}.${line.color}` : `voice.${line.color}`;
+			const voice = el("input", { value: (journal.rooms[line.room] || {})[key] || "", placeholder: "name for this voice" });
+			const same = lines.filter(l => l.room === line.room && l.op === "say" && l.actor === line.actor && l.color === line.color).length;
+			parts[0].append(el("div", { class: "pair" },
+				el("label", {}, `Every line in this room ${line.actor < 128 ? `by actor ${line.actor} ` : "with no actor "}in colour ${line.color} (${same} lines)`, voice),
+				el("button", { class: "primary", type: "button", onclick: async () => { if (await saveSection("room" + line.room, { [key]: voice.value.trim() || null })) done(); } }, "Save")));
+		}
+	}
+	// Goals and clues
+	const action = el("select", {}, ...[["clue", "is a clue for a goal"], ["start", "gives her a new goal"], ["done", "means a goal is finished"]].map(([v, t]) => el("option", { value: v }, t)));
+	const goal = el("select", {}, ...journal.goals.filter(g => !g.id.startsWith("nudge")).map(g => el("option", { value: g.id }, `${g.id}: ${(g.text || "").slice(0, 50)}`)), el("option", { value: "" }, "(a new goal)"));
+	const newId = el("input", { placeholder: "short id for the new goal, e.g. poodles" });
+	const text = el("textarea", { class: "short", placeholder: "The clue as a short note in plain words" });
+	const phrase = el("input", { value: steadyPart(line.text) });
+	const newIdLabel = el("label", {}, "New goal's id", newId);
+	const textLabel = el("label", {}, "Clue", text);
+	const refresh = () => {
+		newIdLabel.style.display = goal.value === "" ? "" : "none";
+		const needsText = action.value === "clue" || goal.value === "";
+		textLabel.style.display = needsText ? "" : "none";
+		textLabel.firstChild.textContent = action.value === "clue" ? "Clue, as a short note" : "The goal, in plain words";
+		text.placeholder = action.value === "clue" ? "What she learns from this line" : "What she is now trying to do, as a character told her";
+	};
+	action.addEventListener("change", refresh); goal.addEventListener("change", refresh); refresh();
+	parts.push(el("div", { class: "stack" }, el("h4", {}, "Goals and clues"),
+		el("div", { class: "row" }, el("label", {}, "Hearing this line", action), el("label", {}, "Goal", goal)),
+		newIdLabel, textLabel,
+		el("label", {}, "Words to listen for (must appear in the line exactly)", phrase),
+		el("div", { class: "savebar" }, el("button", { class: "primary", type: "button", onclick: async () => {
+			const words = phrase.value.trim();
+			if (!words || !line.text.toLowerCase().includes(words.toLowerCase())) { alert("The words to listen for must be part of the line."); return; }
+			let id = goal.value;
+			if (!id) {
+				id = newId.value.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-");
+				if (!id) { alert("Give the new goal an id."); return; }
+				if (action.value !== "start" && !text.value.trim() && action.value !== "clue") { alert("Describe the new goal."); return; }
+			}
+			const existing = journal.goals.find(g => g.id === id);
+			let ok = true;
+			if (action.value === "clue") {
+				if (!text.value.trim()) { alert("Write the clue."); return; }
+				if (!existing) ok = await saveSection("goal." + id, { text: "(describe this goal)" });
+				ok = ok && await saveSection("clue." + slug(words), { goal: id, when: `heard: ${words}`, text: text.value });
+			} else {
+				const key = action.value;   // start or done
+				const set = { [key]: addTrigger(existing?.[key], words) };
+				if (!existing) set.text = text.value.trim() || "(describe this goal)";
+				ok = await saveSection("goal." + id, set);
+			}
+			if (ok) done();
+		} }, "Save"), el("span", { class: "note" }, "Existing goals and clues are edited on the Goals and clues tab."))));
+	const box = el("div", { class: "editor" }, ...parts);
+	box.addEventListener("click", e => e.stopPropagation());
+	return box;
+}
+
+/* ---------- journal ---------- */
+function card(title, section, fields, values) {
+	const inputs = {};
+	const saved = el("span", { class: "saved" });
+	const body = fields.map(([key, label, kind]) => {
+		inputs[key] = kind === "area" ? el("textarea", { class: "short" }, values[key] || "") : el("input", { value: values[key] || "" });
+		return el("label", {}, label, inputs[key]);
+	});
+	return el("div", { class: "card" }, el("div", { class: "head" }, el("span", {}, title),
+			el("button", { class: "small danger", type: "button", onclick: async () => { if (confirm(`Delete ${section}?`) && await deleteSection(section)) { await reloadJournal(); render(); } } }, "delete")),
+		...body,
+		el("div", { class: "savebar" }, el("button", { class: "primary", type: "button", onclick: async () => {
+			const set = Object.fromEntries(fields.map(([key]) => [key, inputs[key].value.trim() || null]));
+			if (await saveSection(section, set)) { await reloadJournal(); saved.textContent = "Saved"; }
+		} }, "Save"), saved));
+}
+function renderJournal() {
+	const goals = journal.goals.filter(g => !g.id.startsWith("nudge"));
+	const newGoal = el("input", { placeholder: "id for a new goal" });
+	document.getElementById("view").replaceChildren(
+		el("h1", {}, "Goals and clues"),
+		el("div", { class: "sub" }, "What her journal can show. A goal appears when its start trigger happens and is ticked off by its done trigger; a clue is noted under its goal when its trigger happens. Triggers: heard: words · have: item · room: N · goal: id, several joined with \" | \"."),
+		el("h3", {}, `Goals (${goals.length})`),
+		...goals.map(g => el("div", {}, card(g.id, "goal." + g.id, [["title", "Short title (optional)"], ["text", "The goal, as she reads it", "area"], ["start", "Appears when"], ["done", "Finished when"]], g),
+			...journal.clues.filter(c => c.goal === g.id).map(c => el("div", { style: "margin-left:22px" }, card("clue: " + c.id, "clue." + c.id, [["goal", "Goal id"], ["when", "Noted when"], ["text", "The clue", "area"]], c))))),
+		el("div", { class: "pair" }, newGoal, el("button", { class: "primary", type: "button", onclick: async () => {
+			const id = newGoal.value.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-");
+			if (id && await saveSection("goal." + id, { text: "(describe this goal)" })) { await reloadJournal(); render(); }
+		} }, "Add goal")),
+		el("h3", {}, "Clues whose goal does not exist"),
+		...journal.clues.filter(c => !journal.goals.some(g => g.id === c.goal)).map(c => card("clue: " + c.id, "clue." + c.id, [["goal", "Goal id"], ["when", "Noted when"], ["text", "The clue", "area"]], c)),
+		el("h3", {}, `Speakers set for single lines (${journal.lines.length})`),
+		...journal.lines.map(l => card(l.speaker || "(none)", "line." + l.id, [["speaker", "Speaker (- drops the line)"], ["text", "The line, exactly"]], l)));
 }
 
 document.addEventListener("keydown", e => {
 	if ((e.ctrlKey || e.metaKey) && e.key === "s") { e.preventDefault(); document.querySelector("form")?.requestSubmit(); return; }
 	if (e.target.matches("input, textarea, select")) return;
-	if (e.key === "j") go(current + 1);
-	if (e.key === "k") go(current - 1);
+	if (e.key === "j") step(1);
+	if (e.key === "k") step(-1);
 });
 load();
 </script>

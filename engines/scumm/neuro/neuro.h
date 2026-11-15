@@ -150,6 +150,7 @@ private:
 	// Development tool that dumps every room; see extract.cpp
 	enum ExtractPhase {
 		kExtractOff,
+		kExtractDumpScripts,
 		kExtractWaitForGame,
 		kExtractEnterRoom,
 		kExtractSettle,
@@ -166,6 +167,7 @@ private:
 	};
 	Extraction _extract;
 	bool startExtraction();
+	void dumpScripts(const Common::String &dir);
 	void updateExtraction();
 	bool extractNextRoom();
 	void extractCopyScreen();

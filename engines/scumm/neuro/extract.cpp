@@ -26,6 +26,10 @@
 //   NEURO_EXTRACT_DIR    where to write (turns the tool on)
 //   NEURO_EXTRACT_FROM   first room to do (default 1)
 //   NEURO_EXTRACT_SKIP   comma-separated rooms to leave out (ones that crash)
+//   NEURO_DUMP_SCRIPTS   instead of all that: write every room's raw data and
+//                        every global script to this directory, then quit.
+//                        Nothing is entered or run, so no room can crash it.
+//                        neuro/tools/transcribe/lines.py reads the result.
 //
 // Start the game from a savegame so that it is in a normal state. The room
 // being worked on is written to "progress" first, so a crash names its room.
@@ -49,7 +53,55 @@ namespace Scumm {
 static const int kSettleFrames = 8;
 static const int kPanFrames = 3;
 
+static void writeFile(const Common::String &path, const byte *data, uint32 size) {
+	Common::DumpFile file;
+	if (!file.open(Common::Path(path, Common::Path::kNativeSeparator))) {
+		warning("Neuro: Could not write %s", path.c_str());
+		return;
+	}
+	file.write(data, size);
+	file.close();
+}
+
+static void writeText(const Common::String &path, const Common::String &text) {
+	writeFile(path, (const byte *)text.c_str(), text.size());
+}
+
+void NeuroBridge::dumpScripts(const Common::String &dir) {
+	Common::String index;
+	for (int room = 1; room < _vm->_numRooms && room < (int)_vm->_res->_types[rtRoom].size(); room++) {
+		// Rooms the index lists without a disk are numbers the game does not use
+		if (_vm->_res->_types[rtRoom][room]._roomoffs == RES_INVALID_OFFSET || _vm->_res->_types[rtRoom][room]._roomno == 0)
+			continue;
+		_vm->ensureResourceLoaded(rtRoom, room);
+		const byte *data = _vm->getResourceAddress(rtRoom, room);
+		if (!data)
+			continue;
+		writeFile(Common::String::format("%s/room%03d.room", dir.c_str(), room), data, _vm->getResourceSize(rtRoom, room));
+		index += Common::String::format("room %d\n", room);
+	}
+	for (int script = 1; script < _vm->_numGlobalScripts && script < (int)_vm->_res->_types[rtScript].size(); script++) {
+		if (_vm->_res->_types[rtScript][script]._roomoffs == RES_INVALID_OFFSET || _vm->_res->_types[rtScript][script]._roomno == 0)
+			continue;
+		_vm->ensureResourceLoaded(rtScript, script);
+		const byte *data = _vm->getResourceAddress(rtScript, script);
+		if (!data)
+			continue;
+		writeFile(Common::String::format("%s/script%03d.scrp", dir.c_str(), script), data, _vm->getResourceSize(rtScript, script));
+		index += Common::String::format("script %d room %d\n", script, _vm->_res->_types[rtScript][script]._roomno);
+	}
+	index += Common::String::format("game %s version %d\n", _vm->_game.gameid, _vm->_game.version);
+	writeText(dir + "/index.txt", index);
+}
+
 bool NeuroBridge::startExtraction() {
+	const char *scripts = getenv("NEURO_DUMP_SCRIPTS");
+	if (scripts && *scripts) {
+		_extract.dir = scripts;
+		_extract.phase = kExtractDumpScripts;
+		return true;
+	}
+
 	const char *dir = getenv("NEURO_EXTRACT_DIR");
 	if (!dir || !*dir)
 		return false;
@@ -65,20 +117,6 @@ bool NeuroBridge::startExtraction() {
 	}
 	_extract.phase = kExtractWaitForGame;
 	return true;
-}
-
-static void writeFile(const Common::String &path, const byte *data, uint32 size) {
-	Common::DumpFile file;
-	if (!file.open(Common::Path(path, Common::Path::kNativeSeparator))) {
-		warning("Neuro: Could not write %s", path.c_str());
-		return;
-	}
-	file.write(data, size);
-	file.close();
-}
-
-static void writeText(const Common::String &path, const Common::String &text) {
-	writeFile(path, (const byte *)text.c_str(), text.size());
 }
 
 void NeuroBridge::extractCopyScreen() {
@@ -165,13 +203,20 @@ bool NeuroBridge::extractNextRoom() {
 		bool skipped = false;
 		for (const int room : _extract.skip)
 			skipped |= room == _extract.room;
-		if (!skipped && _vm->_res->_types[rtRoom][_extract.room]._roomoffs != RES_INVALID_OFFSET)
+		if (!skipped && _vm->_res->_types[rtRoom][_extract.room]._roomoffs != RES_INVALID_OFFSET
+				&& _vm->_res->_types[rtRoom][_extract.room]._roomno != 0)
 			return true;
 	}
 }
 
 void NeuroBridge::updateExtraction() {
 	switch (_extract.phase) {
+	case kExtractDumpScripts:
+		dumpScripts(_extract.dir);
+		_extract.phase = kExtractOff;
+		_vm->quitGame();
+		break;
+
 	case kExtractWaitForGame:
 		// Let the savegame finish loading
 		if (!playerHasControl())

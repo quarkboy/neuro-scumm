@@ -65,7 +65,8 @@ def reader(conn):
             if head[0] & 0x0F == 0x8:
                 return
             if head[0] & 0x0F == 0x1:
-                text = payload.decode("utf-8", "replace")
+                # The game escapes slashes ("actions\\/force"); undo that so steps can name commands plainly
+                text = payload.decode("utf-8", "replace").replace("\\/", "/")
                 log("<", text)
                 with lock:
                     received.append(text)

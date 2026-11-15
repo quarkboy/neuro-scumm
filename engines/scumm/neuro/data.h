@@ -24,6 +24,7 @@
 
 #include "common/array.h"
 #include "common/formats/ini-file.h"
+#include "common/hash-str.h"
 #include "common/str.h"
 
 namespace Scumm {
@@ -42,6 +43,8 @@ namespace Scumm {
  *   voice.COLOR            who is speaking when text of that colour appears
  *                          without belonging to any actor (a dog that is
  *                          part of the scenery, someone off screen)
+ *   voice.ACTOR.COLOR      who is speaking when that actor's text has that
+ *                          colour (one actor standing in for a group)
  *   spot.NAME = X,Y | TEXT a place with no object that she can walk to; the
  *                          optional text says what she sees when she does
  * [alert.ID] sections turn a moment she must not miss into a prompt:
@@ -58,6 +61,10 @@ namespace Scumm {
  *             carries out that command at once.
  *   then      optional second command in the same form, run as soon as the
  *             first one has played out
+ * [line.ID] sections name who says one particular line, where neither the
+ * actor nor the text colour settles it (sound effects shown as text, say):
+ *   text      the line, exactly as it is sent
+ *   speaker   the name to use; "-" drops the line altogether
  * and two global sections:
  *   [actors]  ID = name    fallback names for unnamed actors
  *   [states]  object name = label for state 0, label for state 1, ...
@@ -69,7 +76,11 @@ public:
 	Common::String roomName(int room) const;
 	Common::String roomDescription(int room) const;
 	Common::String objectNote(int room, int object) const;
-	Common::String voiceName(int room, int color) const;
+	/** actor: the actor number, or 0 for text that belongs to no actor. */
+	Common::String voiceName(int room, int color, int actor = 0) const;
+
+	/** The speaker set for exactly this line; false if there is none. */
+	bool lineSpeaker(const Common::String &text, Common::String &speaker) const;
 
 	/** Returns false if the file says nothing about this actor. */
 	bool actorName(int room, int actor, Common::String &name) const;
@@ -100,6 +111,7 @@ private:
 
 	Common::INIFile _ini;
 	Common::Array<Alert> _alerts;
+	Common::StringMap _lineSpeakers;
 };
 
 } // End of namespace Scumm

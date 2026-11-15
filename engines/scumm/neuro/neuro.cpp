@@ -51,6 +51,8 @@ NeuroBridge *NeuroBridge::create(ScummEngine *vm) {
 
 	// The room extraction tool runs without a server
 	const char *extract = getenv("NEURO_EXTRACT_DIR");
+	if (!extract || !*extract)
+		extract = getenv("NEURO_DUMP_SCRIPTS");
 	if (url.empty() && !(extract && *extract))
 		return nullptr;
 	return new NeuroBridge(vm, url);
@@ -368,11 +370,14 @@ void NeuroBridge::registerActions(bool interactOnly) {
 	Common::JSONObject readJournal;
 	readJournal.setVal("name", new Common::JSONValue("read_journal"));
 	readJournal.setVal("description", new Common::JSONValue(
-		"Read your goals and notes. show_completed adds finished goals."));
+		"Read your goals and notes. show_clues adds the clues noted for each goal; show_completed adds finished goals."));
 	Common::JSONObject completedType;
 	completedType.setVal("type", new Common::JSONValue("boolean"));
 	Common::JSONObject journalProperties;
 	journalProperties.setVal("show_completed", new Common::JSONValue(completedType));
+	Common::JSONObject cluesType;
+	cluesType.setVal("type", new Common::JSONValue("boolean"));
+	journalProperties.setVal("show_clues", new Common::JSONValue(cluesType));
 	Common::JSONObject journalSchema;
 	journalSchema.setVal("type", new Common::JSONValue("object"));
 	journalSchema.setVal("properties", new Common::JSONValue(journalProperties));
@@ -620,7 +625,10 @@ void NeuroBridge::handleAction(const Common::String &id, const Common::String &r
 	if (name == "read_journal") {
 		Common::String completed = args.get("show_completed|completed|show_done|all", true);
 		completed.toLowercase();
-		sendActionResult(id, true, _journal.describe(completed == "true" || completed == "yes" || completed == "1"));
+		Common::String clues = args.get("show_clues|clues");
+		clues.toLowercase();
+		sendActionResult(id, true, _journal.describe(completed == "true" || completed == "yes" || completed == "1",
+			clues == "true" || clues == "yes" || clues == "1"));
 		return;
 	}
 	if (name == "add_note") {

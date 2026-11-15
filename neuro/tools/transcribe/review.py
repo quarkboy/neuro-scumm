@@ -6,6 +6,11 @@ objects and actors outlined) next to what the description file says about it, an
 a reviewer correct the text and mark the room as checked. Saving writes straight back
 into the description file, keeping its comments and the order of everything else.
 
+If EXTRACT_DIR also holds lines.json (made by lines.py from a script dump), the page
+gets a Lines view: every line the game's scripts can say, with its speaker and text
+colour, where a reviewer names speakers and marks lines as starting or finishing a goal
+or as a clue for one. Those marks are saved as [goal.*], [clue.*] and [line.*] sections.
+
 Only listens on 127.0.0.1. Open http://127.0.0.1:PORT/ (8070 unless given).
 """
 import json
@@ -104,6 +109,81 @@ def save_room(room, fields):
     os.replace(INI_FILE + ".tmp", INI_FILE)
 
 
+SAFE_SECTION = re.compile(r"(room\d+|goal\.[\w-]+|clue\.[\w-]+|line\.[\w-]+)")
+SAFE_KEY = re.compile(r"[\w. -]+")
+
+
+def update_section(section, changes, delete=False):
+    """Sets (or with None removes) keys of one section, creating it if needed; or deletes it."""
+    if not SAFE_SECTION.fullmatch(section):
+        raise ValueError(f"section {section!r} is not one this page edits")
+    clean = {}
+    for key, value in changes.items():
+        if not SAFE_KEY.fullmatch(key):
+            raise ValueError(f"bad key {key!r}")
+        clean[key] = None if value is None else " ".join(str(value).split())
+    blocks = read_ini()
+    for index, (name, lines) in enumerate(blocks):
+        if name != section:
+            continue
+        if delete:
+            del blocks[index]
+            break
+        kept = [lines[0]]
+        for line in lines[1:]:
+            m = KEY.match(line)
+            if m and m.group(1) in clean:
+                value = clean.pop(m.group(1))
+                if value:
+                    kept.append(f"{m.group(1)} = {value}")
+                continue
+            kept.append(line)
+        insert = len(kept)
+        while insert > 1 and not kept[insert - 1].strip():
+            insert -= 1
+        kept[insert:insert] = [f"{k} = {v}" for k, v in clean.items() if v]
+        blocks[index] = (name, kept)
+        break
+    else:
+        if delete:
+            return
+        lines = [f"[{section}]"] + [f"{k} = {v}" for k, v in clean.items() if v] + [""]
+        # New sections go after the last one of their kind, so the file stays grouped
+        kind = section.split(".")[0] if "." in section else "room"
+        last = max((i for i, (name, _) in enumerate(blocks) if name and (name.split(".")[0] if "." in name else "room") == kind), default=None)
+        if last is None:
+            if blocks[-1][1] and blocks[-1][1][-1].strip():
+                blocks[-1][1].append("")
+            blocks.append((section, lines))
+        else:
+            if blocks[last][1] and blocks[last][1][-1].strip():
+                blocks[last][1].append("")
+            blocks.insert(last + 1, (section, lines))
+    text = "\n".join(line for _, lines in blocks for line in lines).rstrip("\n") + "\n"
+    with open(INI_FILE + ".tmp", "w", encoding="utf-8") as f:
+        f.write(text)
+    os.replace(INI_FILE + ".tmp", INI_FILE)
+
+
+def journal():
+    """The goal, clue and line sections, and each room's voice and actor names."""
+    out = {"goals": [], "clues": [], "lines": [], "rooms": {}}
+    for name, lines in read_ini():
+        if not name:
+            continue
+        keys = section_keys(lines)
+        if name.startswith("goal."):
+            out["goals"].append({"id": name[5:], **keys})
+        elif name.startswith("clue."):
+            out["clues"].append({"id": name[5:], **keys})
+        elif name.startswith("line."):
+            out["lines"].append({"id": name[5:], **keys})
+        elif re.fullmatch(r"room\d+", name):
+            out["rooms"][name[4:]] = {"name": keys.get("name", ""),
+                                      **{k: v for k, v in keys.items() if k.startswith(("voice.", "actor."))}}
+    return out
+
+
 def rooms():
     blocks = read_ini()
     out = []
@@ -144,6 +224,15 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, f.read(), "text/html; charset=utf-8")
         elif self.path == "/api/rooms":
             self._send(200, json.dumps(rooms()).encode(), "application/json")
+        elif self.path == "/api/journal":
+            self._send(200, json.dumps(journal()).encode(), "application/json")
+        elif self.path == "/api/lines":
+            path = os.path.join(EXTRACT_DIR, "lines.json")
+            if os.path.exists(path):
+                with open(path, "rb") as f:
+                    self._send(200, f.read(), "application/json")
+            else:
+                self._send(200, b'{"rooms":{},"lines":[]}', "application/json")
         elif re.fullmatch(r"/img/room\d+\.png", self.path):
             with open(os.path.join(EXTRACT_DIR, os.path.basename(self.path)), "rb") as f:
                 self._send(200, f.read(), "image/png")
@@ -151,12 +240,20 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b"not found", "text/plain")
 
     def do_POST(self):
-        m = re.fullmatch(r"/api/room/(\d+)", self.path)
-        if not m:
-            self._send(404, b"not found", "text/plain")
-            return
         fields = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)))
-        save_room(int(m.group(1)), fields)
+        m = re.fullmatch(r"/api/room/(\d+)", self.path)
+        try:
+            if m:
+                save_room(int(m.group(1)), fields)
+            elif self.path == "/api/section":
+                # {"section": "clue.flower", "set": {"goal": "idol", ...}} or {"section": ..., "delete": true}
+                update_section(fields["section"], fields.get("set") or {}, bool(fields.get("delete")))
+            else:
+                self._send(404, b"not found", "text/plain")
+                return
+        except (ValueError, KeyError) as e:
+            self._send(400, json.dumps({"error": str(e)}).encode(), "application/json")
+            return
         self._send(200, b'{"ok":true}', "application/json")
 
     def log_message(self, *_):

@@ -687,9 +687,22 @@ void NeuroBridge::onTalkStarted(int actor, const byte *text) {
 		}
 	}
 
+	// A reviewer's word on this very line beats everything worked out above
+	Common::String chosen;
+	const bool overridden = _data.lineSpeaker(line, chosen);
+	if (overridden) {
+		if (chosen == "-")
+			return;
+		if (!chosen.empty())
+			speaker = chosen;
+	}
+
 	// A group that is one actor (the three pirate leaders) speaks in a
 	// different text colour per member. Number them once a second colour shows up.
-	if (actor > 0 && actor < 0x80 && actor != _vm->VAR(_vm->VAR_EGO)) {
+	const Common::String voice = (actor > 0 && actor < 0x80) ? _data.voiceName(_vm->_currentRoom, _vm->_charsetColor, actor) : Common::String();
+	if (!overridden && !voice.empty()) {
+		speaker = voice;
+	} else if (!overridden && actor > 0 && actor < 0x80 && actor != _vm->VAR(_vm->VAR_EGO)) {
 		Common::Array<byte> &colors = _voiceColors[speaker];
 		const byte color = _vm->_charsetColor;
 		uint index = 0;

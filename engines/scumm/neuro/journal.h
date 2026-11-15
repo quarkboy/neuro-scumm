@@ -45,6 +45,14 @@ namespace Scumm {
  * with '=' must match exactly rather than be contained.
  * A goal without a start trigger is there from the beginning.
  *
+ * [clue.ID] sections are things she learns that help with a goal:
+ *   goal    the id of the goal it belongs to
+ *   when    a trigger, as above (usually heard: with the line's words)
+ *   text    the clue as a short note in plain words
+ * A clue is noted once, announced at the next pause, and listed under its
+ * goal for as long as that goal is unfinished. A goal's optional "title" is
+ * the few words used to refer to it there.
+ *
  * [nudge.ID] sections suggest writing something down, once:
  *   when    a trigger, as above
  *   say     optional wording; the default just says it may be worth a note
@@ -64,7 +72,7 @@ public:
 
 	void addNote(const Common::String &text);
 
-	Common::String describe(bool withCompleted = false) const;
+	Common::String describe(bool withCompleted = false, bool withClues = false) const;
 	bool isEmpty() const;
 
 	/** Bridge state that has to survive a save and load along with the goals. */
@@ -80,10 +88,16 @@ private:
 		kDone
 	};
 	struct Goal {
-		Common::String id, text, start, done;
+		Common::String id, text, start, done, title;
 		State state;
 		bool nudge;
 	};
+	struct Clue {
+		Common::String id, goal, when, text;
+		bool found;
+	};
+	Common::Array<Clue> _clues;
+	Common::String goalTitle(const Common::String &id) const;
 
 	bool fire(const Common::String &kind, const Common::String &argument);
 	void setState(Goal &goal, State state);

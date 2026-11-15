@@ -147,7 +147,13 @@ whether to look.
 - **Done when:** with hints on, GPT stuck at the safe asks for hints and gets through using them;
   with hints off, the action says hints are switched off.
 
-### E10. Clues in the journal, and a dump of every line in the game (L)
+### E10. Clues in the journal, and a dump of every line in the game (L; tooling built 2026-11-14)
+**Built:** `[clue.*]` sections and `read_journal`'s `show_clues`; `[line.*]` and `voice.ACTOR.COLOR`
+speaker overrides; `extract-lines.sh` (2,899 spoken lines and 605 dialogue choices, read straight
+from the scripts of all 83 rooms); and the review page's Lines and Goals tabs. **Still to do:**
+the marking itself (draft by Claude, check by a person), and replacing the walkthrough-guessed
+triggers with exact ones. The dump also showed that 17 of the 18 "rooms that crash" are simply
+room numbers the game does not use; the extractor now skips them.
 Proposed by Samuel, 2026-11-14. Goals tell her what to do; clues are what she has learned that
 helps with them, written down the moment she hears it. Example: the prisoner says he was jailed
 for picking a flower, and names it.

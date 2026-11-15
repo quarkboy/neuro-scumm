@@ -46,6 +46,12 @@ bool NeuroData::load(const Common::String &path) {
 	}
 
 	for (const auto &section : _ini.getSections()) {
+		if (section.name.hasPrefix("line.")) {
+			const Common::String text = get(section.name, "text");
+			if (!text.empty())
+				_lineSpeakers[text] = get(section.name, "speaker");
+			continue;
+		}
 		if (!section.name.hasPrefix("alert."))
 			continue;
 		Alert alert;
@@ -98,7 +104,16 @@ Common::String NeuroData::objectNote(int room, int object) const {
 	return get(roomSection(room), Common::String::format("object.%d", object));
 }
 
-Common::String NeuroData::voiceName(int room, int color) const {
+bool NeuroData::lineSpeaker(const Common::String &text, Common::String &speaker) const {
+	if (!_lineSpeakers.contains(text))
+		return false;
+	speaker = _lineSpeakers[text];
+	return true;
+}
+
+Common::String NeuroData::voiceName(int room, int color, int actor) const {
+	if (actor)
+		return get(roomSection(room), Common::String::format("voice.%d.%d", actor, color));
 	return get(roomSection(room), Common::String::format("voice.%d", color));
 }
 

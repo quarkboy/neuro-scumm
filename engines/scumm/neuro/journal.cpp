@@ -31,7 +31,25 @@ static const uint kMaxNoteLength = 300;
 
 void NeuroJournal::loadGoals(const Common::INIFile &ini) {
 	_goals.clear();
+	_clues.clear();
 	for (const auto &section : ini.getSections()) {
+		if (section.name.hasPrefix("clue.")) {
+			Clue clue;
+			clue.id = section.name.substr(5);
+			if (const Common::INIFile::KeyValue *kv = section.getKey("goal"))
+				clue.goal = kv->value;
+			if (const Common::INIFile::KeyValue *kv = section.getKey("when"))
+				clue.when = kv->value;
+			if (const Common::INIFile::KeyValue *kv = section.getKey("text"))
+				clue.text = kv->value;
+			clue.goal.trim();
+			clue.when.trim();
+			clue.text.trim();
+			clue.found = false;
+			if (!clue.text.empty())
+				_clues.push_back(clue);
+			continue;
+		}
 		const bool nudge = section.name.hasPrefix("nudge.");
 		if (!nudge && !section.name.hasPrefix("goal."))
 			continue;
@@ -43,6 +61,9 @@ void NeuroJournal::loadGoals(const Common::INIFile &ini) {
 			goal.text = kv->value;
 		if (const Common::INIFile::KeyValue *kv = section.getKey(nudge ? "when" : "start"))
 			goal.start = kv->value;
+		if (const Common::INIFile::KeyValue *kv = section.getKey("title"))
+			goal.title = kv->value;
+		goal.title.trim();
 		if (nudge && goal.text.empty())
 			goal.text = "That sounded worth remembering. You can write it down with add_note.";
 		if (const Common::INIFile::KeyValue *kv = section.getKey("done"))
@@ -59,6 +80,8 @@ void NeuroJournal::loadGoals(const Common::INIFile &ini) {
 void NeuroJournal::reset() {
 	for (auto &goal : _goals)
 		goal.state = (goal.start.empty() && !goal.nudge) ? kActive : kHidden;
+	for (auto &clue : _clues)
+		clue.found = false;
 	_notes.clear();
 	_news.clear();
 	memos.clear();
@@ -110,8 +133,37 @@ static bool matchesOne(const Common::String &trigger, const Common::String &kind
 	return haystack.contains(wantArgument);
 }
 
+Common::String NeuroJournal::goalTitle(const Common::String &id) const {
+	for (const auto &goal : _goals) {
+		if (goal.id != id)
+			continue;
+		if (!goal.title.empty())
+			return goal.title;
+		// The first few words of the goal stand in for a title
+		Common::String title;
+		int words = 0;
+		for (uint i = 0; i < goal.text.size() && words < 3; i++) {
+			if (goal.text[i] == ' ' || goal.text[i] == ':')
+				words++;
+			if (goal.text[i] == ':')
+				break;
+			title += goal.text[i];
+		}
+		title.trim();
+		return title;
+	}
+	return id;
+}
+
 bool NeuroJournal::fire(const Common::String &kind, const Common::String &argument) {
 	bool changed = false;
+	for (auto &clue : _clues) {
+		if (!clue.found && matches(clue.when, kind, argument)) {
+			clue.found = true;
+			changed = true;
+			_news += "Clue noted (" + goalTitle(clue.goal) + "): " + clue.text + "\n";
+		}
+	}
 	for (uint i = 0; i < _goals.size(); i++) {
 		Goal &goal = _goals[i];
 		if (goal.state == kHidden && matches(goal.start, kind, argument)) {
@@ -174,19 +226,30 @@ bool NeuroJournal::isEmpty() const {
 	return _notes.empty();
 }
 
-Common::String NeuroJournal::describe(bool withCompleted) const {
+Common::String NeuroJournal::describe(bool withCompleted, bool withClues) const {
 	Common::String active, done;
+	uint hiddenClues = 0;
 	for (const auto &goal : _goals) {
 		if (goal.nudge)
 			continue;
-		if (goal.state == kActive)
+		if (goal.state == kActive) {
 			active += "- " + goal.text + "\n";
-		else if (goal.state == kDone)
+			for (const auto &clue : _clues) {
+				if (!clue.found || clue.goal != goal.id)
+					continue;
+				if (withClues)
+					active += "  - clue: " + clue.text + "\n";
+				else
+					hiddenClues++;
+			}
+		} else if (goal.state == kDone)
 			done += "- " + goal.text + "\n";
 	}
 
 	Common::String text = "## Your journal\n\n";
 	text += "Current goals:\n" + (active.empty() ? Common::String("- none yet\n") : active);
+	if (hiddenClues)
+		text += Common::String::format("(%u clues noted; show_clues lists them.)\n", hiddenClues);
 	// Finished goals are left out unless asked for: seeing them invites doing them again
 	if (withCompleted)
 		text += "\nCompleted goals:\n" + (done.empty() ? Common::String("- none yet\n") : done);
@@ -206,6 +269,10 @@ void NeuroJournal::save(const Common::String &fileName) const {
 		if (goal.state != kHidden)
 			file->writeString(Common::String::format("goal %s %d\n", goal.id.c_str(), (int)goal.state));
 	}
+	for (const auto &clue : _clues) {
+		if (clue.found)
+			file->writeString("clue " + clue.id + "\n");
+	}
 	for (const auto &note : _notes)
 		file->writeString("note " + note + "\n");
 	for (const auto &memo : memos)
@@ -223,7 +290,12 @@ void NeuroJournal::load(const Common::String &fileName) {
 	// Goals that are active from the start may have been completed in the save
 	while (!file->eos()) {
 		Common::String line = file->readLine();
-		if (line.hasPrefix("note ")) {
+		if (line.hasPrefix("clue ")) {
+			for (auto &clue : _clues) {
+				if (clue.id == line.substr(5))
+					clue.found = true;
+			}
+		} else if (line.hasPrefix("note ")) {
 			_notes.push_back(line.substr(5));
 		} else if (line.hasPrefix("memo ")) {
 			const size_t space = line.findFirstOf(' ', 5);

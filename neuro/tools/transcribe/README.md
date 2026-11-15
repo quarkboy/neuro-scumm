@@ -23,7 +23,22 @@ What the pictures show is the room as its scripts draw it when entered cold: peo
 and things that only appear later in the story may be missing, and the camera may
 never have been meant to show every part.
 
-## 2. Draft and review
+## 2. Extract the lines
+
+```sh
+neuro/tools/transcribe/extract-lines.sh ../extract/monkey1 1
+```
+
+Writes `lines.json`: every line of text the game's scripts contain, about 2,900 spoken
+lines and 600 dialogue choices for Monkey Island 1. For each line it records the room,
+the script it is in (for an object's script, which verb it answers: "poster / Look at"),
+the actor it is printed for, and the text colour where the script sets one.
+
+It reads the scripts directly (nothing is played), so it covers every room and every
+branch, including lines no walkthrough reaches. It is not a decompiler: it finds the
+instructions that carry text and knows nothing about when they run.
+
+## 3. Draft and review
 
 ```sh
 python3 neuro/tools/transcribe/review.py ../extract/monkey1 neuro/data/monkey1.ini
@@ -36,3 +51,17 @@ the room name, description, object notes and actor names, set the review status
 file, keeping its comments and everything the page does not edit.
 
 `status` and `review_note` are for reviewers only; the game ignores them.
+
+The page has three tabs:
+
+- **Room:** the description, object notes and actor names, as above.
+- **Lines:** every line found in the room's scripts, with a swatch of its text colour and
+  the speaker the game will report. Lines whose speaker is a guess (text printed with no
+  actor, which the game calls "Narrator" unless told otherwise) can be filtered for. Click
+  a line to name who says it, for that line alone or for every line in that colour, and
+  to mark it as giving a new goal, finishing a goal, or being a clue for a goal. Replies to
+  commands such as "Look at poster" are lines like any other.
+- **Goals and clues:** everything her journal can show, editable in one place.
+
+Saving writes `[goal.*]`, `[clue.*]`, `[line.*]` sections and `voice.*` keys into the
+description file (formats: `engines/scumm/neuro/journal.h` and `data.h`).
