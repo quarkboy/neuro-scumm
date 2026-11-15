@@ -218,6 +218,8 @@ private:
 	bool pagerCovers(const NeuroWorld &world) const;
 	void pressArrow(int verb, const NeuroWorld &world);
 	void updatePager();
+	/** Picks a line on screen; with a real click where the room reads the pointer to see which. */
+	void pickLine(int verb);
 
 	void sendForce(const Common::String &state, const Common::String &query, const char *actionName, const Common::String &priority = Common::String());
 	void checkAlerts(const NeuroWorld &before, const NeuroWorld &after);

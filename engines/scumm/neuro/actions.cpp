@@ -215,7 +215,7 @@ void NeuroBridge::updatePager() {
 			_pagerState = kPagerIdle;
 			_pagerLines.clear();
 			_commandStartedAt = g_system->getMillis();
-			_vm->runInputScript(kVerbClickArea, verb.id, 1);
+			pickLine(verb.id);
 			return;
 		}
 	}
@@ -283,7 +283,18 @@ void NeuroBridge::actionChooseDialogue(const Common::String &id, const NeuroArgs
 		return;
 	}
 	_pagerLines.clear();
-	_vm->runInputScript(kVerbClickArea, world.verbs[option - 1].id, 1);
+	pickLine(world.verbs[option - 1].id);
+}
+
+void NeuroBridge::pickLine(int verb) {
+	// A close-up can work out the chosen line from where the pointer is
+	// (talking to the navigator's head), so there it has to be a real click
+	NeuroClick click;
+	if (needsClicks() && verbButton(verb, click)) {
+		clickAt(click);
+		return;
+	}
+	_vm->runInputScript(kVerbClickArea, verb, 1);
 }
 
 bool NeuroBridge::resolvePreset(const NeuroWorld &world, const Common::String &preset, NeuroCommand &command) {

@@ -283,6 +283,15 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 	}
 
 	// Conversation lines replace the normal verbs while they are shown
+	if (!world.verbs.empty() && _standardVerbs.empty()) {
+		// Loaded in mid-conversation, before the normal verbs were ever seen:
+		// lines to say are listed one to a row, verbs stand side by side
+		world.inDialogue = true;
+		for (uint i = 0; i < world.verbs.size(); i++) {
+			for (uint j = i + 1; j < world.verbs.size(); j++)
+				world.inDialogue &= world.verbs[i].state != world.verbs[j].state;
+		}
+	}
 	if (!world.verbs.empty() && !_standardVerbs.empty()) {
 		world.inDialogue = true;
 		for (const auto &verb : world.verbs) {
@@ -834,7 +843,13 @@ void NeuroBridge::pollWorld() {
 	}
 
 	// The first verbs to appear are the game's normal ones
-	if (_standardVerbs.empty() && !world.verbs.empty() && !world.customVerbs) {
+	// (they stand in a grid; a game loaded in mid-conversation shows a list of lines first)
+	bool grid = false;
+	for (uint i = 0; i < world.verbs.size(); i++) {
+		for (uint j = i + 1; j < world.verbs.size(); j++)
+			grid |= world.verbs[i].state == world.verbs[j].state;
+	}
+	if (_standardVerbs.empty() && grid && !world.customVerbs) {
 		_standardVerbs = world.verbs;
 		_offeredVerbs = _standardVerbs;
 		registerActions(true);
