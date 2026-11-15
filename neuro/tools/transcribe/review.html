@@ -479,10 +479,84 @@ function lineEditor(line) {
 }
 
 /* ---------- journal ---------- */
+const TRIGGER_KINDS = [
+	["heard", "a line is said containing"],
+	["heard=", "a line is said that is exactly"],
+	["have", "she has an item whose name contains"],
+	["have=", "she has the item named exactly"],
+	["room", "she enters the room"],
+	["goal", "this goal is finished"],
+];
+/** One trigger as written in the file ("heard: =words") to [kind, value]; unknown kinds are kept as they are. */
+function parseTrigger(text) {
+	const m = /^(\w+)\s*:\s*(.*)$/.exec(text.trim());
+	if (!m) return ["other", text.trim()];
+	let kind = m[1].toLowerCase(), value = m[2].trim();
+	if ((kind === "heard" || kind === "have") && value.startsWith("=")) { kind += "="; value = value.slice(1).trim(); }
+	return TRIGGER_KINDS.some(([k]) => k === kind) ? [kind, value] : ["other", text.trim()];
+}
+/** How many lines in the scripts a "heard" trigger would fire on, so a too-loose one shows. */
+function heardCount(kind, value) {
+	const want = value.toLowerCase();
+	if (!want) return "";
+	const hits = lines.filter(l => l.op === "say" && (kind === "heard=" ? l.text.toLowerCase() === want : l.text.toLowerCase().includes(want)));
+	const rooms = [...new Set(hits.map(l => l.room))];
+	return hits.length === 0 ? "matches no line in the scripts (lines with names or numbers filled in while playing may still match)"
+		: `matches ${hits.length} line${hits.length > 1 ? "s" : ""} in the scripts` + (hits.length > 1 ? `, in room${rooms.length > 1 ? "s" : ""} ${rooms.slice(0, 8).join(", ")}${rooms.length > 8 ? "…" : ""}` : "");
+}
+/** Editor for a trigger list: one row per alternative, each a kind and what it looks for. */
+function triggerEditor(value) {
+	const rows = el("div", {});
+	const addRow = (kind, text) => {
+		const kinds = kind === "other" ? [...TRIGGER_KINDS, ["other", "other (as written)"]] : TRIGGER_KINDS;
+		const pick = el("select", { style: "width:auto" }, ...kinds.map(([k, label]) => el("option", { value: k }, label)));
+		pick.value = kind;
+		const holder = el("span", { style: "flex:1" }), note = el("div", { class: "note" });
+		const row = el("div", { style: "margin-bottom:4px" });
+		const control = () => {
+			let input;
+			if (pick.value === "room") {
+				input = el("select", {}, ...Object.entries(journal.rooms).sort((a, b) => a[0] - b[0]).map(([n, r]) => el("option", { value: n }, `${n} ${r.name}`)));
+			} else if (pick.value === "goal") {
+				input = el("select", {}, ...journal.goals.map(g => el("option", { value: g.id }, g.title ? `${g.id}: ${g.title}` : g.id)));
+			} else {
+				input = el("input", { placeholder: pick.value.startsWith("heard") ? "words from the line" : pick.value.startsWith("have") ? "item name" : "" });
+			}
+			if (text) input.value = text;
+			const refresh = () => { text = input.value; note.textContent = pick.value.startsWith("heard") ? heardCount(pick.value, input.value.trim()) : ""; };
+			input.addEventListener("input", refresh);
+			holder.replaceChildren(input);
+			refresh();
+		};
+		pick.addEventListener("change", control);
+		row.append(el("div", { class: "pair" }, pick, holder, el("button", { class: "small", type: "button", title: "remove this trigger", onclick: () => row.remove() }, "×")), note);
+		row.read = () => {
+			const v = (holder.firstChild.value || "").trim();
+			if (!v) return null;
+			return pick.value === "other" ? v : pick.value.endsWith("=") ? `${pick.value.slice(0, -1)}: =${v}` : `${pick.value}: ${v}`;
+		};
+		control();
+		rows.append(row);
+	};
+	(value || "").split(" | ").map(t => t.trim()).filter(Boolean).forEach(t => addRow(...parseTrigger(t)));
+	const box = el("div", {}, rows, el("button", { class: "small", type: "button", onclick: () => addRow("heard", "") }, rows.children.length ? "+ or when…" : "+ add a trigger"));
+	Object.defineProperty(box, "value", { get: () => [...rows.children].map(r => r.read()).filter(Boolean).join(" | ") });
+	return box;
+}
 function card(title, section, fields, values) {
 	const inputs = {};
 	const saved = el("span", { class: "saved" });
 	const body = fields.map(([key, label, kind]) => {
+		if (kind === "triggers") {
+			inputs[key] = triggerEditor(values[key]);
+			return el("div", { style: "margin-top:6px" }, el("div", { class: "note", style: "font-style:normal" }, label), inputs[key]);
+		}
+		if (kind === "goal") {
+			const ids = journal.goals.map(g => g.id);
+			inputs[key] = el("select", {}, ...(ids.includes(values[key]) ? ids : [values[key] || "", ...ids]).map(id => el("option", { value: id }, id)));
+			inputs[key].value = values[key] || "";
+			return el("label", {}, label, inputs[key]);
+		}
 		inputs[key] = kind === "area" ? el("textarea", { class: "short" }, values[key] || "") : el("input", { value: values[key] || "" });
 		return el("label", {}, label, inputs[key]);
 	});
@@ -499,16 +573,16 @@ function renderJournal() {
 	const newGoal = el("input", { placeholder: "id for a new goal" });
 	document.getElementById("view").replaceChildren(
 		el("h1", {}, "Goals and clues"),
-		el("div", { class: "sub" }, "What her journal can show. A goal appears when its start trigger happens and is ticked off by its done trigger; a clue is noted under its goal when its trigger happens. Triggers: heard: words · have: item · room: N · goal: id, several joined with \" | \"."),
+		el("div", { class: "sub" }, "What her journal can show. A goal appears when any of its \"appears when\" triggers happens and is ticked off by any of its \"finished when\" triggers; a clue is noted under its goal when one of its triggers happens."),
 		el("h3", {}, `Goals (${goals.length})`),
-		...goals.map(g => el("div", {}, card(g.id, "goal." + g.id, [["title", "Short title (optional)"], ["text", "The goal, as she reads it", "area"], ["start", "Appears when"], ["done", "Finished when"]], g),
-			...journal.clues.filter(c => c.goal === g.id).map(c => el("div", { style: "margin-left:22px" }, card("clue: " + c.id, "clue." + c.id, [["goal", "Goal id"], ["when", "Noted when"], ["text", "The clue", "area"]], c))))),
+		...goals.map(g => el("div", {}, card(g.id, "goal." + g.id, [["title", "Short title (optional)"], ["text", "The goal, as she reads it", "area"], ["start", "Appears when", "triggers"], ["done", "Finished when", "triggers"]], g),
+			...journal.clues.filter(c => c.goal === g.id).map(c => el("div", { style: "margin-left:22px" }, card("clue: " + c.id, "clue." + c.id, [["goal", "Goal", "goal"], ["text", "The clue", "area"], ["when", "Noted when", "triggers"]], c))))),
 		el("div", { class: "pair" }, newGoal, el("button", { class: "primary", type: "button", onclick: async () => {
 			const id = newGoal.value.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-");
 			if (id && await saveSection("goal." + id, { text: "(describe this goal)" })) { await reloadJournal(); render(); }
 		} }, "Add goal")),
 		el("h3", {}, "Clues whose goal does not exist"),
-		...journal.clues.filter(c => !journal.goals.some(g => g.id === c.goal)).map(c => card("clue: " + c.id, "clue." + c.id, [["goal", "Goal id"], ["when", "Noted when"], ["text", "The clue", "area"]], c)),
+		...journal.clues.filter(c => !journal.goals.some(g => g.id === c.goal)).map(c => card("clue: " + c.id, "clue." + c.id, [["goal", "Goal", "goal"], ["text", "The clue", "area"], ["when", "Noted when", "triggers"]], c)),
 		el("h3", {}, `Speakers set for single lines (${journal.lines.length})`),
 		...journal.lines.map(l => card(l.speaker || "(none)", "line." + l.id, [["speaker", "Speaker (- drops the line)"], ["text", "The line, exactly"]], l)));
 }
