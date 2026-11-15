@@ -327,9 +327,9 @@ void NeuroBridge::registerActions(bool interactOnly) {
 
 	// Once the game's verbs are known they are offered as an enum
 	Common::JSONValue *verbSchema = stringSchema();
-	if (!_standardVerbs.empty()) {
+	if (!_offeredVerbs.empty()) {
 		Common::JSONArray names;
-		for (const auto &verb : _standardVerbs)
+		for (const auto &verb : _offeredVerbs)
 			names.push_back(new Common::JSONValue(verb.name));
 		names.push_back(new Common::JSONValue("Walk to"));
 		Common::JSONObject withEnum;

@@ -218,6 +218,9 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 
 		NeuroThing thing;
 		thing.id = vs.verbid;
+		// Where it is drawn tells a grid of verbs from a list of lines to say
+		thing.x = vs.curRect.left;
+		thing.state = vs.curRect.top;
 		thing.name = cleanText(_vm->getResourceAddress(rtVerb, slot), true);
 		if (!thing.name.empty())
 			world.verbs.push_back(thing);
@@ -253,6 +256,13 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 			for (const auto &standard : _standardVerbs)
 				world.inDialogue &= (verb.id != standard.id);
 		}
+		// Lines to say are listed one to a row; verbs stand side by side
+		for (uint i = 0; world.inDialogue && i < world.verbs.size(); i++) {
+			for (uint j = i + 1; j < world.verbs.size(); j++)
+				world.customVerbs |= world.verbs[i].state == world.verbs[j].state;
+		}
+		if (world.customVerbs)
+			world.inDialogue = false;
 	}
 }
 
@@ -778,9 +788,22 @@ void NeuroBridge::pollWorld() {
 	}
 
 	// The first verbs to appear are the game's normal ones
-	if (_standardVerbs.empty() && !world.verbs.empty()) {
+	if (_standardVerbs.empty() && !world.verbs.empty() && !world.customVerbs) {
 		_standardVerbs = world.verbs;
+		_offeredVerbs = _standardVerbs;
 		registerActions(true);
+	}
+	// A scene can swap in verbs of its own
+	if (!_standardVerbs.empty() && !world.inDialogue && !world.verbs.empty()) {
+		const NeuroThingList &wanted = world.customVerbs ? world.verbs : _standardVerbs;
+		if (joinNames(wanted) != joinNames(_offeredVerbs)) {
+			_offeredVerbs = wanted;
+			registerActions(true);
+			if (world.customVerbs)
+				sendContext("The verbs on screen have been replaced. They are now: " + joinNames(wanted) + ". Use them with interact, like any verb.", false);
+			else
+				sendContext("The usual verbs are back on screen.", true);
+		}
 	}
 
 	updateForces(world);

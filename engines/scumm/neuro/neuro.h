@@ -99,6 +99,9 @@ struct NeuroWorld {
 
 	/** The verb area shows lines to say instead of verbs. */
 	bool inDialogue = false;
+
+	/** The verb area shows other verbs than the usual ones (ways to touch a caged beast). */
+	bool customVerbs = false;
 };
 
 /**
@@ -353,6 +356,8 @@ private:
 
 	// The game's normal verbs, learned the first time they are on screen
 	NeuroThingList _standardVerbs;
+	// The verbs her interact action currently offers: the normal ones, or a scene's own
+	NeuroThingList _offeredVerbs;
 
 	// Only one force may be outstanding at a time
 	bool _forceActive = false;
