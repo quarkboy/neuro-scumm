@@ -288,9 +288,10 @@ void NeuroBridge::actionChooseDialogue(const Common::String &id, const NeuroArgs
 
 void NeuroBridge::pickLine(int verb) {
 	// A close-up can work out the chosen line from where the pointer is
-	// (talking to the navigator's head), so there it has to be a real click
+	// (the navigator's head, the last scene with Elaine), so a real click on
+	// the line, as a player makes, is the way that always works
 	NeuroClick click;
-	if (needsClicks() && verbButton(verb, click)) {
+	if (verbButton(verb, click)) {
 		clickAt(click);
 		return;
 	}
