@@ -205,7 +205,14 @@ the map until one says she is ready (ref 3.4).
 Ask the storekeeper about the Sword Master; he leaves; follow him on the map and through the
 forest (ref 3.6). Alert when he leaves the store ("Follow him?"). On each forest screen, report
 which way he went.
-- Check: whether the signpost must be pushed; whether he waits if she is slow.
+- Read from the scripts (2026-11-15, global script 67 and room 58):
+  - His route: high street, town square, dock, island map, then forest screens 218 (fork),
+    215 back, 203 right, 202 right, 205 left, 217 back, 209. There he pushes the sign, a
+    bridge appears, and he takes the right path to the Sword Master's (room 61).
+  - He only moves on while she is on the same screen, and waits up to 30 seconds per screen
+    (60 on the dock and the map) for her to catch up; after that he is gone.
+  - The sign on screen 209 must be pushed (by him or by her) or the right path cannot be used.
+  - Entering room 61 once puts "Sword Master's" on the island map for direct travel.
 
 ### P1-4. The Sword Master (S; needs E7)
 Dialogue only. Win with comebacks from the notebook. Proof: the T-shirt (goal trigger
@@ -214,9 +221,19 @@ Dialogue only. Win with comebacks from the notebook. Proof: the T-shirt (goal tr
 ### P1-5. Treasure (M; needs E2, and E4 or a forest fix)
 Read the map (dance steps: "back, left, right ..."), walk the forest from the fork, dig at the X
 with the shovel (ref 3.12).
-- Forest screens are drawn by script from one room (58): check whether objects say which exit is
-  "back", "left" and "right", and name them so the dance steps can be followed.
-- Find out which route is right (three versions in the sources) with the E1 script.
+- Read from the scripts and tried in play (2026-11-15):
+  - The forest is 20 screens (pseudo-rooms 201 to 220 of room 58) joined by a fixed table; nothing
+    is random. Each screen has up to three exits: object 688 is always the left edge, 687 the
+    right edge, 685 (and its twin 686) a gap in the trees at the back.
+  - The map's steps, taken from the fork screen (218): back, left, right, left, right, back,
+    right, left, back. That ends at the plaque (room 64). Confirmed in play.
+  - Going past the first screen inside (215) needs the map in the inventory, or the storekeeper
+    walking ahead, or having been deeper once before. The yellow flowers are on 215 itself.
+  - Screen 207 only offers the right path when entered from 212, and only the other two otherwise.
+- Engine work this needs (not done): forest screens currently reach her as "room 218" with no
+  description, and with every object of room 58 listed, including the ones parked off screen.
+  Hide off-screen objects, let pseudo-rooms use the description of the room they are drawn
+  from, and name the exits "back path", "left path", "right path".
 - **Done when:** GPT, given the map text, digs up the treasure.
 
 ### P1-6. The idol (M)

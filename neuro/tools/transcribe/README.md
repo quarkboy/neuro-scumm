@@ -65,3 +65,11 @@ The page has three tabs:
 
 Saving writes `[goal.*]`, `[clue.*]`, `[line.*]` sections and `voice.*` keys into the
 description file (formats: `engines/scumm/neuro/journal.h` and `data.h`).
+
+## Reading the game's logic: `disasm.py`
+
+`disasm.py SCRIPT_DUMP_DIR room N` (or `script N`, or `--out DIR` for everything) prints the
+scripts from the same dump as readable instructions, one per line with its offset. Use it to
+find out how a puzzle works: which variable gates an exit, where a character walks, what an
+object does for each verb. Add `--decimal` to compare offsets with `lines.json`.
+

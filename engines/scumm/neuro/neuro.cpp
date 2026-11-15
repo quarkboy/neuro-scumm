@@ -569,6 +569,18 @@ void NeuroBridge::handleDebugAction(const Common::String &id, const Common::Stri
 		if (!quiet) sendActionResult(id, true, text);
 		return;
 	}
+	if (name == "debug_var" || name == "debug_bit") {
+		// "N" reads a game variable (or bit variable), "N VALUE" writes it
+		int number = 0, value = 0;
+		const int given = sscanf(data.c_str(), "%d %d", &number, &value);
+		const uint var = name == "debug_bit" ? (0x8000 | number) : number;
+		if (given == 2)
+			_vm->writeVar(var, value);
+		const Common::String text = Common::String::format("%s %d = %d", name.c_str() + 6, number, _vm->readVar(var));
+		debug("NEURODUMP %s", text.c_str());
+		if (!quiet) sendActionResult(id, true, text);
+		return;
+	}
 	if (name == "debug_room") {
 		const int room = atoi(data.c_str());
 		if (!quiet) sendActionResult(id, true);
