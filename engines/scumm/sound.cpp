@@ -235,7 +235,7 @@ void Sound::triggerSound(int soundID) {
 		debugC(DEBUG_SOUND, "Using SBL sound effect");
 
 		if (shouldInjectMISEAudio()) {
-			stream = _soundSE->getAudioStreamFromIndex(soundID, kSoundSETypeSFX);
+			stream = _soundSE->getSFXStreamFromSoundID(soundID);
 			if (stream)
 				_mixer->playStream(Audio::Mixer::kSFXSoundType, nullptr, stream, soundID);
 			return;
@@ -346,7 +346,7 @@ void Sound::triggerSound(int soundID) {
 		}
 
 		if (shouldInjectMISEAudio() && soundTag == MKTAG('S','P','K',' ')) {
-			stream = _soundSE->getAudioStreamFromIndex(soundID, kSoundSETypeSFX);
+			stream = _soundSE->getSFXStreamFromSoundID(soundID);
 			if (stream)
 				_mixer->playStream(Audio::Mixer::kSFXSoundType, nullptr, stream, soundID);
 			return;
@@ -365,9 +365,17 @@ void Sound::processSfxQueues() {
 	if (_queuedSoundMode != DIGI_SND_MODE_EMPTY) {
 		if (_queuedSoundMode & DIGI_SND_MODE_SFX)
 			startTalkSound(_queuedSfxOffset, _queuedSfxLen, 1);
-		if (_queuedSoundMode & DIGI_SND_MODE_TALKIE)
+		if (_queuedSoundMode & DIGI_SND_MODE_TALKIE) {
 			startTalkSound(_queuedTalkieOffset, _queuedTalkieLen, 2, _talkChannelHandle);
-		_queuedSoundMode = DIGI_SND_MODE_EMPTY;
+
+			if (shouldInjectMISEAudio()) {
+				if (_mixer->isSoundHandleActive(*_talkChannelHandle)) {
+					SESpeechClip clip = { *_talkChannelHandle, (int32)_queuedTalkieOffset };
+					_seSpeechClips.push_back(clip);
+				}
+			}
+		}
+			_queuedSoundMode = DIGI_SND_MODE_EMPTY;
 	}
 
 	const int act = _vm->getTalkingActor();
@@ -821,14 +829,8 @@ void Sound::stopTalkSound() {
 		// Another character is starting to speak: leave this line playing.
 		// The talk handle is about to be reused, so keep a copy to be able
 		// to stop the line later.
-		for (uint i = 0; i < _overlappingTalkHandles.size();) {
-			if (_mixer->isSoundHandleActive(_overlappingTalkHandles[i]))
-				i++;
-			else
-				_overlappingTalkHandles.remove_at(i);
-		}
-		if (_mixer->isSoundHandleActive(*_talkChannelHandle))
-			_overlappingTalkHandles.push_back(*_talkChannelHandle);
+		// Its handle is already in _seSpeechClips, so it can still be
+		// stopped after the talk handle is reused.
 		_digiSndMode &= ~DIGI_SND_MODE_TALKIE;
 		return;
 	}
@@ -993,9 +995,9 @@ void Sound::stopSound(int sound) {
 }
 
 void Sound::stopAllSounds() {
-	for (const auto &handle : _overlappingTalkHandles)
-		_mixer->stopHandle(handle);
-	_overlappingTalkHandles.clear();
+	for (const auto &clip : _seSpeechClips)
+		_mixer->stopHandle(clip.handle);
+	_seSpeechClips.clear();
 
 	_soundCD->stopAllCDSounds();
 	if (_enableAmbienceSounds)
@@ -2263,9 +2265,41 @@ void Sound::startRemasteredSpeech(const char *msgString, uint16 roomNumber, uint
 		numWaits
 	);
 
-	if (soundIndex >= 0) {
-		talkSound(soundIndex, 0, DIGI_SND_MODE_TALKIE);
+	if (soundIndex < 0)
+		return;
+
+	for (uint i = 0; i < _seSpeechClips.size();) {
+		if (_mixer->isSoundHandleActive(_seSpeechClips[i].handle))
+			i++;
+		else
+			_seSpeechClips.remove_at(i);
 	}
+
+	// The pirate leaders' laughter is printed once for each of them, and
+	// then again and again to make it flash. Every one of those lines has
+	// the same recording of all three laughing; it is meant to be heard
+	// once, not on top of itself.
+	if ((_queuedSoundMode & DIGI_SND_MODE_TALKIE) && _soundSE->isSameSpeechClip((int32)_queuedTalkieOffset, soundIndex))
+		return;
+	for (const auto &clip : _seSpeechClips) {
+		if (_soundSE->isSameSpeechClip(clip.index, soundIndex))
+			return;
+	}
+
+	// Nobody says two things at once: a character's new line cuts off
+	// their previous one. Other characters' lines are left to finish.
+	const Common::String character = _soundSE->getSpeechCharacter(soundIndex);
+	for (uint i = 0; i < _seSpeechClips.size();) {
+		if (_soundSE->getSpeechCharacter(_seSpeechClips[i].index) == character) {
+			_mixer->stopHandle(_seSpeechClips[i].handle);
+			_seSpeechClips.remove_at(i);
+		} else {
+			i++;
+		}
+	}
+
+	debugC(DEBUG_SOUND, "Special Edition speech entry %d", soundIndex);
+	talkSound(soundIndex, 0, DIGI_SND_MODE_TALKIE);
 }
 
 bool Sound::shouldInjectMISEAudio() const {

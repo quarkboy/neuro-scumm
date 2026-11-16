@@ -76,6 +76,11 @@ public:
 	~SoundSE() = default;
 
 	Audio::SeekableAudioStream *getAudioStreamFromIndex(int32 index, SoundSEType type);
+	Audio::SeekableAudioStream *getSFXStreamFromSoundID(int32 soundID);
+	/** Who says a speech entry: the tag its file name starts with ("GUY", "PL1"). */
+	Common::String getSpeechCharacter(int32 index) const;
+	/** Whether two speech entries hold the same recording under different names. */
+	bool isSameSpeechClip(int32 indexA, int32 indexB);
 	Audio::SeekableAudioStream *getAudioStreamFromOffset(uint32 offset, SoundSEType type);
 
 	int32 handleMISESpeech(const char *msgString,
@@ -136,6 +141,8 @@ private:
 	AudioIndex _musicEntries;
 	AudioIndex _speechEntries;
 	AudioIndex _sfxEntries;
+	// MI1 and MI2 wave banks: sound resource number -> entry in the effects bank
+	Common::HashMap<int32, int32> _sfxSoundIDToIndex;
 	AudioIndex _ambienceEntries;
 	AudioIndex _commentaryEntries;
 	AudioIndex _patchEntries;

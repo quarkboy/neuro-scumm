@@ -110,9 +110,14 @@ protected:
 public:
 	Audio::SoundHandle *_talkChannelHandle;	// Handle of mixer channel actor is talking on
 
-	// Remastered Monkey Island speech: a line that is interrupted by the
-	// next speaker keeps playing underneath it instead of being cut off.
-	Common::Array<Audio::SoundHandle> _overlappingTalkHandles;
+	// Remastered Monkey Island speech: a line that is interrupted by another
+	// speaker keeps playing underneath instead of being cut off. Every clip that may still be playing is kept
+	// here with the entry it was started from.
+	struct SESpeechClip {
+		Audio::SoundHandle handle;
+		int32 index;
+	};
+	Common::Array<SESpeechClip> _seSpeechClips;
 	bool _letTalkSoundFinish = false;
 
 	bool _soundsPaused;

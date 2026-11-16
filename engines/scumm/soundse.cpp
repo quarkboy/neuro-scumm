@@ -168,6 +168,12 @@ void SoundSE::indexXWBFile(SoundSEType type) {
 			if (type == kSoundSETypeSpeech) {
 				(*audioIndex)[i].name = name;
 				_nameToIndexMISpeech[name] = i;
+			} else if (type == kSoundSETypeSFX) {
+				// The effects bank is not ordered by sound resource number,
+				// and has gaps. Each entry's name starts with the number
+				// of the sound resource it replaces ("61_sound_SBL_...").
+				if (!name.empty() && Common::isDigit(name[0]))
+					_sfxSoundIDToIndex[atoi(name.c_str())] = i;
 			} else if (type == kSoundSETypePatch) {
 				// Patch audio resources for MI2
 				// Note: We assume that patch XWB files always contain file names
@@ -786,6 +792,58 @@ Audio::SeekableAudioStream *SoundSE::getAudioStreamFromIndex(int32 index, SoundS
 	return createSoundStream(subStream, audioEntry);
 }
 
+Common::String SoundSE::getSpeechCharacter(int32 index) const {
+	if (index < 0 || index >= (int32)_speechEntries.size())
+		return Common::String();
+
+	const Common::String &name = _speechEntries[index].name;
+	const size_t end = name.findFirstOf('_');
+	return end == Common::String::npos ? name : name.substr(0, end);
+}
+
+bool SoundSE::isSameSpeechClip(int32 indexA, int32 indexB) {
+	if (indexA == indexB)
+		return true;
+	if (indexA < 0 || indexA >= (int32)_speechEntries.size() ||
+		indexB < 0 || indexB >= (int32)_speechEntries.size())
+		return false;
+
+	// A line that a group says together is stored once per member, each
+	// copy the same recording of the whole group.
+	const AudioEntry &a = _speechEntries[indexA];
+	const AudioEntry &b = _speechEntries[indexB];
+	if (a.length != b.length)
+		return false;
+
+	// Plenty of unrelated clips happen to be the same size, so compare
+	// some of the sound as well. Skip the start, which may be silence.
+	Common::SeekableReadStream *f = getAudioFile(kSoundSETypeSpeech);
+	if (!f)
+		return false;
+
+	byte dataA[512], dataB[512];
+	const uint32 size = MIN<uint32>(a.length, sizeof(dataA));
+	const uint32 skip = (a.length - size) / 2;
+	f->seek(a.offset + skip);
+	const bool readA = f->read(dataA, size) == size;
+	f->seek(b.offset + skip);
+	const bool readB = f->read(dataB, size) == size;
+	delete f;
+
+	return readA && readB && memcmp(dataA, dataB, size) == 0;
+}
+
+Audio::SeekableAudioStream *SoundSE::getSFXStreamFromSoundID(int32 soundID) {
+	// Without names in the bank, fall back on the entry's position
+	if (_sfxSoundIDToIndex.empty())
+		return getAudioStreamFromIndex(soundID, kSoundSETypeSFX);
+
+	if (!_sfxSoundIDToIndex.contains(soundID))
+		return nullptr;
+
+	return getAudioStreamFromIndex(_sfxSoundIDToIndex[soundID], kSoundSETypeSFX);
+}
+
 Common::String calculateCurrentString(const char *msgString) {
 	char currentChar = *msgString;
 	bool shouldContinue = true;
@@ -941,7 +999,25 @@ HeaderlessWMAStream::HeaderlessWMAStream(
 	const uint alignIndex = _entry.align & 0x1F;
 	const uint rateIndex = _entry.align >> 5;
 	_blockAlign = blockAlignArray[alignIndex < ARRAYSIZE(blockAlignArray) ? alignIndex : 0];
-	_bitRate = bytesPerSecondArray[rateIndex < ARRAYSIZE(bytesPerSecondArray) ? rateIndex : 0] * 8;
+	uint32 bytesPerSecond = bytesPerSecondArray[rateIndex < ARRAYSIZE(bytesPerSecondArray) ? rateIndex : 0];
+
+	// The Monkey Island banks leave the bit rate index at zero for every
+	// entry, which is only right for the stereo music. The mono effects are
+	// encoded at half that rate, and decode to nothing if the codec is set
+	// up for the wrong one. Each packet holds 16384 samples, so the packet
+	// size gives the real rate.
+	if (rateIndex == 0 && _entry.rate > 0) {
+		const uint32 estimate = (uint32)((uint64)_blockAlign * _entry.rate / 16384);
+		uint32 bestDiff = 0xFFFFFFFF;
+		for (uint i = 0; i < ARRAYSIZE(bytesPerSecondArray); i++) {
+			const uint32 diff = ABS((int32)bytesPerSecondArray[i] - (int32)estimate);
+			if (diff < bestDiff) {
+				bestDiff = diff;
+				bytesPerSecond = bytesPerSecondArray[i];
+			}
+		}
+	}
+	_bitRate = bytesPerSecond * 8;
 
 	createCodec();
 }
