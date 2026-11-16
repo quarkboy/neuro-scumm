@@ -389,6 +389,16 @@ private:
 
 	// Only one force may be outstanding at a time
 	bool _forceActive = false;
+
+	// The column beside the game in a window made to be streamed (panel.cpp)
+	void updatePanel();
+	void notePanelAction(const Common::String &name, const NeuroArgs &args);
+	Common::String describeForPanel(const Common::String &name, const NeuroArgs &args);
+	Common::String _panelNow, _panelKey, _panelTitle;
+	Common::StringArray _panelRecent;
+	uint32 _panelCheckedAt = 0;
+	int _panelChat = 30;
+	bool _panelHeld = false;
 	Common::String _forceAction;
 	Common::String _currentAction;
 	uint32 _forceSentAt = 0;

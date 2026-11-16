@@ -128,6 +128,7 @@ MODULE_OBJS += \
 	neuro/extract.o \
 	neuro/journal.o \
 	neuro/neuro.o \
+	neuro/panel.o \
 	neuro/websocket.o \
 	neuro/world.o
 endif

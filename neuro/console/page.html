@@ -121,20 +121,22 @@ code { background: #12161b; padding: 1px 5px; border-radius: 4px; font-size: 13p
     <label class="field"><span>Music</span><input id="music_volume" type="range" min="0" max="255"></label>
     <label class="field"><span>Effects</span><input id="sfx_volume" type="range" min="0" max="255"></label>
     <label class="field"><span>Voices</span><input id="speech_volume" type="range" min="0" max="255"></label>
-    <h3>Window (next start)</h3>
+    <h3>Stream window (next start)</h3>
     <label class="field"><span>Size</span>
-      <select id="window_size"><option>960x720</option><option>1280x960</option><option>1440x1080</option><option>1920x1440</option></select></label>
+      <select id="stream_size"><option>1280x720</option><option>1600x900</option><option>1920x1080</option><option>2560x1440</option></select></label>
+    <label class="check"><input type="checkbox" id="panel"> A column beside the game (without it the window is 4:3)</label>
+    <label class="field"><span>Column side</span>
+      <select id="panel_side"><option value="right">Right</option><option value="left">Left</option></select></label>
+    <label class="field"><span>Column title</span><input id="panel_title" title="A | starts a new line"></label>
+    <label class="field"><span>Chat box height (%)</span><input id="panel_chat" type="number" min="0" max="80"></label>
     <label class="check"><input type="checkbox" id="fullscreen"> Full screen</label>
-    <label class="check"><input type="checkbox" id="filtering"> Smooth the picture</label>
+    <label class="check"><input type="checkbox" id="filtering"> Smooth the picture where it is not enlarged by a whole number</label>
     <label class="field"><span>Dialogue sent as</span>
       <select id="dialogue_mode"><option value="speech">Speech messages</option><option value="context">Plain context</option></select></label>
     <h3>Where things are (next start)</h3>
     <label class="field"><span>Game folder</span><input id="game_dir"></label>
     <label class="field"><span>ScummVM</span><input id="scummvm" placeholder="found automatically"></label>
     <label class="field"><span>Savegames</span><input id="save_dir"></label>
-    <h3>Stream column</h3>
-    <label class="field"><span>Title</span><input id="overlay_title"></label>
-    <label class="field"><span>Chat box height (%)</span><input id="overlay_chat_height" type="number" min="0" max="80"></label>
     <div class="row" style="margin-top:10px"><button id="save-settings">Save settings</button><span class="hint" id="settings-note"></span></div>
   </section>
 </div>
@@ -156,9 +158,8 @@ code { background: #12161b; padding: 1px 5px; border-radius: 4px; font-size: 13p
   </section>
   <section>
     <h2>For OBS</h2>
-    <p class="hint" style="margin-top:0">Capture the game window, and add this address as a browser source beside it
-      (480 wide and 1080 tall next to a 1440 x 1080 game makes a 1920 x 1080 picture). Lay chat over the empty box at its top.</p>
-    <p><code id="overlay-url"></code> <a id="overlay-link" target="_blank" style="color:var(--told)">preview</a></p>
+    <p class="hint" style="margin-top:0">Capture the game window: it is the whole stream picture, the game with its column beside it.
+      Lay chat over the empty box at the top of the column.</p>
   </section>
   <section>
     <h2>Game output</h2>
@@ -170,8 +171,8 @@ code { background: #12161b; padding: 1px 5px; border-radius: 4px; font-size: 13p
 const token = new URLSearchParams(location.search).get('t') || '';
 const $ = id => document.getElementById(id);
 const FIELDS = ['neuro_url', 'operator_name', 'idle_force_seconds', 'reaction_ms', 'context_tokens', 'fast_mode',
-  'pointer', 'music_volume', 'sfx_volume', 'speech_volume', 'window_size', 'fullscreen', 'filtering',
-  'dialogue_mode', 'game_dir', 'scummvm', 'save_dir', 'overlay_title', 'overlay_chat_height'];
+  'pointer', 'music_volume', 'sfx_volume', 'speech_volume', 'stream_size', 'panel', 'panel_side', 'panel_title',
+  'panel_chat', 'fullscreen', 'filtering', 'dialogue_mode', 'game_dir', 'scummvm', 'save_dir'];
 let since = 0, filled = false, lastSaves = '', state = null;
 
 async function api(path, body) {
@@ -321,9 +322,6 @@ $('save-settings').onclick = async () => {
 for (const id of ['music_volume', 'sfx_volume', 'speech_volume'])
   $(id).onchange = () => api('/api/settings', {[id]: Number($(id).value)});
 
-const overlay = `${location.origin}/overlay?t=${token}`;
-$('overlay-url').textContent = overlay;
-$('overlay-link').href = overlay + '&preview=1';
 poll();
 </script>
 </body>

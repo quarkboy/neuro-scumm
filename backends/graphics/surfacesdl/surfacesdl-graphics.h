@@ -198,6 +198,15 @@ protected:
 	SDL_Renderer *_renderer;
 	SDL_Texture *_screenTexture;
 	void deinitializeRenderer();
+
+	// The column beside the game in a window made to be streamed (graphics/streampanel.h)
+	SDL_Texture *_panelTexture = nullptr;
+	uint32 _panelGeneration = 0;
+	int _panelTextureWidth = 0, _panelTextureHeight = 0;
+	int streamPanelWidth() const;
+	void drawStreamPanel();
+	void renderFrame();
+	WindowedGraphicsManager::Insets getSafeAreaInsets() const override;
 	void recreateScreenTexture();
 
 	virtual SDL_Surface *SDL_SetVideoMode(int width, int height, int bpp, Uint32 flags);

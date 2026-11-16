@@ -146,6 +146,8 @@ void NeuroBridge::update() {
 		return;
 	}
 
+	updatePanel();
+
 	if (!_ws.isConnected()) {
 		if (_wasConnected) {
 			warning("Neuro: Connection to %s lost", _url.c_str());
@@ -673,6 +675,8 @@ void NeuroBridge::handleDebugAction(const Common::String &id, const Common::Stri
 			_reactionMs = MAX(0, number);
 		} else if (setting == "context_tokens") {
 			_contextTokens = MAX(0, number);
+		} else if (setting == "hold") {
+			_panelHeld = text.equalsIgnoreCase("on");
 		} else if (setting == "pointer") {
 			_pointerGlide = !text.equalsIgnoreCase("off");
 		} else if (setting == "fast_mode") {
@@ -710,6 +714,7 @@ void NeuroBridge::handleAction(const Common::String &id, const Common::String &r
 	_lastActionAt = _lastActivity;
 
 	const NeuroArgs args(data);
+	notePanelAction(name, args);
 
 	if (name == "choose_dialogue") {
 		actionChooseDialogue(id, args);

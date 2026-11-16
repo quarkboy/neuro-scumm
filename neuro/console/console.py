@@ -3,7 +3,8 @@
 
 A web page for whoever runs the stream: choose the settings, start and stop
 the game, save and load, send Neuro a message, and watch what she is told and
-what she does. It also serves the column that OBS shows beside the game.
+what she does. The game window it starts is made to be captured: 16:9, with
+the game on one side and a column about what she is doing on the other.
 
     python3 neuro/console/console.py            # this machine only, port 7878
     python3 neuro/console/console.py --bind 0.0.0.0:7878
@@ -45,9 +46,13 @@ DEFAULTS = {
     "operator_name": "Vedal",
     "start_slot": None,
     # The window (used when the game is next started)
-    "window_size": "1440x1080",
+    "stream_size": "1920x1080",
     "fullscreen": False,
-    "filtering": False,
+    "filtering": True,
+    "panel": True,
+    "panel_side": "right",
+    "panel_title": "Neuro plays|The Secret of Monkey Island",
+    "panel_chat": 30,
     "music_volume": 192,
     "sfx_volume": 192,
     "speech_volume": 192,
@@ -58,10 +63,6 @@ DEFAULTS = {
     "context_tokens": 32000,
     "pointer": True,
     "fast_mode": "off",
-    # The stream column
-    "overlay_title": "Neuro plays The Secret of Monkey Island",
-    "overlay_chat_height": 30,
-    "overlay_hide": [],
 }
 
 # Settings the running game takes over the link, as "debug_set NAME VALUE"
@@ -314,18 +315,19 @@ class Console:
         save_dir = Path(s["save_dir"])
         save_dir.mkdir(parents=True, exist_ok=True)
 
-        args = [str(exe), f"--savepath={save_dir}", "--auto-detect", "-p", str(game_dir)]
-        # The window size is only honoured by the OpenGL graphics mode
-        args.append("--gfx-mode=opengl")
-        if s["fullscreen"]:
-            args.append("--fullscreen")
-        else:
-            args.append("--no-fullscreen")
-            size = str(s["window_size"]).lower().replace(",", "x").split("x")
-            if len(size) == 2 and all(part.strip().isdigit() for part in size):
-                args.append(f"--window-size={int(size[0])},{int(size[1])}")
-        args.append("--filtering" if s["filtering"] else "--no-filtering")
-        args.append("--aspect-ratio")
+        # The window: the game is 4:3 and as tall as the window, and whatever
+        # is wider than that is the column. The game is first enlarged by a
+        # whole number, which keeps its pixels sharp, and then fitted.
+        size = str(s["stream_size"]).lower().replace(",", "x").split("x")
+        if len(size) != 2 or not all(part.strip().isdigit() for part in size):
+            return f"The window size should look like 1920x1080, not {s['stream_size']}."
+        width, height = int(size[0]), int(size[1])
+        if not s["panel"]:
+            width = height * 4 // 3
+        args = [str(exe), f"--savepath={save_dir}", "--auto-detect", "-p", str(game_dir),
+                "--gfx-mode=surfacesdl", "--scaler=normal", f"--scale-factor={max(1, min(5, height // 240))}",
+                "--aspect-ratio", "--fullscreen" if s["fullscreen"] else "--no-fullscreen",
+                "--filtering" if s["filtering"] else "--no-filtering"]
         for key in ("music_volume", "sfx_volume", "speech_volume"):
             args.append(f"--{key.replace('_', '-')}={max(0, min(255, int(s[key])))}")
         if s["start_slot"] is not None and str(s["start_slot"]) != "":
@@ -341,6 +343,10 @@ class Console:
             "NEURO_CONTEXT_TOKENS": str(int(s["context_tokens"])),
             "NEURO_POINTER": "on" if s["pointer"] else "off",
             "NEURO_FAST_MODE": str(s["fast_mode"]),
+            "NEURO_STREAM_SIZE": f"{width}x{height}",
+            "NEURO_PANEL_SIDE": str(s["panel_side"]),
+            "NEURO_PANEL_TITLE": str(s["panel_title"]),
+            "NEURO_PANEL_CHAT": str(int(s["panel_chat"])),
         })
         self.output.clear()
         try:
@@ -556,6 +562,7 @@ class Console:
         if on == self.hold:
             return
         self.hold = on
+        self.to_game("debug_set", f"hold {'on' if on else 'off'}")
         who = self.settings["operator_name"]
         if on:
             if self.actions:
@@ -589,8 +596,6 @@ class Console:
                     value = bool(value)
                 elif kind is int:
                     value = int(value)
-                elif kind is list:
-                    value = [str(item) for item in value]
                 else:
                     value = str(value)
             except (TypeError, ValueError):
@@ -653,15 +658,8 @@ class Console:
         self.respond(writer, code, "application/json", json.dumps(value).encode())
 
     async def route(self, writer, method, path, query, body):
-        if method == "GET" and path in ("/", "/overlay"):
-            page = HERE / ("page.html" if path == "/" else "overlay.html")
-            self.respond(writer, 200, "text/html; charset=utf-8", page.read_bytes())
-            return
-        if method == "GET" and path == "/api/view":
-            s = self.settings
-            self.json(writer, {"view": self.view, "connected": self.game is not None, "hold": self.hold,
-                               "title": s["overlay_title"], "chat_height": s["overlay_chat_height"],
-                               "hide": s["overlay_hide"]})
+        if method == "GET" and path == "/":
+            self.respond(writer, 200, "text/html; charset=utf-8", (HERE / "page.html").read_bytes())
             return
         if method == "GET" and path == "/api/state":
             since = int((query.get("since") or ["0"])[0])
@@ -714,8 +712,7 @@ class Console:
     async def run(self):
         server = await asyncio.start_server(self.handle, self.host, self.port, limit=1 << 20)
         shown = "127.0.0.1" if self.host in ("0.0.0.0", "") else self.host
-        print(f"Console:        http://{shown}:{self.port}/?t={self.token}")
-        print(f"Stream column:  http://{shown}:{self.port}/overlay?t={self.token}   (OBS browser source, 480 x 1080)")
+        print(f"Console: http://{shown}:{self.port}/?t={self.token}")
         print("Ctrl+C stops the console and the game.")
         sys.stdout.flush()
         asyncio.ensure_future(self.run_upstream())

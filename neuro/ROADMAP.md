@@ -17,7 +17,7 @@ Built so far:
 
 ## Next
 
-1. **Operator web console.** A first version exists in [`console/`](console/README.md): settings, starting and stopping the game, saving and loading, messages to her, taking her controls away, a live view, and a column for the stream. Still to come: pausing the game itself, acting on her behalf (answering a question, picking a line), and restarting the game if it crashes.
+1. **Operator web console.** A first version exists in [`console/`](console/README.md): settings, starting and stopping the game, saving and loading, messages to her, taking her controls away, a live view, and a 16:9 game window with a column beside the game. Still to come: pausing the game itself, acting on her behalf (answering a question, picking a line), and restarting the game if it crashes.
 2. **Windows build.**
 3. **Review Parts Two, Three and Four.** Their descriptions and clues have not been checked against the game by a person.
 4. **An unaided full run.**

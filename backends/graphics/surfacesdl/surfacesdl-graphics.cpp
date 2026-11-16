@@ -34,6 +34,7 @@
 #ifdef USE_RGB_COLOR
 #include "common/list.h"
 #endif
+#include "graphics/streampanel.h"
 #include "graphics/blit.h"
 #include "graphics/font.h"
 #include "graphics/fontman.h"
@@ -1213,6 +1214,12 @@ void SurfaceSdlGraphicsManager::internUpdateScreen() {
 	if (debugger)
 		debugger->onFrame();
 
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	// The column beside the game can change while the game's picture does not
+	if (Graphics::streamPanel().enabled && Graphics::streamPanel().generation != _panelGeneration)
+		_forceRedraw = true;
+#endif
+
 	bool curCursorNeedsRedraw = _cursorNeedsRedraw;
 	if (_prevCursorNeedsRedraw && _isDoubleBuf) {
 		_cursorNeedsRedraw = true;
@@ -1607,6 +1614,23 @@ bool SurfaceSdlGraphicsManager::saveScreenshot(const Common::Path &filename) con
 	if (!out.open(filename)) {
 		return false;
 	}
+
+#if SDL_VERSION_ATLEAST(2, 0, 0) && !SDL_VERSION_ATLEAST(3, 0, 0)
+	// With a column beside the game, a screenshot is of the whole window
+	if (Graphics::streamPanel().enabled && _renderer && _windowWidth > 0 && _windowHeight > 0) {
+		const_cast<SurfaceSdlGraphicsManager *>(this)->renderFrame();
+		Graphics::Surface window;
+		window.create(_windowWidth, _windowHeight, Graphics::StreamPanel::format());
+		const bool read = SDL_RenderReadPixels(_renderer, nullptr, SDL_PIXELFORMAT_ARGB8888, window.getPixels(), window.pitch) == 0;
+#ifdef USE_PNG
+		const bool written = read && Image::writePNG(out, window);
+#else
+		const bool written = read && Image::writeBMP(out, window);
+#endif
+		window.free();
+		return written;
+	}
+#endif
 
 	if (!lockSurface(_hwScreen)) {
 		warning("Could not lock RGB surface");
@@ -3023,6 +3047,10 @@ void SurfaceSdlGraphicsManager::deinitializeRenderer() {
 		SDL_DestroyTexture(_screenTexture);
 	_screenTexture = nullptr;
 
+	if (_panelTexture)
+		SDL_DestroyTexture(_panelTexture);
+	_panelTexture = nullptr;
+
 	if (_renderer)
 		SDL_DestroyRenderer(_renderer);
 	_renderer = nullptr;
@@ -3058,6 +3086,14 @@ SDL_Surface *SurfaceSdlGraphicsManager::SDL_SetVideoMode(int width, int height, 
 #else
 		createWindowFlags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
 #endif
+	}
+
+	// A window made to be streamed has the size it was asked to have,
+	// whatever size the game's picture is
+	const Graphics::StreamPanel &panel = Graphics::streamPanel();
+	if (panel.sized) {
+		_hintedWidth = MAX(_hintedWidth, panel.windowWidth);
+		_hintedHeight = MAX(_hintedHeight, panel.windowHeight);
 	}
 
 	if (!createOrUpdateWindow(width, height, createWindowFlags)) {
@@ -3156,9 +3192,74 @@ SDL_Surface *SurfaceSdlGraphicsManager::SDL_SetVideoMode(int width, int height, 
 	return screen;
 }
 
+int SurfaceSdlGraphicsManager::streamPanelWidth() const {
+	const Graphics::StreamPanel &panel = Graphics::streamPanel();
+	if (!panel.enabled || panel.windowWidth <= 0)
+		return 0;
+	// The window can be resized; the column keeps its share of the width
+	return _windowWidth * panel.width() / panel.windowWidth;
+}
+
+WindowedGraphicsManager::Insets SurfaceSdlGraphicsManager::getSafeAreaInsets() const {
+	WindowedGraphicsManager::Insets insets = SdlGraphicsManager::getSafeAreaInsets();
+	const int width = streamPanelWidth();
+	if (Graphics::streamPanel().onLeft)
+		insets.left += width;
+	else
+		insets.right += width;
+	return insets;
+}
+
+void SurfaceSdlGraphicsManager::drawStreamPanel() {
+	Graphics::StreamPanel &panel = Graphics::streamPanel();
+	const int width = streamPanelWidth();
+	// ScummVM's own menus use the whole window
+	if (width <= 0 || _overlayVisible || !panel.surface.getPixels())
+		return;
+
+	const Graphics::Surface &surface = panel.surface;
+	if (!_panelTexture || _panelTextureWidth != surface.w || _panelTextureHeight != surface.h) {
+		if (_panelTexture)
+			SDL_DestroyTexture(_panelTexture);
+		_panelTexture = SDL_CreateTexture(_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, surface.w, surface.h);
+		if (!_panelTexture)
+			return;
+		_panelTextureWidth = surface.w;
+		_panelTextureHeight = surface.h;
+		_panelGeneration = panel.generation - 1;
+	}
+	if (_panelGeneration != panel.generation) {
+		SDL_UpdateTexture(_panelTexture, nullptr, surface.getPixels(), surface.pitch);
+		_panelGeneration = panel.generation;
+	}
+
+	SDL_Rect dest;
+	dest.x = panel.onLeft ? 0 : _windowWidth - width;
+	dest.y = 0;
+	dest.w = width;
+	dest.h = _windowHeight;
+	// Whole multiples of its pixels stay crisp; anything else is smoothed
+	const bool whole = surface.w > 0 && surface.h > 0 && width % surface.w == 0 && _windowHeight % surface.h == 0;
+#if SDL_VERSION_ATLEAST(3, 0, 0)
+	SDL_SetTextureScaleMode(_panelTexture, whole ? SDL_SCALEMODE_NEAREST : SDL_SCALEMODE_LINEAR);
+#elif SDL_VERSION_ATLEAST(2, 0, 12)
+	SDL_SetTextureScaleMode(_panelTexture, whole ? SDL_ScaleModeNearest : SDL_ScaleModeLinear);
+#endif
+#if SDL_VERSION_ATLEAST(3, 0, 0)
+	SDL_FRect fDest;
+	SDL_RectToFRect(&dest, &fDest);
+	SDL_RenderTexture(_renderer, _panelTexture, nullptr, &fDest);
+#else
+	SDL_RenderCopy(_renderer, _panelTexture, nullptr, &dest);
+#endif
+}
+
 void SurfaceSdlGraphicsManager::SDL_UpdateRects(SDL_Surface *screen, int numrects, SDL_Rect *rects) {
 	SDL_UpdateTexture(_screenTexture, nullptr, screen->pixels, screen->pitch);
+	renderFrame();
+}
 
+void SurfaceSdlGraphicsManager::renderFrame() {
 	SDL_Rect viewport;
 
 	Common::Rect &drawRect = (_overlayVisible) ? _overlayDrawRect : _gameDrawRect;
@@ -3198,6 +3299,8 @@ void SurfaceSdlGraphicsManager::SDL_UpdateRects(SDL_Surface *screen, int numrect
 		SDL_RenderCopy(_renderer, _screenTexture, nullptr, &viewport);
 #endif
 	}
+
+	drawStreamPanel();
 }
 
 int SurfaceSdlGraphicsManager::SDL_SetColors(SDL_Surface *surface, SDL_Color *colors, int firstcolor, int ncolors) {

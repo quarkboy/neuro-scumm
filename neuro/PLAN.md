@@ -63,11 +63,12 @@ engines/scumm/neuro/     the module
   actions.cpp            action definitions, validation, execution, clicks and the pointer
   data.{h,cpp}           the description file
   journal.{h,cpp}        goals, clues and notes, stored beside each savegame
+  panel.cpp              the column beside the game in a stream window
   extract.cpp            developer tool: dumps rooms and scripts for writing descriptions
 neuro/
   data/monkey1.ini       the description file for this game
   run.sh                 launcher
-  console/               the operator's web console and the stream column
+  console/               the operator's web console
   tools/                 extraction, review page and test scripts
 ```
 Changes to existing ScummVM files are limited to short hooks behind `#ifdef ENABLE_NEURO`, plus a few fixes to the Special Edition's audio, so rebasing on upstream stays cheap.

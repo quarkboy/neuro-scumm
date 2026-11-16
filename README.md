@@ -68,7 +68,7 @@ neuro/run.sh
 
 Add `-x N` to start from savegame slot N.
 
-For running a stream there is also a web console that starts the game for you, with the settings on a page, a live view of what she is told and does, and a column for OBS to show beside the game: `python3 neuro/console/console.py`. See [`neuro/console/README.md`](neuro/console/README.md). Savegames go to the folder in `NEURO_SAVE_DIR` (by default a `saves` folder beside the repository).
+For running a stream there is also a web console that starts the game for you in a 16:9 window made to be captured (the game, with a column beside it showing where she is and what she is doing), with the settings on a page and a live view of what she is told and does: `python3 neuro/console/console.py`. See [`neuro/console/README.md`](neuro/console/README.md). Savegames go to the folder in `NEURO_SAVE_DIR` (by default a `saves` folder beside the repository).
 
 | Setting | Default | Meaning |
 |---|---|---|
@@ -80,6 +80,8 @@ For running a stream there is also a web console that starts the game for you, w
 | `NEURO_CONTEXT_TOKENS` | `32000` | After roughly this much traffic, text that is only said once (room descriptions, the introduction) is said again. |
 | `NEURO_POINTER` | on | `off` makes clicks land at once instead of the pointer travelling to them. |
 | `NEURO_FAST_MODE` | off | `always`, or `scenes` to run fast only while she cannot act. For testing. |
+| `NEURO_STREAM_SIZE` | unset | A window size such as `1920x1080`. The game stays 4:3 and whatever is wider becomes a column showing where she is and what she is doing. Needs `--gfx-mode=surfacesdl`. |
+| `NEURO_PANEL_SIDE`, `NEURO_PANEL_TITLE`, `NEURO_PANEL_CHAT` | `right`, a default title, `30` | The column's side, its title (`|` starts a new line), and the height in percent of the empty box for chat. |
 
 Each setting can also be given as a ScummVM config key of the same name in lower case, for example `neuro_idle_force_seconds`. The one exception is the server URL, whose key is `neuro_ws_url`. An environment variable wins over the config key.
 

@@ -24,6 +24,7 @@
 #include "backends/platform/sdl/sdl-window.h"
 #include "backends/platform/sdl/sdl.h"
 
+#include "graphics/streampanel.h"
 #include "common/textconsole.h"
 #include "common/util.h"
 #include "common/config-manager.h"
@@ -489,12 +490,17 @@ bool SdlWindow::createOrUpdateWindow(int width, int height, uint32 flags) {
 		desktopRes.bottom -= (top + bottom);
 	}
 
-	if (width > desktopRes.right) {
-		width = desktopRes.right;
-	}
+	// A window made to be streamed keeps the exact size it was asked to
+	// have, even where that does not fit on the screen: it is there to be
+	// captured, and a picture a few pixels short is no use for that
+	if (!Graphics::streamPanel().sized) {
+		if (width > desktopRes.right) {
+			width = desktopRes.right;
+		}
 
-	if (height > desktopRes.bottom) {
-		height = desktopRes.bottom;
+		if (height > desktopRes.bottom) {
+			height = desktopRes.bottom;
+		}
 	}
 
 	if (!_window || oldNonUpdateableFlags != newNonUpdateableFlags) {

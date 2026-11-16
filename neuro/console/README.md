@@ -2,7 +2,8 @@
 
 A web page for whoever runs the stream: choose the settings, start and stop the game, save and
 load, send Neuro a message, take her controls away for a moment, and watch what she is told and
-what she does. It also serves the column that OBS shows beside the game.
+what she does. The game window it starts is made to be captured: 16:9, with the game on one side
+and a column about what she is doing on the other.
 
 ```sh
 python3 neuro/console/console.py                    # this machine only, port 7878
@@ -10,8 +11,7 @@ python3 neuro/console/console.py --bind 0.0.0.0:7878
 python3 neuro/console/console.py --new-token        # the old address stops working
 ```
 
-It prints two addresses, each carrying a token. Open the first in a browser; give the second to
-OBS. It needs Python 3.9 or newer and nothing else.
+It prints the page's address, which carries a token. It needs Python 3.9 or newer and nothing else.
 
 ## How it is put together
 
@@ -35,23 +35,26 @@ console can talk to both sides without a restart:
   for actions that are not available; giving them back registers them again and repeats the
   question she had been asked, if any. The game itself keeps running meanwhile.
 
-Settings that ScummVM only reads when it starts (the game folder, the window, the way dialogue
-is sent) apply the next time the game is started. If the Neuro server goes away, the console
+Settings that ScummVM only reads when it starts (the game folder, the stream window, the way
+dialogue is sent) apply the next time the game is started. If the Neuro server goes away, the console
 keeps trying and, once it is back, tells it again what the game has registered.
 
-## The stream picture
+## The stream window
 
-The game is 4:3. For a 16:9 stream, capture the game window in OBS and put the column beside it
-as a browser source:
+The game is 4:3. The window is the size chosen in the settings (1920 x 1080, say); the game is
+as tall as the window, and the rest of the width is a column drawn by the game itself:
 
-| Stream | Game window | Column (browser source) |
-|---|---|---|
-| 1920 x 1080 | 1440 x 1080 | 480 x 1080 |
-| 1280 x 720 | 960 x 720 | 320 x 720 |
+- a title (a `|` in it starts a new line),
+- an empty box to lay the stream's chat over,
+- where she is, what she is doing ("Thinking..." while she decides), her goals, what she is
+  carrying and her last few actions.
 
-The column scales with its width. It shows a title, an empty box to lay chat over, where she is,
-what she is doing, her goals, what she is carrying and her last few actions. The title and the
-height of the chat box are in the settings.
+In OBS, capture that one window. The column can be on either side or switched off, in which case
+the window is 4:3. The window keeps the exact size asked for even where it does not fit on the
+screen, so that the captured picture is never a few pixels short.
+
+The picture is drawn by ScummVM's software renderer: the game is enlarged by a whole number
+first, which keeps its pixels sharp, and then fitted to the window.
 
 ## Reaching it from another machine
 
