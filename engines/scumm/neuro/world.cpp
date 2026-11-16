@@ -316,7 +316,7 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 			if (slot < 0 || slot > 16)
 				continue;
 			const int entry = _vm->readVar(lineNote.slotVar + slot);
-			if (entry >= lineNote.min && entry <= lineNote.max && !_vm->readVar(0x8000 | (lineNote.unlessBit + entry)))
+			if (entry >= lineNote.min && entry <= lineNote.max && (!lineNote.unlessBit || !_vm->readVar(0x8000 | (lineNote.unlessBit + entry))))
 				line.note = lineNote.note;
 		}
 	}

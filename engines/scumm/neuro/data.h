@@ -159,7 +159,8 @@ public:
 	/**
 	 * A remark on lines she can say, from what the game keeps about them. While
 	 * the script runs, the line on verb V stands for entry VAR[slotVar + V - firstVerb];
-	 * entries from min to max get the note unless bit (unlessBit + entry) is set.
+	 * entries from min to max get the note unless bit (unlessBit + entry) is set
+	 * (with no unlessBit, always).
 	 */
 	struct LineNote {
 		int script = 0;
