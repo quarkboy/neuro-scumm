@@ -18,15 +18,23 @@ Neuro cannot see the screen, so everything goes through text.
 
 The Neuro code is in [`engines/scumm/neuro/`](engines/scumm/neuro/). The design is explained in [`neuro/PLAN.md`](neuro/PLAN.md).
 
-## Download
+## Quick start
 
-Ready-made packages for Windows and Linux are on the [Releases](https://github.com/quarkboy/neuro-scumm/releases) page. Unpack one and run `console.bat` (Windows) or `console.sh` (Linux); the README inside says what else you need. The rest of this page is about building it yourself.
+1. **Get the game.** You need *The Secret of Monkey Island: Special Edition* from Steam, installed. Nothing is copied out of it or written to it.
+2. **Get a server for the game to talk to.** That is Neuro herself, or a stand-in for testing: the SDK lists several, among them [Gary](https://github.com/Govorunb/gary), Tony and Jippity. Start it and note its address (often `ws://127.0.0.1:8000`).
+3. **Download a package** for Windows or Linux from the [Releases](https://github.com/quarkboy/neuro-scumm/releases) page and unpack it anywhere. You also need Python 3.9 or newer, for the console.
+4. **Start the console:** double-click `console.bat` on Windows, or run `./console.sh` on Linux. A page opens in your browser.
+5. **Check two settings on the page:** the Neuro server address, and the game folder (the usual Steam folder is filled in).
+6. **Press "Start the game".** The game opens in a 16:9 window made to be captured for a stream: the game on one side, and a column showing where she is and what she is doing on the other.
 
-## What you need
+From the page you can also save and load, send her a message, take her controls away for a moment, and watch what she is told and what she does. More about it in [`neuro/console/README.md`](neuro/console/README.md).
 
-- *The Secret of Monkey Island: Special Edition* (the Steam release). The classic game is read straight out of its `Monkey1.pak`, and its voice acting, music and sound effects are played over it.
+The rest of this page is about building it yourself and running it without the console.
+
+## What you need to build it
+
 - A C++ compiler, `make`, SDL2 and libcurl, with their development packages.
-- A Neuro API server to connect to. For testing without Neuro, the SDK lists several stand-ins, among them [Gary](https://github.com/Govorunb/gary), Tony and Jippity.
+- The game and a server, as above.
 
 ## Building
 
@@ -61,7 +69,7 @@ Nothing is copied out of that folder or written to it.
 
 ## Running
 
-[`neuro/run.sh`](neuro/run.sh) starts the game with the settings below:
+Without the console, [`neuro/run.sh`](neuro/run.sh) starts the game with the settings below:
 
 ```sh
 MONKEY1_DIR="/path/to/The Secret of Monkey Island Special Edition" \
@@ -72,7 +80,7 @@ neuro/run.sh
 
 Add `-x N` to start from savegame slot N.
 
-For running a stream there is also a web console that starts the game for you in a 16:9 window made to be captured (the game, with a column beside it showing where she is and what she is doing), with the settings on a page and a live view of what she is told and does: `python3 neuro/console/console.py`. See [`neuro/console/README.md`](neuro/console/README.md). Savegames go to the folder in `NEURO_SAVE_DIR` (by default a `saves` folder beside the repository).
+From a source checkout the console is started with `python3 neuro/console/console.py`; it finds the build in a `build` folder at the top of the repository, or takes its path in the settings. Savegames go to the folder in `NEURO_SAVE_DIR` (by default a `saves` folder beside the repository).
 
 | Setting | Default | Meaning |
 |---|---|---|
