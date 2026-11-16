@@ -18,6 +18,7 @@ header h1 { font-size: 17px; margin: 0 8px 0 0; font-weight: 600; }
 .pill { padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--dim); font-size: 13px; }
 .pill.on { color: var(--good); border-color: var(--good); }
 .pill.warn { color: var(--accent); border-color: var(--accent); }
+.pill.bad { color: #fff; background: var(--bad); border-color: var(--bad); font-weight: 600; }
 .spacer { flex: 1; }
 main { display: grid; grid-template-columns: minmax(320px, 440px) 1fr; gap: 16px; padding: 16px; align-items: start; }
 @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
@@ -67,6 +68,7 @@ code { background: #12161b; padding: 1px 5px; border-radius: 4px; font-size: 13p
   <span class="pill" id="p-game">Game stopped</span>
   <span class="pill" id="p-link">Game not connected</span>
   <span class="pill" id="p-neuro">Neuro not connected</span>
+  <span class="pill bad" id="p-hold" hidden>Her controls are taken away: she cannot act</span>
   <span class="spacer"></span>
   <button id="hold">Take her controls away</button>
   <button id="start" class="primary">Start the game</button>
@@ -267,6 +269,7 @@ function show(s) {
   $('stop').disabled = !st.running;
   $('hold').textContent = st.hold ? 'Give her controls back' : 'Take her controls away';
   $('hold').className = st.hold ? 'primary' : '';
+  $('p-hold').hidden = !st.hold;
   if (!filled) { fillForm(s.settings); filled = true; fillSaves(s.saves, s.settings); }
   else fillSaves(s.saves, s.settings);
 
