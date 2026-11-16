@@ -35,6 +35,9 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 CONFIG = HERE / "console.local.json"
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+# How long a started game gets to connect before it is started again, and how often that is tried
+START_WAIT = 12
+START_ATTEMPTS = 3
 
 STEAM_GAME = "Steam/steamapps/common/The Secret of Monkey Island Special Edition"
 if os.name == "nt":
@@ -77,7 +80,7 @@ DEFAULTS = {
 
 # Settings the running game takes over the link, as "debug_set NAME VALUE"
 LIVE = ("idle_force_seconds", "reaction_ms", "context_tokens", "pointer", "fast_mode",
-        "music_volume", "sfx_volume", "speech_volume", "panel_hide")
+        "music_volume", "sfx_volume", "speech_volume", "panel_hide", "panel_title", "panel_chat", "panel_side")
 
 
 # --- WebSocket (RFC 6455, text frames) -------------------------------------------------
@@ -313,7 +316,7 @@ class Console:
 
     # The game process
 
-    async def start_game(self):
+    async def start_game(self, attempt=1):
         if self.proc is not None and self.proc.returncode is None:
             return "The game is already running."
         exe = self.find_scummvm()
@@ -370,7 +373,21 @@ class Console:
         self.started_at = time.time()
         self.event("console", "start", "Game started" + (f" from slot {s['start_slot']}" if s["start_slot"] not in (None, "") else ""))
         asyncio.ensure_future(self.read_output(self.proc))
+        asyncio.ensure_future(self.watch_start(self.proc, attempt))
         return ""
+
+    async def watch_start(self, proc, attempt):
+        """Now and then the game hangs while opening its window (seen under WSL).
+        A game that has not connected after a while is started again."""
+        await asyncio.sleep(START_WAIT)
+        if self.proc is not proc or proc.returncode is not None or self.game is not None:
+            return
+        if attempt >= START_ATTEMPTS:
+            self.event("console", "error", "The game is running but has not connected. Stop it and look at the game output.")
+            return
+        self.event("console", "start", "The game did not come up; starting it again")
+        await self.stop_game()
+        await self.start_game(attempt + 1)
 
     async def read_output(self, proc):
         while True:

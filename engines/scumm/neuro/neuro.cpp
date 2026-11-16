@@ -30,6 +30,8 @@
 #include "common/util.h"
 #include "common/textconsole.h"
 
+#include "graphics/streampanel.h"
+
 #include "scumm/actor.h"
 #include "scumm/object.h"
 #include "scumm/scumm.h"
@@ -668,6 +670,9 @@ void NeuroBridge::handleDebugAction(const Common::String &id, const Common::Stri
 		char key[40] = "", value[120] = "";
 		sscanf(data.c_str(), "%39s %119s", key, value);
 		const Common::String setting(key), text(value);
+		// Everything after the name, for values with spaces in them
+		Common::String rest = data.substr(MIN<size_t>(data.size(), setting.size()));
+		rest.trim();
 		const int number = atoi(value);
 		if (setting == "idle_force_seconds") {
 			_idleForceMs = MAX(0, number) * 1000;
@@ -675,6 +680,13 @@ void NeuroBridge::handleDebugAction(const Common::String &id, const Common::Stri
 			_reactionMs = MAX(0, number);
 		} else if (setting == "context_tokens") {
 			_contextTokens = MAX(0, number);
+		} else if (setting == "panel_title") {
+			_panelTitle = rest.empty() ? Common::String(" ") : rest;
+		} else if (setting == "panel_chat") {
+			_panelChat = CLIP(number, 0, 80);
+			_panelKey.clear();
+		} else if (setting == "panel_side") {
+			Graphics::streamPanel().onLeft = text.equalsIgnoreCase("left");
 		} else if (setting == "panel_hide") {
 			// A comma-separated list of the column's parts, or "none"
 			_panelHide = text == "none" ? Common::String(",,") : "," + text + ",";

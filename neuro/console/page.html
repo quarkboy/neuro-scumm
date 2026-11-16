@@ -125,11 +125,11 @@ code { background: #12161b; padding: 1px 5px; border-radius: 4px; font-size: 13p
     <label class="field"><span>Size</span>
       <select id="stream_size"><option>1280x720</option><option>1600x900</option><option>1920x1080</option><option>2560x1440</option></select></label>
     <label class="check"><input type="checkbox" id="panel"> A column beside the game (without it the window is 4:3)</label>
-    <label class="field"><span>Column side</span>
+    <h3>The column (changes at once)</h3>
+    <label class="field"><span>Side</span>
       <select id="panel_side"><option value="right">Right</option><option value="left">Left</option></select></label>
-    <label class="field"><span>Column title</span><input id="panel_title" title="A | starts a new line"></label>
+    <label class="field"><span>Title</span><input id="panel_title" title="A | starts a new line"></label>
     <label class="field"><span>Chat box height (%)</span><input id="panel_chat" type="number" min="0" max="80"></label>
-    <h3>What the column shows (changes at once)</h3>
     <div class="row" id="parts">
       <label class="check"><input type="checkbox" data-part="title"> Title</label>
       <label class="check"><input type="checkbox" data-part="chat"> Chat box</label>
@@ -336,8 +336,10 @@ $('save-settings').onclick = async () => {
   $('settings-note').textContent = 'Saved.';
   setTimeout(() => $('settings-note').textContent = '', 2000);
 };
-for (const id of ['music_volume', 'sfx_volume', 'speech_volume'])
+for (const id of ['music_volume', 'sfx_volume', 'speech_volume', 'panel_chat'])
   $(id).onchange = () => api('/api/settings', {[id]: Number($(id).value)});
+for (const id of ['panel_side', 'panel_title'])
+  $(id).onchange = () => api('/api/settings', {[id]: $(id).value});
 
 poll();
 </script>

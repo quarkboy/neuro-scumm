@@ -1214,10 +1214,28 @@ void SurfaceSdlGraphicsManager::internUpdateScreen() {
 	if (debugger)
 		debugger->onFrame();
 
-#if SDL_VERSION_ATLEAST(2, 0, 0)
-	// The column beside the game can change while the game's picture does not
-	if (Graphics::streamPanel().enabled && Graphics::streamPanel().generation != _panelGeneration)
+	// A change of mode can ask for an update before the screen has been
+	// set up: for instance when the window, opened larger than the game
+	// asked for, reports its size while the first mode is still being made.
+	// There is nothing to draw yet, and the next update draws everything.
+	if (!_screen || !_hwScreen) {
 		_forceRedraw = true;
+		return;
+	}
+
+#if SDL_VERSION_ATLEAST(2, 0, 0)
+	// The column beside the game can change while the game's picture does
+	// not, and it can change sides, which moves the game. Neither needs the
+	// game's picture redrawn, only the window composed again.
+	bool panelChanged = false;
+	if (Graphics::streamPanel().enabled) {
+		panelChanged = Graphics::streamPanel().generation != _panelGeneration;
+		if (Graphics::streamPanel().onLeft != _panelOnLeft) {
+			_panelOnLeft = Graphics::streamPanel().onLeft;
+			recalculateDisplayAreas();
+			panelChanged = true;
+		}
+	}
 #endif
 
 	bool curCursorNeedsRedraw = _cursorNeedsRedraw;
@@ -1595,6 +1613,11 @@ void SurfaceSdlGraphicsManager::internUpdateScreen() {
 #if defined(USE_IMGUI) && (defined(USE_IMGUI_SDLRENDERER2) || defined(USE_IMGUI_SDLRENDERER3))
 	renderImGui();
 #endif
+
+	if (!doPresent && panelChanged && _renderer && _screenTexture && !_displayDisabled) {
+		renderFrame();
+		doPresent = true;
+	}
 
 	if (doPresent) {
 		SDL_RenderPresent(_renderer);

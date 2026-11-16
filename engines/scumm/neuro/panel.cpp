@@ -234,9 +234,16 @@ void NeuroBridge::updatePanel() {
 
 	// The column is drawn small and shown enlarged by a whole number, so that
 	// the built-in bitmap fonts come out as crisp, chunky pixels
+	// (1080 and 900 by two, 1440 by three). Where no whole number gives
+	// text of about the same size (720), it is drawn 540 tall and smoothed.
 	const int zoom = MAX(1, (panel.windowHeight + 270) / 540);
-	const int width = MAX(80, panel.width() / zoom);
-	const int height = MAX(120, panel.windowHeight / zoom);
+	int height = panel.windowHeight / zoom;
+	int width = panel.width() / zoom;
+	if (height < 440 || height > 620) {
+		height = 540;
+		width = panel.width() * 540 / panel.windowHeight;
+	}
+	width = MAX(80, width);
 	Graphics::Surface &surface = panel.surface;
 	if (surface.w != width || surface.h != height || !surface.getPixels()) {
 		surface.free();

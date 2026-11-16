@@ -202,6 +202,7 @@ protected:
 	// The column beside the game in a window made to be streamed (graphics/streampanel.h)
 	SDL_Texture *_panelTexture = nullptr;
 	uint32 _panelGeneration = 0;
+	bool _panelOnLeft = false;
 	int _panelTextureWidth = 0, _panelTextureHeight = 0;
 	int streamPanelWidth() const;
 	void drawStreamPanel();
