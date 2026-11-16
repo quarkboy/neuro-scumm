@@ -156,6 +156,21 @@ public:
 	};
 	const Common::Array<Watch> &watches() const { return _watches; }
 
+	/**
+	 * A remark on lines she can say, from what the game keeps about them. While
+	 * the script runs, the line on verb V stands for entry VAR[slotVar + V - firstVerb];
+	 * entries from min to max get the note unless bit (unlessBit + entry) is set.
+	 */
+	struct LineNote {
+		int script = 0;
+		int firstVerb = 0;
+		int slotVar = 0;
+		int min = 0, max = 0;
+		int unlessBit = 0;
+		Common::String note;
+	};
+	const Common::Array<LineNote> &lineNotes() const { return _lineNotes; }
+
 private:
 	Common::String get(const Common::String &section, const Common::String &key) const;
 	/** Looks in the room's own section, then in that of the room it is drawn from. */
@@ -167,6 +182,7 @@ private:
 	Common::INIFile _ini;
 	Common::Array<Alert> _alerts;
 	Common::Array<Watch> _watches;
+	Common::Array<LineNote> _lineNotes;
 	Common::StringMap _lineSpeakers;
 };
 

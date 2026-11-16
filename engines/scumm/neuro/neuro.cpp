@@ -106,6 +106,13 @@ NeuroBridge::NeuroBridge(ScummEngine *vm, const Common::String &url) : _vm(vm), 
 	else if (fastMode.equalsIgnoreCase("scenes"))
 		_fastMode = kFastScenes;
 
+	// NEURO_POINTER=off makes clicks land at once, without the pointer travelling
+	const char *pointer = getenv("NEURO_POINTER");
+	if (pointer && *pointer)
+		_pointerGlide = !Common::String(pointer).equalsIgnoreCase("off");
+	else if (ConfMan.hasKey("neuro_pointer"))
+		_pointerGlide = !ConfMan.get("neuro_pointer").equalsIgnoreCase("off");
+
 	const char *contextTokens = getenv("NEURO_CONTEXT_TOKENS");
 	if (contextTokens && *contextTokens)
 		_contextTokens = atoi(contextTokens);
@@ -240,6 +247,8 @@ void NeuroBridge::resetAfterLoad() {
 	_described = NeuroWorld();
 	_queue.clear();
 	_clickPhase = kClickIdle;
+	_clickQueue.clear();
+	_shownSentence = false;
 	_pendingDialogue.clear();
 	_speechOpen = false;
 	_namedCostume.clear();
@@ -489,7 +498,8 @@ void NeuroBridge::sendActionResult(const Common::String &id, bool success, const
 	// A force is over once the forced action succeeds; the server retries a failed one itself
 	// She may answer a prompt with a different action than the one it named
 	// (leaving a close-up by skipping it); anything that did something settles it
-	const bool passive = _currentAction == "read_journal" || _currentAction == "add_note";
+	// Waiting changes nothing either, and may have been sent before the prompt arrived
+	const bool passive = _currentAction == "read_journal" || _currentAction == "add_note" || _currentAction == "wait";
 	if (success && _forceActive && (_currentAction == _forceAction || !passive))
 		_forceActive = false;
 	Common::JSONObject data;

@@ -306,6 +306,20 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 		if (world.customVerbs)
 			world.inDialogue = false;
 	}
+
+	// What she would remember about a line (whether she has heard it answered)
+	for (const auto &lineNote : _data.lineNotes()) {
+		if (!world.inDialogue || !_vm->isScriptRunning(lineNote.script))
+			continue;
+		for (auto &line : world.verbs) {
+			const int slot = line.id - lineNote.firstVerb;
+			if (slot < 0 || slot > 16)
+				continue;
+			const int entry = _vm->readVar(lineNote.slotVar + slot);
+			if (entry >= lineNote.min && entry <= lineNote.max && !_vm->readVar(0x8000 | (lineNote.unlessBit + entry)))
+				line.note = lineNote.note;
+		}
+	}
 }
 
 Common::String NeuroBridge::actorName(int actor, bool forList) {
@@ -876,6 +890,17 @@ void NeuroBridge::pollWorld() {
 Common::String NeuroBridge::expandText(const Common::String &text) const {
 	Common::String result = text;
 	for (;;) {
+		// {bitsA-B}: how many of the game's flags A to B are set
+		const size_t bits = result.find("{bits");
+		if (bits != Common::String::npos && result.find('}', bits) != Common::String::npos) {
+			const size_t end = result.find('}', bits);
+			int from = 0, to = 0, count = 0;
+			sscanf(result.c_str() + bits + 5, "%d-%d", &from, &to);
+			for (int bit = from; bit <= to && bit - from < 256; bit++)
+				count += _vm->readVar(0x8000 | bit) ? 1 : 0;
+			result.replace(bits, end - bits + 1, Common::String::format("%d", count));
+			continue;
+		}
 		size_t open = result.find("{var");
 		const bool pick = open == Common::String::npos;
 		if (pick)

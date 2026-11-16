@@ -52,6 +52,22 @@ bool NeuroData::load(const Common::String &path) {
 				_lineSpeakers[text] = get(section.name, "speaker");
 			continue;
 		}
+		if (section.name.hasPrefix("linenote.")) {
+			LineNote note;
+			Common::String script = get(section.name, "while");
+			if (script.hasPrefixIgnoreCase("script"))
+				script = script.substr(6);
+			note.script = atoi(script.c_str());
+			note.firstVerb = atoi(get(section.name, "first_verb").c_str());
+			note.slotVar = atoi(get(section.name, "slot_var").c_str());
+			note.min = atoi(get(section.name, "min").c_str());
+			note.max = atoi(get(section.name, "max").c_str());
+			note.unlessBit = atoi(get(section.name, "unless_bit").c_str());
+			note.note = get(section.name, "note");
+			if (note.script && note.slotVar && !note.note.empty())
+				_lineNotes.push_back(note);
+			continue;
+		}
 		if (section.name.hasPrefix("watch.")) {
 			Watch watch;
 			watch.var = atoi(get(section.name, "var").c_str());

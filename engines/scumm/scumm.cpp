@@ -2986,6 +2986,10 @@ void ScummEngine::waitForTimer(int quarterFrames, bool freezeMacGui) {
 	while (!shouldQuit()) {
 		_sound->updateCD(); // Loop CD Audio if needed
 		parseEvents();
+#ifdef ENABLE_NEURO
+		if (_neuro)
+			_neuro->movePointer();
+#endif
 
 		updateScreenShakeEffect();
 

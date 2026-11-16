@@ -60,6 +60,9 @@ struct NeuroClick {
 
 	/** A character to stay on: one that keeps moving is not where it was when the click was planned. */
 	int follow = 0;
+
+	/** False for a place the pointer only travels to: the command itself is given another way. */
+	bool press = true;
 };
 
 /** A validated verb sentence or walk, ready to run. */
@@ -136,6 +139,8 @@ public:
 
 	/** While a simulated click is in progress, points the mouse at its target. */
 	void overridePointer();
+	/** Draws the pointer on its way to what is being clicked; called for every frame shown. */
+	void movePointer();
 
 	/** What Neuro would be told on entering the current room. */
 	Common::String describeWorld();
@@ -326,6 +331,7 @@ private:
 	// has to see the pointer over the target before the button goes down.
 	enum ClickPhase {
 		kClickIdle,
+		kClickMove,
 		kClickHover,
 		kClickPress,
 		kClickRelease
@@ -339,6 +345,20 @@ private:
 	// Clicks still to make for the command being carried out, one after another
 	Common::Array<NeuroClick> _clickQueue;
 	void clickAt(const NeuroClick &click);
+
+	// The pointer travels to what she acts on, as a hand on the mouse would move
+	// it, so that viewers can follow what she is doing.
+	bool _pointerGlide = true;
+	bool _pointerKnown = false;
+	int _pointerX = 0, _pointerY = 0;
+	int _moveFromX = 0, _moveFromY = 0;
+	uint32 _moveStartedAt = 0, _moveMs = 0;
+	bool _clickPress = true;
+	void clickTarget(int &x, int &y) const;
+	void pointerNow(int &x, int &y) const;
+	/** A sentence given directly once the pointer has been shown going over its words. */
+	bool _shownSentence = false;
+	int _shownVerb = 0, _shownObjects[2] = {0, 0};
 
 	// Some rooms swap in their own mouse handler for a scene, and only that
 	// one knows what clicking there should do, so her commands then have to

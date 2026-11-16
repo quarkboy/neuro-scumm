@@ -119,7 +119,8 @@ void NeuroBridge::actionSkipCutscene(const Common::String &id) {
 static Common::String listDialogue(const NeuroThingList &lines) {
 	Common::String text;
 	for (uint i = 0; i < lines.size(); i++)
-		text += Common::String::format("%u. %s\n", i + 1, lines[i].name.c_str());
+		text += Common::String::format("%u. %s%s\n", i + 1, lines[i].name.c_str(),
+			lines[i].note.empty() ? "" : (" (" + lines[i].note + ")").c_str());
 	return text;
 }
 
@@ -387,7 +388,7 @@ void NeuroBridge::updateForces(const NeuroWorld &world) {
 			Common::String state = lines;
 			if (!_lastHeard.empty() && now - _lastHeardAt < 30000)
 				state = "Last said to you: " + _lastHeard + "\n\n" + lines;
-			Common::String query = _data.roomPrompt(world.room);
+			Common::String query = expandText(_data.roomPrompt(world.room));
 			if (query.empty())
 				query = "Pick a line to say.";
 			sendForce(state, query, "choose_dialogue");
@@ -496,6 +497,23 @@ void NeuroBridge::runCommand(const NeuroCommand &command) {
 		_clickQueue = command.clicks;
 		clickAt(_clickQueue.remove_at(0));
 		return;
+	}
+	// Show the pointer going to the verb and to each thing, then give the sentence
+	if (_pointerGlide && _fastMode != kFastAlways) {
+		NeuroWorld world;
+		collectWorld(world);
+		NeuroCommand shown = command;
+		if (planClicks(world, shown)) {
+			for (auto &click : shown.clicks)
+				click.press = false;
+			_shownSentence = true;
+			_shownVerb = command.verb;
+			_shownObjects[0] = command.objects[0];
+			_shownObjects[1] = command.objects[1];
+			_clickQueue = shown.clicks;
+			clickAt(_clickQueue.remove_at(0));
+			return;
+		}
 	}
 	_vm->doSentence(command.verb, command.objects[0], command.objects[1]);
 }
@@ -691,8 +709,66 @@ void NeuroBridge::clickAt(const NeuroClick &click) {
 	_clickY = click.y;
 	_clickScreen = click.screen;
 	_clickFollow = click.follow;
-	_clickPhase = kClickHover;
+	_clickPress = click.press;
 	_clickFrames = 0;
+	if (!_pointerGlide || _fastMode == kFastAlways) {
+		_clickPhase = kClickHover;
+		return;
+	}
+
+	if (!_pointerKnown) {
+		_pointerX = _vm->_mouse.x;
+		_pointerY = _vm->_mouse.y;
+		_pointerKnown = true;
+	}
+	_moveFromX = _pointerX;
+	_moveFromY = _pointerY;
+	int x, y;
+	clickTarget(x, y);
+	const int distance = (int)sqrt((double)((x - _moveFromX) * (x - _moveFromX) + (y - _moveFromY) * (y - _moveFromY)));
+	// A short hop is quick, a trip across the screen takes about half a second
+	_moveMs = MIN(140 + distance * 2, 600);
+	_moveStartedAt = g_system->getMillis();
+	_clickPhase = kClickMove;
+}
+
+/** Where on the screen the current click is aimed. */
+void NeuroBridge::clickTarget(int &x, int &y) const {
+	const VirtScreen &vs = _vm->_virtscr[kMainVirtScreen];
+	if (_clickScreen) {
+		x = _clickX;
+		y = _clickY;
+		return;
+	}
+	x = CLIP<int>(_clickX - vs.xstart, 0, _vm->_screenWidth - 1);
+	y = CLIP<int>(_clickY + vs.topline, vs.topline, vs.topline + vs.h - 1);
+}
+
+/** Where the travelling pointer is at this moment. */
+void NeuroBridge::pointerNow(int &x, int &y) const {
+	clickTarget(x, y);
+	if (_clickPhase != kClickMove || !_moveMs)
+		return;
+	const float t = MIN(1.0f, (float)(g_system->getMillis() - _moveStartedAt) / _moveMs);
+	// Starts and stops gently, as a hand does
+	const float eased = t * t * (3 - 2 * t);
+	x = _moveFromX + (int)((x - _moveFromX) * eased);
+	y = _moveFromY + (int)((y - _moveFromY) * eased);
+}
+
+void NeuroBridge::movePointer() {
+	if (_clickPhase == kClickIdle || !_pointerGlide)
+		return;
+	if (_clickFollow)
+		findClickPoint(_clickFollow, _clickX, _clickY);
+	int x, y;
+	pointerNow(x, y);
+	if (x != _pointerX || y != _pointerY || !_pointerKnown) {
+		_pointerX = x;
+		_pointerY = y;
+		_pointerKnown = true;
+		g_system->warpMouse(x, y);
+	}
 }
 
 bool NeuroBridge::needsClicks() const {
@@ -772,7 +848,25 @@ bool NeuroBridge::planClicks(const NeuroWorld &world, NeuroCommand &command) {
 }
 
 void NeuroBridge::updateClick() {
+	movePointer();
 	switch (_clickPhase) {
+	case kClickMove:
+		// A moment's rest on arrival, then the button, or on to the next word
+		if (g_system->getMillis() - _moveStartedAt < _moveMs + 100)
+			break;
+		if (_clickPress) {
+			_clickPhase = kClickHover;
+			break;
+		}
+		_clickPhase = kClickIdle;
+		if (!_clickQueue.empty()) {
+			clickAt(_clickQueue.remove_at(0));
+		} else if (_shownSentence) {
+			_shownSentence = false;
+			_commandStartedAt = g_system->getMillis();
+			_vm->doSentence(_shownVerb, _shownObjects[0], _shownObjects[1]);
+		}
+		break;
 	case kClickHover:
 		if (++_clickFrames >= 3)
 			_clickPhase = kClickPress;
@@ -805,6 +899,16 @@ void NeuroBridge::overridePointer() {
 	const VirtScreen &vs = _vm->_virtscr[kMainVirtScreen];
 	if (_clickFollow)
 		findClickPoint(_clickFollow, _clickX, _clickY);
+	if (_clickPhase == kClickMove) {
+		// On its way: the game sees the pointer where it is drawn
+		int x, y;
+		pointerNow(x, y);
+		_vm->_mouse.x = x;
+		_vm->_mouse.y = y;
+		_vm->_virtualMouse.x = x + vs.xstart;
+		_vm->_virtualMouse.y = (y >= vs.topline && y < vs.topline + vs.h) ? y - vs.topline : -1;
+		return;
+	}
 	if (_clickScreen) {
 		// On the verbs or the inventory, below the room
 		_vm->_mouse.x = _clickX;
