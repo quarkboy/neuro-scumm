@@ -665,8 +665,8 @@ void NeuroBridge::handleDebugAction(const Common::String &id, const Common::Stri
 
 	// Settings that can change while the game runs: "debug_set NAME VALUE"
 	if (name == "debug_set") {
-		char key[40] = "", value[40] = "";
-		sscanf(data.c_str(), "%39s %39s", key, value);
+		char key[40] = "", value[120] = "";
+		sscanf(data.c_str(), "%39s %119s", key, value);
 		const Common::String setting(key), text(value);
 		const int number = atoi(value);
 		if (setting == "idle_force_seconds") {
@@ -675,6 +675,9 @@ void NeuroBridge::handleDebugAction(const Common::String &id, const Common::Stri
 			_reactionMs = MAX(0, number);
 		} else if (setting == "context_tokens") {
 			_contextTokens = MAX(0, number);
+		} else if (setting == "panel_hide") {
+			// A comma-separated list of the column's parts, or "none"
+			_panelHide = text == "none" ? Common::String(",,") : "," + text + ",";
 		} else if (setting == "hold") {
 			_panelHeld = text.equalsIgnoreCase("on");
 		} else if (setting == "pointer") {

@@ -129,6 +129,16 @@ code { background: #12161b; padding: 1px 5px; border-radius: 4px; font-size: 13p
       <select id="panel_side"><option value="right">Right</option><option value="left">Left</option></select></label>
     <label class="field"><span>Column title</span><input id="panel_title" title="A | starts a new line"></label>
     <label class="field"><span>Chat box height (%)</span><input id="panel_chat" type="number" min="0" max="80"></label>
+    <h3>What the column shows (changes at once)</h3>
+    <div class="row" id="parts">
+      <label class="check"><input type="checkbox" data-part="title"> Title</label>
+      <label class="check"><input type="checkbox" data-part="chat"> Chat box</label>
+      <label class="check"><input type="checkbox" data-part="location"> Where she is</label>
+      <label class="check"><input type="checkbox" data-part="now"> Right now</label>
+      <label class="check"><input type="checkbox" data-part="goals"> Her goals</label>
+      <label class="check"><input type="checkbox" data-part="inventory"> Carrying</label>
+      <label class="check"><input type="checkbox" data-part="recent"> Lately</label>
+    </div>
     <label class="check"><input type="checkbox" id="fullscreen"> Full screen</label>
     <label class="check"><input type="checkbox" id="filtering"> Smooth the picture where it is not enlarged by a whole number</label>
     <label class="field"><span>Dialogue sent as</span>
@@ -188,10 +198,17 @@ function readForm() {
     values[id] = el.type === 'checkbox' ? el.checked : el.type === 'number' || el.type === 'range' ? Number(el.value) : el.value;
   }
   values.start_slot = $('start_slot').value === '' ? null : Number($('start_slot').value);
+  values.panel_hide = hiddenParts();
   return values;
 }
 
+const hiddenParts = () => [...document.querySelectorAll('#parts input')].filter(box => !box.checked).map(box => box.dataset.part);
+
 function fillForm(settings) {
+  for (const box of document.querySelectorAll('#parts input')) {
+    box.checked = !(settings.panel_hide || []).includes(box.dataset.part);
+    box.onchange = () => api('/api/settings', {panel_hide: hiddenParts()});
+  }
   for (const id of FIELDS) {
     const el = $(id);
     if (el.type === 'checkbox') el.checked = !!settings[id];

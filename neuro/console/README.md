@@ -49,6 +49,8 @@ as tall as the window, and the rest of the width is a column drawn by the game i
 - where she is, what she is doing ("Thinking..." while she decides), her goals, what she is
   carrying and her last few actions.
 
+Each of those parts can be switched off on the console page, also while the game runs.
+
 In OBS, capture that one window. The column can be on either side or switched off, in which case
 the window is 4:3. The window keeps the exact size asked for even where it does not fit on the
 screen, so that the captured picture is never a few pixels short.

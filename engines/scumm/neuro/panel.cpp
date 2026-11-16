@@ -172,7 +172,14 @@ void NeuroBridge::updatePanel() {
 	if (_panelTitle.empty()) {
 		_panelTitle = panelSetting("NEURO_PANEL_TITLE", "neuro_panel_title", "Neuro plays|The Secret of Monkey Island");
 		_panelChat = CLIP(atoi(panelSetting("NEURO_PANEL_CHAT", "neuro_panel_chat", "30").c_str()), 0, 80);
+		if (_panelHide.empty())
+			_panelHide = "," + panelSetting("NEURO_PANEL_HIDE", "neuro_panel_hide", "") + ",";
 	}
+
+	// Parts of the column can be left out: title, chat, location, now, goals, inventory, recent
+	auto shown = [&](const char *part) {
+		return !_panelHide.contains(Common::String(",") + part + ",");
+	};
 
 	// What there is to show
 	Common::String location, state;
@@ -214,7 +221,7 @@ void NeuroBridge::updatePanel() {
 	}
 
 	// Only draw when something changed
-	Common::String key = location + "\n" + state + "\n" + _panelTitle + "\n";
+	Common::String key = location + "\n" + state + "\n" + _panelTitle + "\n" + _panelHide + "\n";
 	for (const auto &goal : goals)
 		key += goal + "|";
 	for (const auto &item : inventory)
@@ -257,7 +264,7 @@ void NeuroBridge::updatePanel() {
 
 	// Title
 	w.y = 8;
-	Common::String title = _panelTitle;
+	Common::String title = shown("title") ? _panelTitle : Common::String();
 	while (!title.empty()) {
 		const size_t bar = title.findFirstOf('|');
 		w.text(big, title.substr(0, bar), gold, 2, Graphics::kTextAlignCenter);
@@ -266,7 +273,7 @@ void NeuroBridge::updatePanel() {
 	w.y += 5;
 
 	// An empty box to lay the stream's chat over
-	if (_panelChat > 0) {
+	if (_panelChat > 0 && shown("chat")) {
 		const int boxHeight = height * _panelChat / 100;
 		w.rect(w.left - 1, w.y - 1, w.right + 1, w.y + boxHeight + 1, line);
 		w.rect(w.left, w.y, w.right, w.y + boxHeight, w.color(8, 10, 24));
@@ -284,19 +291,23 @@ void NeuroBridge::updatePanel() {
 
 	Common::Array<Common::U32String> wrapped;
 
-	big->wordWrapText(location.decode(Common::kUtf8), w.right - w.left, wrapped);
-	section("WHERE SHE IS", MIN<int>(MAX<int>(wrapped.size(), 1), 2) * (big->getFontHeight() + 1));
-	w.text(big, location.empty() ? Common::String("...") : location, white, 2);
-	w.y += 9;
+	if (shown("location")) {
+		big->wordWrapText(location.decode(Common::kUtf8), w.right - w.left, wrapped);
+		section("WHERE SHE IS", MIN<int>(MAX<int>(wrapped.size(), 1), 2) * (big->getFontHeight() + 1));
+		w.text(big, location.empty() ? Common::String("...") : location, white, 2);
+		w.y += 9;
+	}
 
-	wrapped.clear();
-	big->wordWrapText(state.decode(Common::kUtf8), w.right - w.left, wrapped);
-	section("RIGHT NOW", MIN<int>(MAX<int>(wrapped.size(), 2), 3) * (big->getFontHeight() + 1));
-	const int stateTop = w.y;
-	w.text(big, state, thinking ? pink : white, 3);
-	w.y = MAX(w.y, stateTop + 2 * (big->getFontHeight() + 1)) + 9;
+	if (shown("now")) {
+		wrapped.clear();
+		big->wordWrapText(state.decode(Common::kUtf8), w.right - w.left, wrapped);
+		section("RIGHT NOW", MIN<int>(MAX<int>(wrapped.size(), 2), 3) * (big->getFontHeight() + 1));
+		const int stateTop = w.y;
+		w.text(big, state, thinking ? pink : white, 3);
+		w.y = MAX(w.y, stateTop + 2 * (big->getFontHeight() + 1)) + 9;
+	}
 
-	if (!goals.empty() && w.y < height - 40) {
+	if (shown("goals") && !goals.empty() && w.y < height - 40) {
 		section("HER GOALS", goals.size() * (small->getFontHeight() + 1));
 		for (const auto &goal : goals) {
 			small->drawString(&surface, Common::U32String("*"), w.left, w.y, 8, gold);
@@ -306,7 +317,7 @@ void NeuroBridge::updatePanel() {
 		w.y += 9;
 	}
 
-	if (!inventory.empty() && w.y < height - 40) {
+	if (shown("inventory") && !inventory.empty() && w.y < height - 40) {
 		Common::String carrying;
 		for (uint i = 0; i < inventory.size(); i++)
 			carrying += (i ? ", " : "") + inventory[i];
@@ -317,7 +328,7 @@ void NeuroBridge::updatePanel() {
 		w.y += 9;
 	}
 
-	if (!_panelRecent.empty() && w.y < height - 40) {
+	if (shown("recent") && !_panelRecent.empty() && w.y < height - 40) {
 		section("LATELY", _panelRecent.size() * (small->getFontHeight() + 1));
 		for (uint i = 0; i < _panelRecent.size(); i++) {
 			if (!w.text(small, _panelRecent[i], i == 0 ? white : dim, 1))

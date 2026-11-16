@@ -53,6 +53,7 @@ DEFAULTS = {
     "panel_side": "right",
     "panel_title": "Neuro plays|The Secret of Monkey Island",
     "panel_chat": 30,
+    "panel_hide": [],
     "music_volume": 192,
     "sfx_volume": 192,
     "speech_volume": 192,
@@ -67,7 +68,7 @@ DEFAULTS = {
 
 # Settings the running game takes over the link, as "debug_set NAME VALUE"
 LIVE = ("idle_force_seconds", "reaction_ms", "context_tokens", "pointer", "fast_mode",
-        "music_volume", "sfx_volume", "speech_volume")
+        "music_volume", "sfx_volume", "speech_volume", "panel_hide")
 
 
 # --- WebSocket (RFC 6455, text frames) -------------------------------------------------
@@ -347,6 +348,7 @@ class Console:
             "NEURO_PANEL_SIDE": str(s["panel_side"]),
             "NEURO_PANEL_TITLE": str(s["panel_title"]),
             "NEURO_PANEL_CHAT": str(int(s["panel_chat"])),
+            "NEURO_PANEL_HIDE": ",".join(s["panel_hide"]),
         })
         self.output.clear()
         try:
@@ -596,6 +598,8 @@ class Console:
                     value = bool(value)
                 elif kind is int:
                     value = int(value)
+                elif kind is list:
+                    value = [str(item) for item in value if str(item).isalpha()]
                 else:
                     value = str(value)
             except (TypeError, ValueError):
@@ -607,6 +611,8 @@ class Console:
                 value = self.settings[key]
                 if isinstance(value, bool):
                     value = "on" if value else "off"
+                elif isinstance(value, list):
+                    value = ",".join(value) or "none"
                 self.to_game("debug_set", f"{key} {value}")
         if self.settings["neuro_url"] != old["neuro_url"] and self.upstream is not None:
             self.upstream.close()

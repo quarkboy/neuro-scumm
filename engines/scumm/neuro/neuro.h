@@ -394,7 +394,7 @@ private:
 	void updatePanel();
 	void notePanelAction(const Common::String &name, const NeuroArgs &args);
 	Common::String describeForPanel(const Common::String &name, const NeuroArgs &args);
-	Common::String _panelNow, _panelKey, _panelTitle;
+	Common::String _panelNow, _panelKey, _panelTitle, _panelHide;
 	Common::StringArray _panelRecent;
 	uint32 _panelCheckedAt = 0;
 	int _panelChat = 30;
