@@ -11,7 +11,9 @@ python3 neuro/console/console.py --bind 0.0.0.0:7878
 python3 neuro/console/console.py --new-token        # the old address stops working
 ```
 
-It prints the page's address, which carries a token. It needs Python 3.9 or newer and nothing else.
+It prints the page's address, which carries a token; `--open` also opens it in the browser. It
+needs Python 3.9 or newer and nothing else. In a release package, `console.bat` (Windows) or
+`console.sh` (Linux) starts it.
 
 ## How it is put together
 
@@ -29,15 +31,17 @@ everything through in both directions. That is where the live view comes from, a
 console can talk to both sides without a restart:
 
 - **To the game:** saving and loading, and the settings marked "changes at once" (her pace, the
-  sound volumes).
+  sound volumes, and the column's side, title, chat box and parts).
 - **To Neuro:** your messages, sent as context from the game and marked with your name.
 - **Taking her controls away** unregisters her actions with the server, as the SDK prescribes
   for actions that are not available; giving them back registers them again and repeats the
   question she had been asked, if any. The game itself keeps running meanwhile.
 
-Settings that ScummVM only reads when it starts (the game folder, the stream window, the way
-dialogue is sent) apply the next time the game is started. If the Neuro server goes away, the console
-keeps trying and, once it is back, tells it again what the game has registered.
+Settings that ScummVM only reads when it starts (the game folder, the window's size, whether it
+has a column, the way dialogue is sent) apply the next time the game is started. If the Neuro
+server goes away, the console keeps trying and, once it is back, tells it again what the game has
+registered. If a started game has not connected after twelve seconds, the console stops it and
+starts it again, up to three times.
 
 ## The stream window
 

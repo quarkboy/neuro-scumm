@@ -4,7 +4,7 @@ This is a fork of [ScummVM](https://www.scummvm.org/) that lets [Neuro-sama](htt
 
 It is an unofficial fan project. It is not affiliated with the ScummVM team, Vedal, or the owners of Monkey Island, and it contains no game data: you need your own copy of the game.
 
-**Status: playable from start to finish.** A stand-in language model has played the whole game through it, from a new game to the end credits, with stops for fixes along the way. Part One's descriptions have been reviewed by a person; the other three parts are a first pass. Only Linux (including WSL) has been built and tested so far. Neuro herself has not played it. What is left is in [`neuro/ROADMAP.md`](neuro/ROADMAP.md).
+**Status: playable from start to finish.** A stand-in language model has played the whole game through it, from a new game to the end credits, with stops for fixes along the way. Part One's descriptions have been reviewed by a person; the other three parts are a first pass. It is built for Linux and Windows; nearly all of the testing so far has been on Linux under WSL, and the Windows build is new. Neuro herself has not played it. What is left is in [`neuro/ROADMAP.md`](neuro/ROADMAP.md).
 
 ## How it works
 
@@ -21,7 +21,7 @@ The Neuro code is in [`engines/scumm/neuro/`](engines/scumm/neuro/). The design 
 ## Quick start
 
 1. **Get the game.** You need *The Secret of Monkey Island: Special Edition* from Steam, installed. Nothing is copied out of it or written to it.
-2. **Get a server for the game to talk to.** That is Neuro herself, or a stand-in for testing: the SDK lists several, among them [Gary](https://github.com/Govorunb/gary), Tony and Jippity. Start it and note its address (often `ws://127.0.0.1:8000`).
+2. **Get a server for the game to talk to.** That is Neuro herself, or a stand-in for testing: the SDK lists several, among them [Gary](https://github.com/Govorunb/gary), Tony and Jippity. Start it and note its address (often `ws://127.0.0.1:8000`). If your stand-in rejects the SDK's `speech/started` and `speech/ended` messages, set "Dialogue sent as" to "Plain context" on the console page.
 3. **Download a package** for Windows or Linux from the [Releases](https://github.com/quarkboy/neuro-scumm/releases) page and unpack it anywhere. You also need Python 3.9 or newer, for the console.
 4. **Start the console:** double-click `console.bat` on Windows, or run `./console.sh` on Linux. A page opens in your browser.
 5. **Check two settings on the page:** the Neuro server address, and the game folder (the usual Steam folder is filled in).
@@ -35,6 +35,8 @@ The rest of this page is about building it yourself and running it without the c
 
 - A C++ compiler, `make`, SDL2 and libcurl, with their development packages.
 - The game and a server, as above.
+
+The steps below are for Linux. The Windows packages are built with Visual Studio and vcpkg by [`.github/workflows/ci.yml`](.github/workflows/ci.yml), which is the reference for doing the same by hand.
 
 ## Building
 
@@ -57,7 +59,7 @@ This builds only the SCUMM engine (Monkey Island 1 and 2 among others) with the 
 
 ## Pointing it at the game
 
-The launcher needs the folder that contains `Monkey1.pak`. Set `MONKEY1_DIR` to it:
+The console has the game folder as a setting. The launcher script used without it, `neuro/run.sh`, needs the folder that contains `Monkey1.pak` in `MONKEY1_DIR`:
 
 | Where the game is | `MONKEY1_DIR` |
 |---|---|
@@ -78,9 +80,9 @@ NEURO_SDK_WS_URL=ws://127.0.0.1:8000 \
 neuro/run.sh
 ```
 
-Add `-x N` to start from savegame slot N.
+Add `-x N` to start from savegame slot N. Savegames go to the folder in `NEURO_SAVE_DIR` (by default a `saves` folder beside the repository).
 
-From a source checkout the console is started with `python3 neuro/console/console.py`; it finds the build in a `build` folder at the top of the repository, or takes its path in the settings. Savegames go to the folder in `NEURO_SAVE_DIR` (by default a `saves` folder beside the repository).
+The console works from a source checkout too: `python3 neuro/console/console.py`. It finds the build in a `build` folder at the top of the repository, or takes its path in the settings.
 
 | Setting | Default | Meaning |
 |---|---|---|
@@ -92,8 +94,8 @@ From a source checkout the console is started with `python3 neuro/console/consol
 | `NEURO_CONTEXT_TOKENS` | `32000` | After roughly this much traffic, text that is only said once (room descriptions, the introduction) is said again. |
 | `NEURO_POINTER` | on | `off` makes clicks land at once instead of the pointer travelling to them. |
 | `NEURO_FAST_MODE` | off | `always`, or `scenes` to run fast only while she cannot act. For testing. |
-| `NEURO_STREAM_SIZE` | unset | A window size such as `1920x1080`. The game stays 4:3 and whatever is wider becomes a column showing where she is and what she is doing. Needs `--gfx-mode=surfacesdl`. |
-| `NEURO_PANEL_SIDE`, `NEURO_PANEL_TITLE`, `NEURO_PANEL_CHAT` | `right`, a default title, `30` | The column's side, its title (`|` starts a new line), and the height in percent of the empty box for chat. |
+| `NEURO_STREAM_SIZE` | unset | A window size such as `1920x1080`. The game stays 4:3 and whatever is wider becomes a column showing where she is and what she is doing. Only ScummVM's SDL software renderer (`--gfx-mode=surfacesdl`) does this. |
+| `NEURO_PANEL_SIDE`, `NEURO_PANEL_TITLE`, `NEURO_PANEL_CHAT` | `right`, a default title, `30` | The column's side, its title (a vertical bar in it starts a new line), and the height in percent of the empty box for chat. |
 | `NEURO_PANEL_HIDE` | unset | Parts of the column to leave out, separated by commas: `title`, `chat`, `location`, `now`, `goals`, `inventory`, `recent`. |
 
 Each setting can also be given as a ScummVM config key of the same name in lower case, for example `neuro_idle_force_seconds`. The one exception is the server URL, whose key is `neuro_ws_url`. An environment variable wins over the config key.
@@ -102,11 +104,13 @@ In the game window, Space pauses the game until it is pressed again.
 
 ## Changes to ScummVM itself
 
-A few fixes outside the Neuro module, all for the Special Edition's audio:
+Outside the Neuro module there are fixes for the Special Edition's audio, and the stream window:
 
 - Its music plays (it is stored as headerless WMA), and resumes after loading a savegame.
 - Its sound effects play, and are the right ones. They were looked up by position in a file that is not in that order, and a third of them decoded to silence.
 - A voice line that another character interrupts keeps playing underneath instead of being cut off, and a line that the game prints repeatedly to make it flash is heard once.
+- The SDL software renderer can open a window of an exact size, wider than the game, and show a column drawn by the engine beside it (`graphics/streampanel.h`).
+- A screen update asked for during startup, before any screen exists, is skipped instead of failing now and then.
 
 ## License and credits
 
