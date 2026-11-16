@@ -117,10 +117,35 @@ void NeuroBridge::actionSkipCutscene(const Common::String &id) {
 }
 
 static Common::String listDialogue(const NeuroThingList &lines) {
+	// What is noted about lines comes first, once per note, with the numbers
+	// it goes for ("4, 5, 8, 10-14"): shorter than repeating it on every line
 	Common::String text;
+	Common::StringArray notes;
+	for (const auto &line : lines) {
+		if (!line.note.empty() && Common::find(notes.begin(), notes.end(), line.note) == notes.end())
+			notes.push_back(line.note);
+	}
+	for (const auto &note : notes) {
+		Common::String numbers;
+		for (uint i = 0; i < lines.size(); i++) {
+			if (lines[i].note != note)
+				continue;
+			uint last = i;
+			while (last + 1 < lines.size() && lines[last + 1].note == note)
+				last++;
+			if (!numbers.empty())
+				numbers += ", ";
+			numbers += last > i + 1 ? Common::String::format("%u-%u", i + 1, last + 1) : Common::String::format("%u", i + 1);
+			if (last == i + 1)
+				numbers += Common::String::format(", %u", last + 1);
+			i = last;
+		}
+		text += note + ": " + numbers + "\n";
+	}
+	if (!notes.empty())
+		text += "\n";
 	for (uint i = 0; i < lines.size(); i++)
-		text += Common::String::format("%u. %s%s\n", i + 1, lines[i].name.c_str(),
-			lines[i].note.empty() ? "" : (" (" + lines[i].note + ")").c_str());
+		text += Common::String::format("%u. %s\n", i + 1, lines[i].name.c_str());
 	return text;
 }
 
@@ -370,7 +395,8 @@ void NeuroBridge::updateForces(const NeuroWorld &world) {
 		const bool covered = (up || down) && pagerCovers(world);
 		if ((up || down) && !covered) {
 			// Wait out the moment in which her last choice is still on screen
-			if (!_forceActive && now - _lastActionAt > 1000) {
+			// and never while the pointer is on its way to the line she chose
+			if (!_forceActive && now - _lastActionAt > 1000 && _clickPhase == kClickIdle && now - _lastClickAt > 1000) {
 				_pagerPressedAt = 0;
 				_pagerState = kPagerToTop;
 			}

@@ -157,7 +157,8 @@ public:
 	const Common::Array<Watch> &watches() const { return _watches; }
 
 	/**
-	 * A remark on lines she can say, from what the game keeps about them. While
+	 * A remark on lines she can say, from what the game keeps about them. It is
+	 * given once, above the list, with the numbers of the lines it goes for. While
 	 * the script runs, the line on verb V stands for entry VAR[slotVar + V - firstVerb];
 	 * entries from min to max get the note unless bit (unlessBit + entry) is set
 	 * (with no unlessBit, always).
