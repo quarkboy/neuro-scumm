@@ -78,6 +78,9 @@ struct NeuroCommand {
 	/** As a follow-up: how long Guybrush must have stood still before it starts. */
 	uint32 settleMs = 0;
 
+	/** As a follow-up: it comes after a walk across the room, which may take a while. */
+	bool afterPassage = false;
+
 	/** What she is told on success. */
 	Common::String note;
 
@@ -99,6 +102,9 @@ struct NeuroWorld {
 	/** Places without an object that can still be walked to; id is -(index + 1). */
 	NeuroThingList spots;
 	Common::Array<Common::Point> spotPositions;
+
+	/** Which part of the room Guybrush is in, where the description file tells them apart. */
+	Common::String standing;
 
 	/** Some things share a name and were numbered to tell them apart. */
 	bool numbered = false;
@@ -247,6 +253,7 @@ private:
 
 	/** Finds a point in room coordinates where a click lands on the given object or actor. */
 	bool findClickPoint(int thing, int &x, int &y) const;
+	bool passageTo(int room, int target, NeuroCommand &passage) const;
 	void clickInRoom(int x, int y);
 	void updateClick();
 
@@ -349,6 +356,8 @@ private:
 	// The pointer travels to what she acts on, as a hand on the mouse would move
 	// it, so that viewers can follow what she is doing.
 	bool _pointerGlide = true;
+	/** Whether she is offered skip_cutscene at all. */
+	bool _allowSkip = true;
 	bool _pointerKnown = false;
 	int _pointerX = 0, _pointerY = 0;
 	int _moveFromX = 0, _moveFromY = 0;
@@ -357,6 +366,8 @@ private:
 	void clickTarget(int &x, int &y) const;
 	void pointerNow(int &x, int &y) const;
 	/** A sentence given directly once the pointer has been shown going over its words. */
+	/** The thing the last command walked to, if it was a walk. */
+	int _walkTarget = 0;
 	bool _shownSentence = false;
 	int _shownVerb = 0, _shownObjects[2] = {0, 0};
 

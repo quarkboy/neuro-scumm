@@ -58,6 +58,16 @@ namespace Scumm {
  *                          (dots on the island map); do not report each one
  *   spot.NAME = X,Y | TEXT a place with no object that she can walk to; the
  *                          optional text says what she sees when she does
+ *   standing.NAME = BOX BOX ... | TEXT
+ *                          where Guybrush is, for a room with parts that do not
+ *                          connect on foot (two sides of a stretch of water):
+ *                          the text is given while he stands in one of those
+ *                          walk boxes, and again when he gets to another part
+ *   passages = ID ID ...   things that, walked to, bring another part of a wide
+ *                          room into view where the picture does not follow
+ *                          Guybrush there by itself. A command aimed at something
+ *                          out of view goes by way of the one in view, as a
+ *                          player, who cannot click outside the picture, would.
  * A room that the game draws from another room's data (the forest screens)
  * uses that room's section for whatever its own section does not say.
  * [alert.ID] sections turn a moment she must not miss into a prompt:
@@ -134,6 +144,12 @@ public:
 		Common::String effect;
 	};
 	Common::Array<Spot> spots(int room) const;
+
+	/** Where in the room Guybrush is when he stands in that walk box; empty if the file does not say. */
+	Common::String standing(int room, int box) const;
+
+	/** Things that bring another part of the room into view when walked to. */
+	Common::Array<int> passages(int room) const;
 
 	/** A word for the state an object is in, e.g. "open"; empty if unknown. */
 	Common::String stateName(const Common::String &objectName, int state) const;

@@ -93,6 +93,7 @@ The console works from a source checkout too: `python3 neuro/console/console.py`
 | `NEURO_REACTION_MS` | `300` | How long she takes to react; timed questions go out that much early. A language model standing in for her needs about `2500`. |
 | `NEURO_CONTEXT_TOKENS` | `32000` | After roughly this much traffic, text that is only said once (room descriptions, the introduction) is said again. |
 | `NEURO_POINTER` | on | `off` makes clicks land at once instead of the pointer travelling to them. |
+| `NEURO_SKIP_CUTSCENES` | on | `off` takes the `skip_cutscene` action away from her, so every scene plays out. |
 | `NEURO_FAST_MODE` | off | `always`, or `scenes` to run fast only while she cannot act. For testing. |
 | `NEURO_STREAM_SIZE` | unset | A window size such as `1920x1080`. The game stays 4:3 and whatever is wider becomes a column showing where she is and what she is doing. Only ScummVM's SDL software renderer (`--gfx-mode=surfacesdl`) does this. |
 | `NEURO_PANEL_SIDE`, `NEURO_PANEL_TITLE`, `NEURO_PANEL_CHAT` | `right`, a default title, `30` | The column's side, its title (a vertical bar in it starts a new line), and the height in percent of the empty box for chat. |

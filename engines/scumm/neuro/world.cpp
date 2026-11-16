@@ -143,6 +143,9 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 	world = NeuroWorld();
 	world.room = _vm->_currentRoom;
 	_data.setRoomResource(world.room, _vm->_roomResource);
+	const Actor *guybrush = _vm->_actors[_vm->VAR(_vm->VAR_EGO)];
+	if (guybrush->isInCurrentRoom())
+		world.standing = _data.standing(world.room, guybrush->_walkbox);
 
 	// Things that cannot be used right now still take part in numbering, so
 	// that "door 2" stays "door 2" when door 1 becomes unusable.
@@ -438,6 +441,8 @@ Common::String NeuroBridge::describeRoom(const NeuroWorld &world, RoomDetail det
 	if (detail == kRoomFirstVisit && !description.empty())
 		text += description + "\n\n";
 
+	if (!world.standing.empty())
+		text += world.standing + "\n\n";
 	text += "- Things: " + joinDescribed(world.objects, _data) + "\n";
 	if (!world.actors.empty())
 		text += "- People: " + joinNames(world.actors) + "\n";
@@ -573,6 +578,10 @@ Common::String NeuroBridge::describeChanges(const NeuroWorld &before, const Neur
 		if (!line.things.empty() && !(quiet && comings))
 			text += Common::String::format("%s: %s\n", line.label, joinNames(line.things).c_str());
 	}
+
+	// Getting to a part of the room that is cut off from the rest
+	if (!after.standing.empty() && after.standing != before.standing)
+		text += after.standing + "\n";
 
 	// A state change is only visible on screen (a door swinging open, a
 	// lever moving), so it has to be spelled out.
@@ -974,8 +983,17 @@ void NeuroBridge::finishAction(const NeuroWorld &world) {
 	_awaitingOutcome = false;
 	// A conversation prompts her with the lines to choose from. Otherwise she
 	// needs a cue that is hers: the replies to her action were not sent as one.
-	if (!_outcomeTold && !world.inDialogue)
-		sendContext(_outcomeSpoken ? "Your move." : "Done.", false);
+	if (!_outcomeTold && !world.inDialogue) {
+		Common::String cue = _outcomeSpoken ? "Your move." : "Done.";
+		// Walking to a door goes through it only if it is open. A player sees
+		// Guybrush stop in front of a shut one; she has to be told.
+		for (const auto &thing : world.objects) {
+			const Common::String state = thing.id == _walkTarget ? _data.stateName(thing.name, thing.state) : "";
+			if (!state.empty())
+				cue = Common::String::format("Guybrush is at the %s. It is %s.", thing.name.c_str(), state.c_str());
+		}
+		sendContext(cue, false);
+	}
 }
 
 void NeuroBridge::onTalkStarted(int actor, const byte *text) {

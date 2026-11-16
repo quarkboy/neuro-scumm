@@ -474,6 +474,9 @@ bool NeuroBridge::resolveCommand(const NeuroWorld &world, const Common::String &
 		if (!thing) {
 			error = Common::String::format("No '%s' here. Room: %s. Inventory: %s.",
 				names[i]->c_str(), listNames(room, world.spots).c_str(), listNames(world.inventory).c_str());
+			// It may be in sight but out of reach, across the water
+			if (!world.standing.empty())
+				error += " " + world.standing;
 			return false;
 		}
 		command.objects[i] = thing->id;
@@ -513,6 +516,7 @@ void NeuroBridge::runCommand(const NeuroCommand &command) {
 	_outcomeSpoken = false;
 	_queueSawBusy = false;
 	_queueIdleSince = 0;
+	_walkTarget = command.walk && command.objects[0] > 0 ? command.objects[0] : 0;
 	if (command.walk) {
 		clickInRoom(command.x, command.y);
 		return;
@@ -553,7 +557,7 @@ void NeuroBridge::updateQueuedCommand() {
 		return;
 
 	const uint32 elapsed = g_system->getMillis() - _commandStartedAt;
-	if (elapsed > 15000) {
+	if (elapsed > (_queue[0].afterPassage ? 40000u : 15000u)) {
 		_queue.clear();
 		return;
 	}
@@ -685,6 +689,12 @@ void NeuroBridge::actionInteract(const Common::String &id, const NeuroArgs &args
 	// For a place, say what stepping there looks like
 	sendActionResult(id, true, first.note);
 	_queue.clear();
+	NeuroCommand passage;
+	if (!first.isSpot && passageTo(world.room, first.objects[0], passage)) {
+		first.afterPassage = true;
+		_queue.push_back(first);
+		first = passage;
+	}
 	// A place may only react to a step taken from a standstill right next
 	// to it (a loose plank, say): walk there, pause, then step onto it again.
 	if (first.isSpot) {
@@ -695,6 +705,50 @@ void NeuroBridge::actionInteract(const Common::String &id, const NeuroArgs &args
 	if (!thenVerb.empty())
 		_queue.push_back(second);
 	runCommand(first);
+}
+
+/**
+ * Some wide rooms keep the picture on one part and only move it when
+ * Guybrush goes through a particular spot (the archway half way along the
+ * high street). Sent straight to something in the other part, he would walk
+ * out of the picture. Finds the walk a player would make first.
+ */
+bool NeuroBridge::passageTo(int room, int target, NeuroCommand &passage) const {
+	if (target <= 0 || _vm->objIsActor(target) || _vm->VAR_CAMERA_MIN_X == 0xFF || _vm->VAR_CAMERA_MAX_X == 0xFF)
+		return false;
+	const Common::Array<int> passages = _data.passages(room);
+	if (passages.empty())
+		return false;
+
+	// The stretch of the room the picture can show as things stand
+	const int left = _vm->VAR(_vm->VAR_CAMERA_MIN_X) - _vm->_screenWidth / 2;
+	const int right = _vm->VAR(_vm->VAR_CAMERA_MAX_X) + _vm->_screenWidth / 2;
+	int inView = 0;
+	bool targetFound = false;
+	for (int i = 1; i < _vm->_numLocalObjects; i++) {
+		const ObjectData &od = _vm->_objs[i];
+		const bool shown = od.x_pos + od.width > left && od.x_pos < right;
+		if (od.obj_nr == target) {
+			if (shown)
+				return false;
+			targetFound = true;
+		} else if (shown && !inView) {
+			for (int id : passages) {
+				if (id == od.obj_nr)
+					inView = id;
+			}
+		}
+	}
+	if (!targetFound || !inView)
+		return false;
+
+	passage = NeuroCommand();
+	passage.walk = true;
+	passage.objects[0] = inView;
+	if (!findClickPoint(inView, passage.x, passage.y))
+		return false;
+	debug(1, "Neuro: Thing %d is out of view (%d to %d), going by way of %d", target, left, right, inView);
+	return true;
 }
 
 bool NeuroBridge::findClickPoint(int thing, int &x, int &y) const {

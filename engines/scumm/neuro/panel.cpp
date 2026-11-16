@@ -196,6 +196,9 @@ void NeuroBridge::updatePanel() {
 			const size_t end = journal.findFirstOf('\n');
 			const Common::String line = journal.substr(0, end);
 			journal = end == Common::String::npos ? Common::String() : journal.substr(end + 1);
+			// Her own notes come after the goals and are not goals
+			if (line.hasPrefix("Your notes"))
+				break;
 			if (line.hasPrefix("- ")) {
 				const Common::String title = goalTitle(line.substr(2));
 				if (!title.empty())

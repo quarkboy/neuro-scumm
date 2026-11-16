@@ -117,6 +117,7 @@ code { background: #12161b; padding: 1px 5px; border-radius: 4px; font-size: 13p
     <label class="field"><span>Fast mode</span>
       <select id="fast_mode"><option value="off">Off</option><option value="scenes">Scenes she cannot act in</option><option value="always">Always</option></select></label>
     <label class="check"><input type="checkbox" id="pointer"> The pointer travels to what she uses</label>
+    <label class="check"><input type="checkbox" id="skip_cutscenes"> She may skip cutscenes</label>
     <h3>Sound (changes at once)</h3>
     <label class="field"><span>Music</span><input id="music_volume" type="range" min="0" max="255"></label>
     <label class="field"><span>Effects</span><input id="sfx_volume" type="range" min="0" max="255"></label>
@@ -181,7 +182,7 @@ code { background: #12161b; padding: 1px 5px; border-radius: 4px; font-size: 13p
 const token = new URLSearchParams(location.search).get('t') || '';
 const $ = id => document.getElementById(id);
 const FIELDS = ['neuro_url', 'operator_name', 'idle_force_seconds', 'reaction_ms', 'context_tokens', 'fast_mode',
-  'pointer', 'music_volume', 'sfx_volume', 'speech_volume', 'stream_size', 'panel', 'panel_side', 'panel_title',
+  'pointer', 'skip_cutscenes', 'music_volume', 'sfx_volume', 'speech_volume', 'stream_size', 'panel', 'panel_side', 'panel_title',
   'panel_chat', 'fullscreen', 'filtering', 'dialogue_mode', 'game_dir', 'scummvm', 'save_dir'];
 let since = 0, filled = false, lastSaves = '', state = null;
 

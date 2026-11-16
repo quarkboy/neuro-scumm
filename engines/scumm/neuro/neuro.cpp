@@ -115,6 +115,13 @@ NeuroBridge::NeuroBridge(ScummEngine *vm, const Common::String &url) : _vm(vm), 
 	else if (ConfMan.hasKey("neuro_pointer"))
 		_pointerGlide = !ConfMan.get("neuro_pointer").equalsIgnoreCase("off");
 
+	// NEURO_SKIP_CUTSCENES=off takes the skip_cutscene action away from her
+	const char *skipScenes = getenv("NEURO_SKIP_CUTSCENES");
+	if (skipScenes && *skipScenes)
+		_allowSkip = !Common::String(skipScenes).equalsIgnoreCase("off");
+	else if (ConfMan.hasKey("neuro_skip_cutscenes"))
+		_allowSkip = !ConfMan.get("neuro_skip_cutscenes").equalsIgnoreCase("off");
+
 	const char *contextTokens = getenv("NEURO_CONTEXT_TOKENS");
 	if (contextTokens && *contextTokens)
 		_contextTokens = atoi(contextTokens);
@@ -445,7 +452,7 @@ void NeuroBridge::registerActions(bool interactOnly) {
 	Common::JSONValue *others[] = {new Common::JSONValue(choose), new Common::JSONValue(wait), new Common::JSONValue(skip),
 		new Common::JSONValue(readJournal), new Common::JSONValue(addNote), new Common::JSONValue(answer)};
 	for (Common::JSONValue *other : others) {
-		if (interactOnly)
+		if (interactOnly || (other == others[2] && !_allowSkip))
 			delete other;
 		else
 			actions.push_back(other);
@@ -654,6 +661,7 @@ void NeuroBridge::handleDebugAction(const Common::String &id, const Common::Stri
 		status.setVal("reaction_ms", new Common::JSONValue((long long int)_reactionMs));
 		status.setVal("context_tokens", new Common::JSONValue((long long int)_contextTokens));
 		status.setVal("pointer", new Common::JSONValue(_pointerGlide));
+		status.setVal("skip_cutscenes", new Common::JSONValue(_allowSkip));
 		status.setVal("fast_mode", new Common::JSONValue(Common::String(_fastMode == kFastAlways ? "always" : _fastMode == kFastScenes ? "scenes" : "off")));
 		Common::JSONValue root(status);
 
@@ -692,6 +700,20 @@ void NeuroBridge::handleDebugAction(const Common::String &id, const Common::Stri
 			_panelHide = text == "none" ? Common::String(",,") : "," + text + ",";
 		} else if (setting == "hold") {
 			_panelHeld = text.equalsIgnoreCase("on");
+		} else if (setting == "skip_cutscenes") {
+			const bool allow = !text.equalsIgnoreCase("off");
+			if (allow != _allowSkip) {
+				_allowSkip = allow;
+				if (allow) {
+					registerActions();
+				} else {
+					Common::JSONArray names;
+					names.push_back(new Common::JSONValue("skip_cutscene"));
+					Common::JSONObject gone;
+					gone.setVal("action_names", new Common::JSONValue(names));
+					send("actions/unregister", &gone);
+				}
+			}
 		} else if (setting == "pointer") {
 			_pointerGlide = !text.equalsIgnoreCase("off");
 		} else if (setting == "fast_mode") {
@@ -775,6 +797,10 @@ void NeuroBridge::handleAction(const Common::String &id, const Common::String &r
 		return;
 	}
 
+	if (name == "skip_cutscene" && !_allowSkip) {
+		sendActionResult(id, false, "Scenes cannot be skipped.");
+		return;
+	}
 	if (name == "skip_cutscene") {
 		actionSkipCutscene(id);
 		return;

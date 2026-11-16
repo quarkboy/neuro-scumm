@@ -236,6 +236,36 @@ Common::Array<NeuroData::Spot> NeuroData::spots(int room) const {
 	return result;
 }
 
+Common::String NeuroData::standing(int room, int box) const {
+	if (!_ini.hasSection(roomSection(room)))
+		room = _roomResources.getValOrDefault(room, 0);
+	if (!_ini.hasSection(roomSection(room)))
+		return "";
+
+	for (const auto &kv : _ini.getKeys(roomSection(room))) {
+		const size_t bar = kv.value.findFirstOf('|');
+		if (!kv.key.hasPrefix("standing.") || bar == Common::String::npos)
+			continue;
+		Common::StringTokenizer boxes(kv.value.substr(0, bar), " ,");
+		while (!boxes.empty()) {
+			if (atoi(boxes.nextToken().c_str()) == box) {
+				Common::String text = kv.value.substr(bar + 1);
+				text.trim();
+				return text;
+			}
+		}
+	}
+	return "";
+}
+
+Common::Array<int> NeuroData::passages(int room) const {
+	Common::Array<int> result;
+	Common::StringTokenizer ids(roomGet(room, "passages"), " ,");
+	while (!ids.empty())
+		result.push_back(atoi(ids.nextToken().c_str()));
+	return result;
+}
+
 Common::String NeuroData::stateName(const Common::String &objectName, int state) const {
 	// "door 2" uses the entry for "door"
 	Common::String base = objectName;

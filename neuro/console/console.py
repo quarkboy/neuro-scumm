@@ -75,11 +75,12 @@ DEFAULTS = {
     "reaction_ms": 300,
     "context_tokens": 32000,
     "pointer": True,
+    "skip_cutscenes": True,
     "fast_mode": "off",
 }
 
 # Settings the running game takes over the link, as "debug_set NAME VALUE"
-LIVE = ("idle_force_seconds", "reaction_ms", "context_tokens", "pointer", "fast_mode",
+LIVE = ("idle_force_seconds", "reaction_ms", "context_tokens", "pointer", "skip_cutscenes", "fast_mode",
         "music_volume", "sfx_volume", "speech_volume", "panel_hide", "panel_title", "panel_chat", "panel_side")
 
 
@@ -356,6 +357,7 @@ class Console:
             "NEURO_REACTION_MS": str(int(s["reaction_ms"])),
             "NEURO_CONTEXT_TOKENS": str(int(s["context_tokens"])),
             "NEURO_POINTER": "on" if s["pointer"] else "off",
+            "NEURO_SKIP_CUTSCENES": "on" if s["skip_cutscenes"] else "off",
             "NEURO_FAST_MODE": str(s["fast_mode"]),
             "NEURO_STREAM_SIZE": f"{width}x{height}",
             "NEURO_PANEL_SIDE": str(s["panel_side"]),
@@ -471,7 +473,9 @@ class Console:
                 return
             view["location"] = status.get("location", "")
             view["inventory"] = status.get("inventory", [])
-            view["goals"] = [line[2:] for line in status.get("journal", "").split("\n") if line.startswith("- ")]
+            # Her own notes follow the goals under their own heading
+            goals = status.get("journal", "").split("\nYour notes", 1)[0]
+            view["goals"] = [line[2:] for line in goals.split("\n") if line.startswith("- ")]
             return
 
         if command == "startup":
