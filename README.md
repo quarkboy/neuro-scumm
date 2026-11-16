@@ -18,6 +18,10 @@ Neuro cannot see the screen, so everything goes through text.
 
 The Neuro code is in [`engines/scumm/neuro/`](engines/scumm/neuro/). The design is explained in [`neuro/PLAN.md`](neuro/PLAN.md).
 
+## Download
+
+Ready-made packages for Windows and Linux are on the [Releases](https://github.com/quarkboy/neuro-scumm/releases) page. Unpack one and run `console.bat` (Windows) or `console.sh` (Linux); the README inside says what else you need. The rest of this page is about building it yourself.
+
 ## What you need
 
 - *The Secret of Monkey Island: Special Edition* (the Steam release). The classic game is read straight out of its `Monkey1.pak`, and its voice acting, music and sound effects are played over it.

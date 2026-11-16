@@ -36,11 +36,20 @@ REPO = HERE.parent.parent
 CONFIG = HERE / "console.local.json"
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
+STEAM_GAME = "Steam/steamapps/common/The Secret of Monkey Island Special Edition"
+if os.name == "nt":
+    GAME_DIR = str(Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / STEAM_GAME)
+elif "microsoft" in os.uname().release.lower():
+    GAME_DIR = "/mnt/c/Program Files (x86)/" + STEAM_GAME
+else:
+    GAME_DIR = str(Path.home() / ".steam/steam/steamapps/common/The Secret of Monkey Island Special Edition")
+
 DEFAULTS = {
     # Where things are
-    "game_dir": "/mnt/c/Program Files (x86)/Steam/steamapps/common/The Secret of Monkey Island Special Edition",
+    "game_dir": GAME_DIR,
     "scummvm": "",
-    "save_dir": str(REPO.parent / "saves"),
+    # In a source checkout savegames stay outside the repository; in an unpacked release, inside its folder
+    "save_dir": str((REPO.parent if (REPO / ".git").exists() else REPO) / "saves"),
     # Who plays
     "neuro_url": "ws://127.0.0.1:8000",
     "operator_name": "Vedal",
@@ -203,8 +212,9 @@ def describe_action(name, data, lines):
 
 
 class Console:
-    def __init__(self, bind):
+    def __init__(self, bind, open_browser=False):
         self.host, self.port = bind
+        self.open_browser = open_browser
         self.token = ""
         self.settings = dict(DEFAULTS)
         self.load_config()
@@ -721,6 +731,9 @@ class Console:
         print(f"Console: http://{shown}:{self.port}/?t={self.token}")
         print("Ctrl+C stops the console and the game.")
         sys.stdout.flush()
+        if self.open_browser:
+            import webbrowser
+            webbrowser.open(f"http://{shown}:{self.port}/?t={self.token}")
         asyncio.ensure_future(self.run_upstream())
         try:
             async with server:
@@ -733,13 +746,14 @@ def main():
     parser = argparse.ArgumentParser(description="The operator's console for the Monkey Island integration.")
     parser.add_argument("--bind", default="127.0.0.1:7878", help="address and port to serve on (default 127.0.0.1:7878)")
     parser.add_argument("--new-token", action="store_true", help="make a new token; the old address stops working")
+    parser.add_argument("--open", action="store_true", help="open the page in the default browser")
     args = parser.parse_args()
     host, _, port = args.bind.rpartition(":")
     if args.new_token and CONFIG.exists():
         saved = json.loads(CONFIG.read_text(encoding="utf-8"))
         saved.pop("token", None)
         CONFIG.write_text(json.dumps(saved, indent=2), encoding="utf-8")
-    console = Console((host or "127.0.0.1", int(port)))
+    console = Console((host or "127.0.0.1", int(port)), args.open)
     try:
         asyncio.run(console.run())
     except KeyboardInterrupt:
