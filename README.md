@@ -66,7 +66,9 @@ NEURO_SDK_WS_URL=ws://127.0.0.1:8000 \
 neuro/run.sh
 ```
 
-Add `-x N` to start from savegame slot N. Savegames go to the folder in `NEURO_SAVE_DIR` (by default a `saves` folder beside the repository).
+Add `-x N` to start from savegame slot N.
+
+For running a stream there is also a web console that starts the game for you, with the settings on a page, a live view of what she is told and does, and a column for OBS to show beside the game: `python3 neuro/console/console.py`. See [`neuro/console/README.md`](neuro/console/README.md). Savegames go to the folder in `NEURO_SAVE_DIR` (by default a `saves` folder beside the repository).
 
 | Setting | Default | Meaning |
 |---|---|---|

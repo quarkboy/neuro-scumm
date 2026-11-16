@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Stream column</title>
+<style>
+/* Sized for a 480 x 1080 browser source; everything scales with the width. */
+:root {
+  --night: #0b1026; --deep: #131a3a; --panel: rgba(255, 255, 255, .055); --rule: rgba(240, 200, 120, .28);
+  --gold: #f0c36a; --text: #eef0fa; --dim: #a4abd0; --pink: #ff9ccb; --green: #8fe0a8;
+  font-size: calc(100vw / 30);
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; overflow: hidden; color: var(--text);
+  font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif; line-height: 1.35;
+  background:
+    radial-gradient(120% 60% at 80% 0%, #2a2f6e 0%, transparent 60%),
+    linear-gradient(180deg, var(--deep) 0%, var(--night) 70%);
+  display: flex; flex-direction: column; padding: .9rem; gap: .7rem;
+}
+h1 {
+  margin: 0; font-weight: 700; font-size: 1.25rem;
+  line-height: 1.15; color: var(--gold); text-align: center; letter-spacing: .01em;
+  text-shadow: 0 .1rem 0 #000;
+}
+#chat { flex: none; border: .08rem solid var(--rule); border-radius: .5rem; background: rgba(0, 0, 0, .35); position: relative; }
+#chat span { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; color: var(--dim); font-size: .85rem; }
+body.preview #chat span { display: flex; }
+.card { background: var(--panel); border-radius: .5rem; padding: .6rem .75rem; }
+.label { font-size: .68rem; letter-spacing: .14em; text-transform: uppercase; color: var(--gold); margin-bottom: .2rem; }
+#location { font-size: 1.25rem; font-weight: 600; }
+#now { font-size: 1.12rem; min-height: 2.9rem; display: flex; align-items: center; }
+#now.thinking { color: var(--pink); }
+#now.held { color: var(--dim); }
+.dots::after { content: ""; animation: dots 1.4s steps(4, end) infinite; }
+@keyframes dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
+ul { list-style: none; margin: 0; padding: 0; }
+#goals li { font-size: .95rem; padding: .16rem 0 .16rem 1.2rem; position: relative; }
+#goals li::before { content: "\2620"; position: absolute; left: 0; color: var(--gold); font-size: .85rem; }
+#inventory { display: flex; flex-wrap: wrap; gap: .3rem; }
+#inventory span { font-size: .78rem; background: rgba(240, 195, 106, .14); border: .06rem solid var(--rule); border-radius: 1rem; padding: .1rem .55rem; }
+#recent li { font-size: .82rem; color: var(--dim); padding: .12rem 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#recent li:first-child { color: var(--text); }
+.grow { flex: 1; min-height: 0; overflow: hidden; }
+.empty { color: var(--dim); font-size: .82rem; }
+[hidden] { display: none !important; }
+@media (prefers-reduced-motion: reduce) { .dots::after { animation: none; content: "..."; } }
+</style>
+</head>
+<body>
+<h1 id="title"></h1>
+<div id="chat"><span>chat goes here</span></div>
+<div class="card" id="c-location"><div class="label">Where she is</div><div id="location"></div></div>
+<div class="card" id="c-now"><div class="label">Right now</div><div id="now"></div></div>
+<div class="card" id="c-goals"><div class="label">Her goals</div><ul id="goals"></ul></div>
+<div class="card" id="c-inventory"><div class="label">Carrying</div><div id="inventory"></div></div>
+<div class="card grow" id="c-recent"><div class="label">Lately</div><ul id="recent"></ul></div>
+<script>
+const params = new URLSearchParams(location.search);
+const token = params.get('t') || '';
+if (params.get('preview')) document.body.classList.add('preview');
+const $ = id => document.getElementById(id);
+
+function list(el, items, tag) {
+  const key = JSON.stringify(items);
+  if (el.dataset.key === key) return;
+  el.dataset.key = key;
+  el.replaceChildren(...items.map(text => Object.assign(document.createElement(tag), {textContent: text})));
+}
+
+// A goal in her journal is a full sentence of instructions; the column shows its title
+function shortGoal(goal) {
+  const colon = goal.indexOf(':');
+  if (colon > 0 && colon < 40) return /^\s*what you learn/.test(goal.slice(colon + 1)) ? '' : goal.slice(0, colon);
+  const cut = goal.search(/[,.(]/);
+  return (cut > 0 ? goal.slice(0, cut) : goal).trim();
+}
+
+function show(s) {
+  const v = s.view;
+  $('title').textContent = s.title;
+  $('chat').style.height = s.chat_height + 'vh';
+  for (const name of ['title', 'chat', 'location', 'now', 'goals', 'inventory', 'recent']) {
+    const el = $('c-' + name) || $(name);
+    el.hidden = s.hide.includes(name) || (name === 'chat' && !s.chat_height);
+  }
+  $('location').textContent = v.location || (s.connected ? '…' : 'The game is not running');
+
+  const now = $('now');
+  let text, kind = '';
+  if (s.hold) { text = 'Taking a short break'; kind = 'held'; }
+  else if (v.state === 'thinking') { text = 'Thinking'; kind = 'thinking'; }
+  else if (v.now) text = v.now;
+  else text = s.connected ? 'Watching' : '';
+  now.className = kind;
+  now.innerHTML = '';
+  now.append(Object.assign(document.createElement('span'), {textContent: text, className: kind === 'thinking' ? 'dots' : ''}));
+
+  list($('goals'), v.goals.map(shortGoal).filter(Boolean), 'li');
+  list($('inventory'), v.inventory.length ? v.inventory : [], 'span');
+  $('c-inventory').hidden = $('c-inventory').hidden || !v.inventory.length;
+  $('c-goals').hidden = $('c-goals').hidden || !v.goals.length;
+  list($('recent'), v.recent, 'li');
+}
+
+async function poll() {
+  try {
+    const response = await fetch('/api/view?t=' + encodeURIComponent(token));
+    show(await response.json());
+  } catch (error) { /* the console is restarting; keep the last picture */ }
+  setTimeout(poll, 500);
+}
+poll();
+</script>
+</body>
+</html>

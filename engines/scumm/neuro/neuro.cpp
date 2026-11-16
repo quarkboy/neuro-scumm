@@ -630,6 +630,62 @@ void NeuroBridge::handleDebugAction(const Common::String &id, const Common::Stri
 		return;
 	}
 
+	// The operator's console asks for these. The answers are built here and
+	// not with sendActionResult(), which would count them as her doing something.
+	if (name == "debug_status") {
+		NeuroWorld world;
+		collectWorld(world);
+
+		Common::JSONObject status;
+		Common::String location = _data.roomName(world.room);
+		if (location.empty())
+			location = Common::String::format("room %d", world.room);
+		status.setVal("location", new Common::JSONValue(location));
+		Common::JSONArray inventory;
+		for (const auto &item : world.inventory)
+			inventory.push_back(new Common::JSONValue(item.name));
+		status.setVal("inventory", new Common::JSONValue(inventory));
+		status.setVal("journal", new Common::JSONValue(_journal.describe(false)));
+		status.setVal("idle_force_seconds", new Common::JSONValue((long long int)(_idleForceMs / 1000)));
+		status.setVal("reaction_ms", new Common::JSONValue((long long int)_reactionMs));
+		status.setVal("context_tokens", new Common::JSONValue((long long int)_contextTokens));
+		status.setVal("pointer", new Common::JSONValue(_pointerGlide));
+		status.setVal("fast_mode", new Common::JSONValue(Common::String(_fastMode == kFastAlways ? "always" : _fastMode == kFastScenes ? "scenes" : "off")));
+		Common::JSONValue root(status);
+
+		Common::JSONObject result;
+		result.setVal("id", new Common::JSONValue(id));
+		result.setVal("success", new Common::JSONValue(true));
+		result.setVal("message", new Common::JSONValue(root.stringify()));
+		send("action/result", &result);
+		return;
+	}
+
+	// Settings that can change while the game runs: "debug_set NAME VALUE"
+	if (name == "debug_set") {
+		char key[40] = "", value[40] = "";
+		sscanf(data.c_str(), "%39s %39s", key, value);
+		const Common::String setting(key), text(value);
+		const int number = atoi(value);
+		if (setting == "idle_force_seconds") {
+			_idleForceMs = MAX(0, number) * 1000;
+		} else if (setting == "reaction_ms") {
+			_reactionMs = MAX(0, number);
+		} else if (setting == "context_tokens") {
+			_contextTokens = MAX(0, number);
+		} else if (setting == "pointer") {
+			_pointerGlide = !text.equalsIgnoreCase("off");
+		} else if (setting == "fast_mode") {
+			_fastMode = text.equalsIgnoreCase("always") ? kFastAlways : text.equalsIgnoreCase("scenes") ? kFastScenes : kFastOff;
+			if (_fastMode == kFastOff)
+				_vm->_fastMode = 0;
+		} else if (setting == "music_volume" || setting == "sfx_volume" || setting == "speech_volume") {
+			ConfMan.setInt(setting, CLIP(number, 0, 255));
+			_vm->syncSoundSettings();
+		}
+		return;
+	}
+
 	if (!quiet) sendActionResult(id, false, "Unknown debug action.");
 }
 
