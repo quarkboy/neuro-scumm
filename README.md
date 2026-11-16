@@ -4,26 +4,36 @@ This is a fork of [ScummVM](https://www.scummvm.org/) that lets [Neuro-sama](htt
 
 It is an unofficial fan project. It is not affiliated with the ScummVM team, Vedal, or the owners of Monkey Island, and it contains no game data: you need your own copy of the game.
 
-**Status: early.** The opening of Part One works: the lookout, the SCUMM Bar and its kitchen, and the town on Mêlée Island. A stand-in language model can play through that stretch. The rest of the game runs, but has no written descriptions yet. Only Linux (including WSL) has been built and tested so far.
+**Status: playable from start to finish.** A stand-in language model has played the whole game through it, from a new game to the end credits, with stops for fixes along the way. Part One's descriptions have been reviewed by a person; the other three parts are a first pass. Only Linux (including WSL) has been built and tested so far. Neuro herself has not played it. What is left is in [`neuro/ROADMAP.md`](neuro/ROADMAP.md).
 
 ## How it works
 
 Neuro cannot see the screen, so everything goes through text.
 
-- **What she is told.** A description of each room and the things, people and exits in it; every line of dialogue, with who said it; and what changed as a result of her actions.
-- **What she can do.** `interact` uses any of the game's verbs on anything in the room or her inventory, and also walks. `choose_dialogue` picks a line in a conversation. `answer` replies to a quick yes/no question. `read_journal` and `add_note` keep track of goals. `wait` and `skip_cutscene` do what they say.
+- **What she is told.** A description of each room and the things, people and exits in it; every line of dialogue, with who said it; text that is only drawn on the screen, such as a map or a note; and what changed as a result of her actions.
+- **What she can do.** `interact` uses any of the game's verbs on anything in the room or her inventory, and also walks. `choose_dialogue` picks a line in a conversation. `answer` replies to a quick yes/no question. `read_journal` and `add_note` keep track of goals and of the clues she has come across. `wait` and `skip_cutscene` do what they say.
 - **Timing.** Moments that need a fast reaction (slipping past the cook, for example) are sent as a high-priority question, timed to her reaction speed. An action can also carry a second step that runs the instant the first one ends.
-- **Hand-written text.** Room descriptions, names for characters the game leaves unnamed, goals and alerts live in a plain text file, [`neuro/data/monkey1.ini`](neuro/data/monkey1.ini). They say what is on screen and what characters have told her, never how to solve a puzzle.
+- **On screen.** The mouse pointer travels to each thing she uses, the way a player's would, so viewers can follow what she is doing.
+- **Hand-written text.** Room descriptions, names for characters the game leaves unnamed, goals, clues and timed questions live in a plain text file, [`neuro/data/monkey1.ini`](neuro/data/monkey1.ini). They say what is on screen and what characters have told her, never how to solve a puzzle.
 
-The Neuro code is in [`engines/scumm/neuro/`](engines/scumm/neuro/). The development plan and its history are in [`neuro/PLAN.md`](neuro/PLAN.md).
+The Neuro code is in [`engines/scumm/neuro/`](engines/scumm/neuro/). The design is explained in [`neuro/PLAN.md`](neuro/PLAN.md).
 
 ## What you need
 
-- *The Secret of Monkey Island: Special Edition* (the Steam release). The classic game is read straight out of its `Monkey1.pak`.
+- *The Secret of Monkey Island: Special Edition* (the Steam release). The classic game is read straight out of its `Monkey1.pak`, and its voice acting, music and sound effects are played over it.
 - A C++ compiler, `make`, SDL2 and libcurl, with their development packages.
-- A Neuro API server to connect to. For testing without Neuro, [Gary](https://github.com/Govorunb/gary) works.
+- A Neuro API server to connect to. For testing without Neuro, the SDK lists several stand-ins, among them [Gary](https://github.com/Govorunb/gary), Tony and Jippity.
 
 ## Building
+
+On Debian or Ubuntu, the packages are:
+
+```sh
+sudo apt-get install g++ make libsdl2-dev libsdl2-net-dev libcurl4-openssl-dev \
+    libflac-dev libfreetype6-dev libmad0-dev libogg-dev libpng-dev libvorbis-dev zlib1g-dev
+```
+
+Then, from the top of the repository:
 
 ```sh
 mkdir build && cd build
@@ -31,11 +41,23 @@ mkdir build && cd build
 make -j$(nproc)
 ```
 
-This builds only the SCUMM engine (Monkey Island 1 and 2 among others) with the Neuro module. Without a server URL configured, the result behaves like ordinary ScummVM.
+This builds only the SCUMM engine (Monkey Island 1 and 2 among others) with the Neuro module. Without a server address configured, the result behaves like ordinary ScummVM.
+
+## Pointing it at the game
+
+The launcher needs the folder that contains `Monkey1.pak`. Set `MONKEY1_DIR` to it:
+
+| Where the game is | `MONKEY1_DIR` |
+|---|---|
+| Steam on Windows, used from WSL | `/mnt/c/Program Files (x86)/Steam/steamapps/common/The Secret of Monkey Island Special Edition` (the default) |
+| Steam on Linux (Proton) | `~/.steam/steam/steamapps/common/The Secret of Monkey Island Special Edition` |
+| Anywhere else | the folder you copied or installed it to |
+
+Nothing is copied out of that folder or written to it.
 
 ## Running
 
-[`neuro/run.sh`](neuro/run.sh) starts the game with the settings below. Point it at your game folder and build:
+[`neuro/run.sh`](neuro/run.sh) starts the game with the settings below:
 
 ```sh
 MONKEY1_DIR="/path/to/The Secret of Monkey Island Special Edition" \
@@ -44,23 +66,30 @@ NEURO_SDK_WS_URL=ws://127.0.0.1:8000 \
 neuro/run.sh
 ```
 
-Add `-x N` to start from savegame slot N.
+Add `-x N` to start from savegame slot N. Savegames go to the folder in `NEURO_SAVE_DIR` (by default a `saves` folder beside the repository).
 
 | Setting | Default | Meaning |
 |---|---|---|
 | `NEURO_SDK_WS_URL` | `ws://127.0.0.1:8000` in `run.sh` | The Neuro API server. Unset, the Neuro module stays off. |
 | `NEURO_DESCRIPTIONS` | `neuro/data/monkey1.ini` in `run.sh` | The description file. |
-| `NEURO_DIALOGUE_MODE` | `speech` | `speech` reports dialogue with the SDK's `speech/started` and `speech/ended`. `context` sends it as ordinary context messages, for servers that do not know those commands (Gary 1.0.x). |
+| `NEURO_DIALOGUE_MODE` | `speech` | `speech` reports dialogue with the SDK's `speech/started` and `speech/ended`. `context` sends it as ordinary context messages, for servers that do not know those commands yet. |
 | `NEURO_IDLE_FORCE_SECONDS` | `45` | Prompt her after this long with nothing happening. `0` turns it off. |
-| `NEURO_REACTION_MS` | `300` | How long she takes to react; timed questions go out that much early. |
+| `NEURO_REACTION_MS` | `300` | How long she takes to react; timed questions go out that much early. A language model standing in for her needs about `2500`. |
 | `NEURO_CONTEXT_TOKENS` | `32000` | After roughly this much traffic, text that is only said once (room descriptions, the introduction) is said again. |
+| `NEURO_POINTER` | on | `off` makes clicks land at once instead of the pointer travelling to them. |
 | `NEURO_FAST_MODE` | off | `always`, or `scenes` to run fast only while she cannot act. For testing. |
 
 Each setting can also be given as a ScummVM config key of the same name in lower case, for example `neuro_idle_force_seconds`. The one exception is the server URL, whose key is `neuro_ws_url`. An environment variable wins over the config key.
 
+In the game window, Space pauses the game until it is pressed again.
+
 ## Changes to ScummVM itself
 
-Three fixes outside the Neuro module, all for the Special Edition's audio: its music now plays (it is stored as headerless WMA, which upstream does not decode yet), music resumes after loading a savegame, and a voice line that is interrupted by the next speaker keeps playing instead of being cut off.
+A few fixes outside the Neuro module, all for the Special Edition's audio:
+
+- Its music plays (it is stored as headerless WMA), and resumes after loading a savegame.
+- Its sound effects play, and are the right ones. They were looked up by position in a file that is not in that order, and a third of them decoded to silence.
+- A voice line that another character interrupts keeps playing underneath instead of being cut off, and a line that the game prints repeatedly to make it flash is heard once.
 
 ## License and credits
 

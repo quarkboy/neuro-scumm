@@ -1,5 +1,5 @@
 #!/bin/sh
-# Launch the Linux dev build against the Steam copy of the game.
+# Launch the build against your copy of the game (MONKEY1_DIR: the folder with Monkey1.pak).
 # NEURO_FAST_MODE=always|scenes runs the game fast (scenes: only while the player cannot act).
 # Override NEURO_SDK_WS_URL, NEURO_DIALOGUE_MODE, MONKEY1_DIR or BUILD_DIR in the environment as needed.
 here=$(cd "$(dirname "$0")" && pwd)
@@ -7,7 +7,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 : "${MONKEY1_DIR:=/mnt/c/Program Files (x86)/Steam/steamapps/common/The Secret of Monkey Island Special Edition}"
 : "${BUILD_DIR:=$here/../../build-linux}"
 # Dialogue is reported with speech/started and speech/ended, as the SDK specifies.
-# Stock Gary 1.0.x rejects those: use the fork in ../gary, or NEURO_DIALOGUE_MODE=context.
+# For a server that does not know those commands yet, use NEURO_DIALOGUE_MODE=context.
 : "${NEURO_DIALOGUE_MODE:=speech}"
 : "${NEURO_DESCRIPTIONS:=$here/data/monkey1.ini}"
 export NEURO_SDK_WS_URL NEURO_DIALOGUE_MODE NEURO_DESCRIPTIONS

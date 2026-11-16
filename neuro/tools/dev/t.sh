@@ -1,11 +1,12 @@
 #!/bin/bash
 # Test driver. usage: t.sh start | act NAME 'JSON' | log | stop
 S=$(cd "$(dirname "$0")" && pwd)
-B=/home/samuelp/projects/neuro-scumm
+# The launcher; set NEURO_RUN if this script has been copied out of the repository
+: "${NEURO_RUN:=$S/../../run.sh}"
 case "$1" in
 start)
 	pkill -x scummvm; sleep 1
-	(env ${VISIBLE:+-u NOOP_VAR} $([ -z "$VISIBLE" ] && echo SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=${AUDIODRV:-dummy}) timeout ${2:-900} $B/scummvm/neuro/run.sh --debuglevel=2 --screenshotpath=$S/shots $DBGFLAGS $GAMEARGS > $S/game.out 2>&1 &)
+	(env ${VISIBLE:+-u NOOP_VAR} $([ -z "$VISIBLE" ] && echo SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=${AUDIODRV:-dummy}) timeout ${2:-900} "$NEURO_RUN" --debuglevel=2 --screenshotpath=$S/shots $DBGFLAGS $GAMEARGS > $S/game.out 2>&1 &)
 	for i in $(seq 1 40); do grep -aq "Neuro: Connected" $S/game.out && break; sleep 1; done; sleep 3
 	# Tests drive the game by hand; a watched game is played by the engine
 	[ -z "$VISIBLE" ] && $S/mcp.sh set_paused '{"paused":true}' > /dev/null
