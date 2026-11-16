@@ -315,6 +315,8 @@ class Console:
         save_dir.mkdir(parents=True, exist_ok=True)
 
         args = [str(exe), f"--savepath={save_dir}", "--auto-detect", "-p", str(game_dir)]
+        # The window size is only honoured by the OpenGL graphics mode
+        args.append("--gfx-mode=opengl")
         if s["fullscreen"]:
             args.append("--fullscreen")
         else:
