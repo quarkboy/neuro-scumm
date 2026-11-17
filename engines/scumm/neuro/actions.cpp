@@ -352,6 +352,8 @@ bool NeuroBridge::resolveCommand(const NeuroWorld &world, const Common::String &
 
 /** From here on, what happens is the outcome of her action, which she is told once it has played out. */
 void NeuroBridge::beginAction() {
+	_walkTarget = 0;
+	_lastTargets[0] = _lastTargets[1] = 0;
 	_commandStartedAt = g_system->getMillis();
 	_awaitingOutcome = true;
 	_outcomeTold = false;
@@ -404,7 +406,11 @@ void NeuroBridge::updateQueuedCommand() {
 
 	const uint32 elapsed = g_system->getMillis() - _commandStartedAt;
 	if (elapsed > (_queue[0].afterPassage ? kPassageTimeoutMs : kStepTimeoutMs)) {
+		const Common::String step = _queue[0].preset;
 		_queue.clear();
+		sendContext((step.empty() ? Common::String("The follow-up movement") : "The follow-up (" + step + ")") +
+			" did not start before time ran out.", false);
+		_outcomeTold = true;
 		return;
 	}
 
@@ -428,8 +434,11 @@ void NeuroBridge::updateQueuedCommand() {
 	if (!next.preset.empty()) {
 		NeuroWorld world;
 		collectWorld(world);
-		if (!resolvePreset(world, next.preset, next)) {
+		const Common::String step = next.preset;
+		if (!resolvePreset(world, step, next)) {
 			_queue.clear();
+			sendContext("Could not carry out the follow-up (" + step + ") with what is available now.", false);
+			_outcomeTold = true;
 			return;
 		}
 	}
@@ -458,7 +467,13 @@ void NeuroBridge::finishAction(const NeuroWorld &world) {
 	// A conversation prompts her with the lines to choose from. Otherwise she
 	// needs a cue that is hers: the replies to her action were not sent as one.
 	if (!_outcomeTold && !world.inDialogue) {
-		Common::String cue = _outcomeSpoken ? "Your move." : "Done.";
+		Common::String cue = _outcomeSpoken ? "Your move." : "No further visible response.";
+		if (!_outcomeSpoken && !_walkTarget) {
+			for (const auto &item : world.inventory) {
+				if (item.id == _lastTargets[0])
+					cue += " You are carrying " + item.name + ".";
+			}
+		}
 		// Walking to a door goes through it only if it is open. A player sees
 		// the character stop in front of a shut one; she has to be told.
 		for (const auto &thing : world.objects) {
@@ -521,6 +536,7 @@ void NeuroBridge::actionInteract(const Common::String &id, const NeuroArgs &args
 	Common::String secondName = args.get("second_target|second|with|on|to|target2|recipient");
 	const Common::String thenVerb = args.get("then_verb|then|next_verb|second_verb");
 	const Common::String thenTarget = args.get("then_target|next_target");
+	const Common::String thenSecond = args.get("then_second_target|then_with|then_on");
 
 	if (!playerHasControl()) {
 		sendActionResult(id, false, "Not now: a scene is playing.");
@@ -556,7 +572,7 @@ void NeuroBridge::actionInteract(const Common::String &id, const NeuroArgs &args
 	NeuroCommand first, second;
 	Common::String error;
 	if (!resolveCommand(world, verbName, targetName, secondName, first, error)
-			|| (!thenVerb.empty() && !resolveCommand(world, thenVerb, thenTarget, args.get("then_second_target|then_with|then_on"), second, error))) {
+			|| (!thenVerb.empty() && !resolveCommand(world, thenVerb, thenTarget, thenSecond, second, error))) {
 		sendActionResult(id, false, error);
 		return;
 	}
@@ -577,8 +593,12 @@ void NeuroBridge::actionInteract(const Common::String &id, const NeuroArgs &args
 		again.settleMs = kSpotSettleMs;
 		_queue.push_back(again);
 	}
-	if (!thenVerb.empty())
+	if (!thenVerb.empty()) {
+		second.preset = thenVerb + " | " + thenTarget;
+		if (!thenSecond.empty())
+			second.preset += " | " + thenSecond;
 		_queue.push_back(second);
+	}
 	runCommand(first);
 }
 
