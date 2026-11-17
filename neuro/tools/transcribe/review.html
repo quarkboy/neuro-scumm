@@ -415,8 +415,18 @@ function sceneryEditor(room, objects, refresh) {
 			if (!found) { flash("Choose an object present in this capture."); return; }
 			state.value = found.state; refresh();
 		} }, "Use captured state");
+		const captures = el("div", { class: "note", style: "flex-basis:100%" });
+		const showStates = () => {
+			captures.hidden = !object.value;
+			captures.textContent = object.value ? room.captures.map(c => {
+				const found = c.objects.find(o => String(o.id) === object.value);
+				return c.label + (found?.state != null ? ` (state ${found.state})` : " (state unavailable)");
+			}).join(" · ") : "";
+		};
+		object.addEventListener("change", showStates);
+		showStates();
 		const row = el("div", { class: "row", style: "flex-wrap:wrap" }, object, state, use, text,
-			el("button", { type: "button", class: "small danger", title: "Remove scenery sentence", onclick: () => { row.remove(); refresh(); } }, "×"));
+			el("button", { type: "button", class: "small danger", title: "Remove scenery sentence", onclick: () => { row.remove(); refresh(); } }, "×"), captures);
 		row.read = () => ({ object: object.value, state: state.value === "" ? "" : String(Number(state.value)), text: text.value.trim() });
 		rows.append(row);
 	}
