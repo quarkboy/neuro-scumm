@@ -462,7 +462,20 @@ private:
 	uint32 _lastTalkTime = 0;
 	/** When the end of the last line is due to be reported; 0 if it has been. */
 	uint32 _speechEndDueAt = 0;
+	void sendSpeechStarted(const Common::String &speaker, const Common::String &line, bool noReply);
 	void sendSpeechEnded();
+	void reportSpeechEnd();
+
+	// A short line held back in case it is one piece of text being typed out
+	struct HeldSpeech {
+		bool waiting = false;
+		bool ended = false;   ///< it has already left the screen
+		bool noReply = false;
+		uint32 dueAt = 0;
+		Common::String speaker, text;
+	};
+	HeldSpeech _heldSpeech;
+	void sendHeldSpeech();
 	bool anotherLineFollows() const;
 
 	/** The last line passed on, as "speaker: text". */

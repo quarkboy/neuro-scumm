@@ -174,6 +174,8 @@ void NeuroBridge::update() {
 			_vm->writeVar(_questionHoldVar, _questionHoldValue);
 	}
 
+	if (_heldSpeech.waiting && g_system->getMillis() >= _heldSpeech.dueAt)
+		sendHeldSpeech();
 	if (_speechEndDueAt && (g_system->getMillis() >= _speechEndDueAt || playerHasControl()))
 		sendSpeechEnded();
 
@@ -204,6 +206,7 @@ void NeuroBridge::onConnected() {
 	_described = NeuroWorld();
 	_speechOpen = false;
 	_speechEndDueAt = 0;
+	_heldSpeech.waiting = false;
 	_forceActive = false;
 	_forcedDialogue.clear();
 	_lastActivity = g_system->getMillis();
@@ -238,6 +241,7 @@ void NeuroBridge::resetAfterLoad() {
 	_shownSentence = false;
 	_pendingDialogue.clear();
 	_speechOpen = false;
+	_heldSpeech.waiting = false;
 	if (_speechEndDueAt)
 		sendSpeechEnded();
 	_namedCostume.clear();

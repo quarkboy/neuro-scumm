@@ -32,6 +32,9 @@
 
 namespace Scumm {
 
+/** Text that nobody speaks, up to this many bytes long, is held this long in case it is being typed out. */
+static const uint kTypedOutMaxLength = 12;
+static const uint32 kTypedOutHoldMs = 250;
 /** The same line from the same speaker within this long is one line said by a crowd. */
 static const uint32 kSameLineMs = 5000;
 /** A line heard again within this long is background chatter... */
@@ -139,18 +142,51 @@ void NeuroBridge::onTalkStarted(int actor, const byte *text) {
 		return;
 	}
 
+	// A sound drawn as text can be typed out a bit at a time ("Ps", "Pss",
+	// "Psssst."), each piece a line of its own. Short text that nobody speaks
+	// is held for a moment, and a piece that is overtaken is never sent.
+	if (_heldSpeech.waiting) {
+		if (speaker == _heldSpeech.speaker && line.size() > _heldSpeech.text.size() && line.hasPrefix(_heldSpeech.text))
+			_heldSpeech.waiting = false;
+		else
+			sendHeldSpeech();
+	}
+
+	// Lines she is only watching may get a reaction. Replies to her own action
+	// must not prompt her one by one: she is prompted once, when it is her
+	// turn, with the choice of lines or a cue.
+	const bool noReply = _awaitingOutcome || anotherLineFollows();
+	const bool spokenByActor = actor > 0 && actor < 0x80;
+	if (!spokenByActor && line.size() <= kTypedOutMaxLength) {
+		_heldSpeech.waiting = true;
+		_heldSpeech.ended = false;
+		_heldSpeech.speaker = speaker;
+		_heldSpeech.text = line;
+		_heldSpeech.noReply = noReply;
+		_heldSpeech.dueAt = g_system->getMillis() + kTypedOutHoldMs;
+		return;
+	}
+	sendSpeechStarted(speaker, line, noReply);
+}
+
+void NeuroBridge::sendSpeechStarted(const Common::String &speaker, const Common::String &line, bool noReply) {
 	Common::JSONObject data;
 	data.setVal("id", new Common::JSONValue(Common::String::format("%s-%u", _speechIdPrefix.c_str(), ++_speechCounter)));
 	data.setVal("speaker", new Common::JSONValue(speaker));
 	data.setVal("text", new Common::JSONValue(line));
-	// Lines she is only watching may get a reaction. Replies to her own action
-	// must not prompt her one by one: she is prompted once, when it is her
-	// turn, with the choice of lines or a cue.
-	if (_awaitingOutcome || anotherLineFollows())
+	if (noReply)
 		data.setVal("reply", new Common::JSONValue("never"));
 	// Only a safety net in case the end message is lost: generous reading time
 	data.setVal("expected_duration_ms", new Common::JSONValue((long long int)(3000 + line.size() * 150)));
 	send("speech/started", &data);
+}
+
+/** Sends the line that was held to see whether it would be typed out further. */
+void NeuroBridge::sendHeldSpeech() {
+	_heldSpeech.waiting = false;
+	sendSpeechStarted(_heldSpeech.speaker, _heldSpeech.text, _heldSpeech.noReply);
+	if (_heldSpeech.ended)
+		reportSpeechEnd();
 }
 
 bool NeuroBridge::speakerOf(int actor, const Common::String &line, Common::String &speaker) {
@@ -325,6 +361,15 @@ void NeuroBridge::onTalkStopped() {
 	if (_dialogueAsContext)
 		return;
 
+	// Not sent yet, so there is no end to report yet either
+	if (_heldSpeech.waiting) {
+		_heldSpeech.ended = true;
+		return;
+	}
+	reportSpeechEnd();
+}
+
+void NeuroBridge::reportSpeechEnd() {
 	// Lines of one scene follow each other with short pauses. Reporting each
 	// end at once would leave her those pauses to start talking in, so the
 	// end is held back: the next line reports it, or update() once the pause
