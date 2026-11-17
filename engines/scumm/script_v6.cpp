@@ -38,6 +38,9 @@
 #include "scumm/sound.h"
 #include "scumm/util.h"
 #include "scumm/verbs.h"
+#ifdef ENABLE_NEURO
+#include "scumm/neuro/neuro.h"
+#endif
 
 namespace Scumm {
 
@@ -2005,6 +2008,10 @@ void ScummEngine_v6::o6_actorOps() {
 		break;
 	case SO_ACTOR_NAME:
 		loadPtrToResource(rtActorName, a->_number, nullptr);
+#ifdef ENABLE_NEURO
+		if (_neuro)
+			_neuro->onActorNamed(a->_number);
+#endif
 		break;
 	case SO_INIT_ANIMATION:
 		a->_initFrame = pop();

@@ -122,7 +122,7 @@ void NeuroBridge::collectObjects(NeuroWorld &world, Common::Array<bool> &usable)
 		// Scripts park what a screen does not use beyond the edge of the room
 		if (od.x_pos >= _vm->_roomWidth || od.x_pos + od.width <= 0)
 			continue;
-		const bool available = !_vm->getClass(od.obj_nr, kObjectClassUntouchable) && _vm->whereIsObject(od.obj_nr) == WIO_ROOM;
+		const bool available = !untouchable(od.obj_nr) && _vm->whereIsObject(od.obj_nr) == WIO_ROOM;
 
 		// Same test as findObject(): an object nested in another one only
 		// exists while each parent is in the required state.
@@ -148,7 +148,7 @@ void NeuroBridge::collectObjects(NeuroWorld &world, Common::Array<bool> &usable)
 		thing.note = _data.objectNote(world.room, od.obj_nr);
 		if (_data.relativePlaces(world.room)) {
 			// Left or right is all the game's own pointer tells apart in such a room
-			const Common::String where = "to " + _egoName + (thing.x < ego()->getPos().x ? "'s left" : "'s right");
+			const Common::String where = "to " + egoName() + (thing.x < ego()->getPos().x ? "'s left" : "'s right");
 			thing.note = thing.note.empty() ? where : thing.note + "; " + where;
 		}
 		// Several objects given one name and note are one thing to her;
@@ -177,7 +177,7 @@ void NeuroBridge::collectActors(NeuroWorld &world) {
 		Actor *actor = _vm->_actors[i];
 		if (actor == ego() || !actor->_visible || !actor->isInCurrentRoom())
 			continue;
-		if (_vm->getClass(i, kObjectClassUntouchable))
+		if (untouchable(i))
 			continue;
 
 		NeuroThing thing;
@@ -218,14 +218,18 @@ void NeuroBridge::collectVerbs(NeuroWorld &world) {
 	for (int slot = 1; slot < _vm->_numVerbs; slot++) {
 		const VerbSlot &vs = _vm->_verbs[slot];
 		// The sentence line above the verbs can be a verb slot too
-		if (!vs.verbid || vs.verbid == _data.game().sentenceLineVerb || vs.saveid != 0 || vs.curmode != 1 || vs.type != kTextVerbType)
+		if (!vs.verbid || vs.verbid == _data.game().sentenceLineVerb || vs.saveid != 0 || vs.curmode != 1)
 			continue;
 
 		NeuroThing thing;
 		thing.id = vs.verbid;
 		thing.x = vs.curRect.left;
 		thing.y = vs.curRect.top;
-		thing.name = cleanText(_vm->getResourceAddress(rtVerb, slot), true);
+		// A verb drawn as a picture has no text; the description file can name it
+		if (vs.type == kTextVerbType)
+			thing.name = cleanText(_vm->getResourceAddress(rtVerb, slot), true);
+		else
+			thing.name = _data.verbName(vs.verbid);
 		if (!thing.name.empty())
 			world.verbs.push_back(thing);
 	}
@@ -574,6 +578,15 @@ void NeuroBridge::pollWorld() {
 	// below), never between lines spoken one after another
 	sendJournalNews();
 
+	// Some games let the player switch between several characters
+	const int egoNow = _vm->VAR(_vm->VAR_EGO);
+	if (_egoTold && egoNow != _egoTold) {
+		sendContext("You are now playing " + egoName() + ".", false);
+		// Each carries their own things; that is not something gained or lost
+		_described.inventory = world.inventory;
+	}
+	_egoTold = egoNow;
+
 	if (world.room != _described.room)
 		reportRoom(world);
 	else
@@ -598,7 +611,7 @@ void NeuroBridge::trackActors() {
 	}
 	for (int i = 1; i < _vm->_numActors; i++) {
 		const Actor *actor = _vm->_actors[i];
-		if (actor == ego() || !actor->_visible || !actor->isInCurrentRoom() || _vm->getClass(i, kObjectClassUntouchable))
+		if (actor == ego() || !actor->_visible || !actor->isInCurrentRoom() || untouchable(i))
 			continue;
 		const Common::String name = actorName(i, true);
 		if (!name.empty())
@@ -666,7 +679,7 @@ void NeuroBridge::reportChanges(const NeuroWorld &world) {
 	Common::String changes = describeChanges(_described, world, layoutChanged, comings);
 	// A room redrawn as somewhere else is told like a new room
 	if (_data.shiftingLayout(world.room) && layoutChanged) {
-		changes = "The place has changed around " + _egoName + ".\n" + describeRoom(world, kRoomRevisit);
+		changes = "The place has changed around " + egoName() + ".\n" + describeRoom(world, kRoomRevisit);
 		comings = false;
 	}
 	if (changes.empty())

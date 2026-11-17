@@ -226,7 +226,7 @@ void NeuroBridge::debugDump() {
 	debug("NEURODUMP state: control %d userPut %d cursor %d sentences %d speechOpen %d moving %d forceActive %d idle %u ms click %d queue %u",
 		playerHasControl(), _vm->_userPut, _vm->_cursor.state, _vm->_sentenceNum, _speechOpen,
 		ego()->_moving, _forceActive, g_system->getMillis() - _lastActivity, (int)_clickPhase, _queue.size());
-	debug("NEURODUMP verb script %d", _vm->VAR(_vm->VAR_VERB_SCRIPT));
+	debug("NEURODUMP verb script %d", _vm->VAR_VERB_SCRIPT == 0xFF ? -1 : _vm->VAR(_vm->VAR_VERB_SCRIPT));
 	for (int slot = 1; slot < _vm->_numVerbs; slot++) {
 		const VerbSlot &vs = _vm->_verbs[slot];
 		if (!vs.verbid)

@@ -160,9 +160,13 @@ void NeuroBridge::checkAlerts(const NeuroWorld &before, const NeuroWorld &after)
 int NeuroBridge::readDataVar(uint var) const {
 	const bool isBit = var & 0x8000;
 	const uint number = var & 0x7FFF;
+	// Up to version 3 a bit variable is one bit of an ordinary variable:
+	// number 16 * variable + bit
+	const bool bitOfVariable = isBit && _vm->_game.version <= 3 && !(_vm->_game.id == GID_INDY3 && _vm->_game.platform == Common::kPlatformFMTowns);
+	const uint limit = (isBit && !bitOfVariable) ? _vm->_numBitVariables : _vm->_numVariables;
 	// The engine stops the game on a number out of range, and reads other kinds of
 	// variable from the running script
-	if (number >= (uint)(isBit ? _vm->_numBitVariables : _vm->_numVariables)) {
+	if ((bitOfVariable ? (number >> 4) & 0xFF : number) >= limit) {
 		if (!_missingVars.contains(var))
 			warning("Neuro: The description file names %s %u, which this game does not have", isBit ? "bit variable" : "variable", number);
 		_missingVars[var] = true;

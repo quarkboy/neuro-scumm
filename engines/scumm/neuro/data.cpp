@@ -194,6 +194,10 @@ Common::String NeuroData::roomPrompt(int room) const {
 	return roomGet(room, "prompt");
 }
 
+Common::String NeuroData::verbName(int verb) const {
+	return get("verbs", Common::String::format("%d", verb));
+}
+
 bool NeuroData::synonym(const Common::String &word, Common::String &verb) const {
 	if (word.empty() || !_ini.hasSection("synonyms"))
 		return false;

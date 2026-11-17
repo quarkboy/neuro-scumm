@@ -211,8 +211,9 @@ const NeuroThing *NeuroBridge::findThing(const NeuroThingList &things, const Com
 }
 
 void NeuroBridge::actionSkipCutscene(const Common::String &id) {
+	// Versions 1 and 2 do not count how deep in cutscenes the game is
 	const int depth = _vm->vm.cutSceneStackPointer;
-	if (depth == 0 || _vm->vm.cutScenePtr[depth] == 0) {
+	if ((depth == 0 && _vm->_game.version > 2) || _vm->vm.cutScenePtr[depth] == 0) {
 		sendActionResult(id, true, "No cutscene to skip.");
 		return;
 	}

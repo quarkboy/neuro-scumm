@@ -148,7 +148,7 @@ void NeuroBridge::movePointer() {
 
 bool NeuroBridge::needsClicks() const {
 	// Scripts numbered past the global ones belong to the current room
-	return _vm->VAR(_vm->VAR_VERB_SCRIPT) >= _vm->_numGlobalScripts;
+	return _vm->VAR_VERB_SCRIPT != 0xFF && _vm->VAR(_vm->VAR_VERB_SCRIPT) >= _vm->_numGlobalScripts;
 }
 
 bool NeuroBridge::verbButton(int verbId, NeuroClick &click) const {

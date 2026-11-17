@@ -189,10 +189,14 @@ private:
 	NeuroData _data;
 	// From the description file's [game] section, with defaults
 	Common::String _gameName;
-	Common::String _egoName;
 	Common::String _walkVerb;
-	/** The player's character's name, to start a sentence with. */
-	Common::String egoNameCapital() const;
+	/** What the player's character is called, and the same to start a sentence with. */
+	Common::String egoName();
+	Common::String egoNameCapital();
+	/** The actor she was last told she is playing; games with several heroes switch. */
+	int _egoTold = 0;
+	/** Whether the game keeps an object or actor from being used. */
+	bool untouchable(int thing) const;
 
 	Actor *ego() const;
 	bool playerHasControl() const;

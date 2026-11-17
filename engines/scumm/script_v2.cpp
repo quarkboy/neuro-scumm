@@ -27,6 +27,9 @@
 #include "scumm/sound.h"
 #include "scumm/util.h"
 #include "scumm/verbs.h"
+#ifdef ENABLE_NEURO
+#include "scumm/neuro/neuro.h"
+#endif
 
 namespace Scumm {
 
@@ -736,6 +739,10 @@ void ScummEngine_v2::o2_actorOps() {
 		break;
 	case 3:		// SO_ACTOR_NAME
 		loadPtrToResource(rtActorName, a->_number, nullptr);
+#ifdef ENABLE_NEURO
+		if (_neuro)
+			_neuro->onActorNamed(a->_number);
+#endif
 		break;
 	case 4:		// SO_COSTUME
 		a->setActorCostume(arg);

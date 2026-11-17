@@ -120,6 +120,10 @@ namespace Scumm {
  *                          followed by the question "Go through it?"
  *   door_open_state        the state label that means a door stands open ("open")
  *   door_question = no     never ask that question
+ * [verbs] names verbs that the game draws as pictures (ID = name, by verb id);
+ * without a name such a verb is not offered to her.
+ * In the games up to version 3, a "bit variable" N in this file is bit N % 16
+ * of variable N / 16.
  * [synonyms] maps words she may use for a verb to the verb's name on screen
  * (take = Pick up); mapped to the walk verb, the word means walking.
  * Two more global sections:
@@ -150,6 +154,9 @@ public:
 		int inventoryFirstVerb = 0, inventorySlots = 0, inventorySlotVar = 0, inventoryUpVerb = 0, inventoryDownVerb = 0;
 	};
 	const Game &game() const { return _game; }
+
+	/** A name for a verb that the game draws as a picture, from [verbs]; empty if the file has none. */
+	Common::String verbName(int verb) const;
 
 	/** The verb a word stands for, from [synonyms]; false if the file has none. */
 	bool synonym(const Common::String &word, Common::String &verb) const;

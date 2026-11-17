@@ -30,6 +30,7 @@
 #include "common/textconsole.h"
 
 #include "scumm/actor.h"
+#include "scumm/object.h"
 #include "scumm/scumm.h"
 
 #ifndef USE_BASIC_NET
@@ -70,6 +71,17 @@ NeuroBridge *NeuroBridge::create(ScummEngine *vm) {
 		extract = getenv("NEURO_DUMP_SCRIPTS");
 	if (url.empty() && !(extract && *extract))
 		return nullptr;
+
+	// Versions 1 to 6 with a verb bar. Version 0, the Humongous games and
+	// versions 7 and 8 keep their state differently, and the games without
+	// verbs need another way to act.
+	const bool known = vm->_game.version >= 1 && vm->_game.version <= 6 && vm->_game.heversion == 0
+		&& vm->_game.platform != Common::kPlatformNES;
+	const bool hasVerbs = vm->_game.id != GID_SAMNMAX && vm->_game.id != GID_LOOM;
+	if (!url.empty() && !(known && hasVerbs)) {
+		warning("Neuro: The integration does not support this game (%s, SCUMM version %d) and stays off", vm->_game.gameid, vm->_game.version);
+		return nullptr;
+	}
 	return new NeuroBridge(vm, url);
 }
 
@@ -85,7 +97,6 @@ NeuroBridge::NeuroBridge(ScummEngine *vm, const Common::String &url) : _vm(vm), 
 	// The API identifies a game by its display name, which must never change
 	const NeuroData::Game &game = _data.game();
 	_gameName = game.name.empty() ? Common::String(_vm->_game.gameid) : game.name;
-	_egoName = game.egoName.empty() ? Common::String("your character") : game.egoName;
 	_walkVerb = game.walkVerb.empty() ? Common::String("Walk to") : game.walkVerb;
 
 	_journal.loadGoals(_data.ini());
@@ -123,10 +134,29 @@ Actor *NeuroBridge::ego() const {
 	return _vm->_actors[_vm->VAR(_vm->VAR_EGO)];
 }
 
-Common::String NeuroBridge::egoNameCapital() const {
-	Common::String name = _egoName;
+Common::String NeuroBridge::egoName() {
+	// A game with one hero names it in the description file; where the player
+	// switches between characters, the game's own name for the current one serves
+	Common::String name = _data.game().egoName;
+	if (name.empty())
+		name = actorName(_vm->VAR(_vm->VAR_EGO));
+	return name.empty() ? Common::String("your character") : name;
+}
+
+Common::String NeuroBridge::egoNameCapital() {
+	Common::String name = egoName();
 	name.setChar(toupper(name[0]), 0);
 	return name;
+}
+
+bool NeuroBridge::untouchable(int thing) const {
+	if (_vm->getClass(thing, kObjectClassUntouchable))
+		return true;
+	// Versions 1 and 2 keep it in the object's state instead
+	if (_vm->_game.version > 2 || _vm->objIsActor(thing))
+		return false;
+	const int index = _vm->getObjectIndex(thing);
+	return index > 0 && (_vm->_objs[index].state & kObjectStateUntouchable);
 }
 
 bool NeuroBridge::playerHasControl() const {
@@ -134,7 +164,9 @@ bool NeuroBridge::playerHasControl() const {
 }
 
 bool NeuroBridge::sentenceRunning() const {
-	return _vm->isScriptRunning(_vm->VAR(_vm->VAR_SENTENCE_SCRIPT));
+	// Versions 1 and 2 have no variable for it: there it is always this script
+	static const int kOldSentenceScript = 2;
+	return _vm->isScriptRunning(_vm->VAR_SENTENCE_SCRIPT == 0xFF ? kOldSentenceScript : _vm->VAR(_vm->VAR_SENTENCE_SCRIPT));
 }
 
 void NeuroBridge::update() {
