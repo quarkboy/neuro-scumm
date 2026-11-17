@@ -71,6 +71,7 @@ code { background: #12161b; padding: 1px 5px; border-radius: 4px; font-size: 13p
   <span class="pill bad" id="p-hold" hidden>Her controls are taken away: she cannot act</span>
   <span class="spacer"></span>
   <button id="hold">Take her controls away</button>
+  <select id="game" title="Which game to play" style="width: auto; max-width: 320px"></select>
   <button id="start" class="primary">Start the game</button>
   <button id="stop" class="danger">Stop</button>
 </header>
@@ -145,7 +146,6 @@ code { background: #12161b; padding: 1px 5px; border-radius: 4px; font-size: 13p
       <label class="check"><input type="checkbox" data-part="recent"> Lately</label>
     </div>
     <h3>Where things are (next start)</h3>
-    <label class="field"><span>Game</span><select id="game"></select></label>
     <label class="field"><span>Game folder</span><input id="game_dir" placeholder="where Steam installs it"></label>
     <label class="field"><span>ScummVM</span><input id="scummvm" placeholder="found automatically"></label>
     <label class="field"><span>Savegames</span><input id="save_dir"></label>
@@ -286,6 +286,7 @@ function show(s) {
   pill('p-neuro', st.neuro_connected, st.neuro_connected ? 'Neuro connected' : 'Neuro not connected', st.game_connected);
   $('p-neuro').title = st.neuro_error || '';
   $('start').disabled = st.running;
+  $('game').disabled = st.running;
   $('stop').disabled = !st.running;
   $('hold').textContent = st.hold ? 'Give her controls back' : 'Take her controls away';
   $('hold').className = st.hold ? 'primary' : '';
@@ -293,10 +294,9 @@ function show(s) {
   if (!filled) {
     for (const game of st.games) $('game').add(new Option(game.name, game.id));
     fillForm(s.settings); filled = true; fillSaves(s.saves, s.settings);
-  }
+  } else fillSaves(s.saves, s.settings);
   $('game_dir').placeholder = st.game_dir;
   $('panel_title').placeholder = st.panel_title.replace('|', ' | ');
-  else fillSaves(s.saves, s.settings);
 
   const v = s.view;
   const now = st.hold ? 'Her controls are taken away' :
@@ -345,6 +345,8 @@ $('save-settings').onclick = async () => {
 };
 for (const id of ['music_volume', 'sfx_volume', 'speech_volume', 'panel_chat'])
   $(id).onchange = () => api('/api/settings', {[id]: Number($(id).value)});
+// The savegames and the game folder shown are those of the chosen game
+$('game').onchange = () => api('/api/settings', {game: $('game').value});
 for (const id of ['panel_side', 'panel_title'])
   $(id).onchange = () => api('/api/settings', {[id]: $(id).value});
 

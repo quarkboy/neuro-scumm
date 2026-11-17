@@ -26,6 +26,7 @@ import json
 import os
 import secrets
 import struct
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -54,6 +55,18 @@ def load_games():
 
 
 GAMES = load_games()
+
+
+def open_page(url):
+    """Opens the page in the browser. Under WSL that is Windows' browser: Linux there usually has none."""
+    if os.name != "nt" and "microsoft" in os.uname().release.lower():
+        try:
+            subprocess.Popen(["explorer.exe", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return
+        except OSError:
+            pass
+    import webbrowser
+    webbrowser.open(url)
 
 
 def steam_dir(game):
@@ -285,17 +298,17 @@ class Console:
     def save_config(self):
         CONFIG.write_text(json.dumps({"token": self.token, "settings": self.settings}, indent=2), encoding="utf-8")
 
-    def game(self):
+    def game_info(self):
         return GAMES.get(self.settings["game"]) or next(iter(GAMES.values()), {})
 
     def game_folder(self):
         return GAMES_DIR / (self.settings["game"] if self.settings["game"] in GAMES else next(iter(GAMES), ""))
 
     def game_dir(self):
-        return self.settings["game_dir"] or steam_dir(self.game())
+        return self.settings["game_dir"] or steam_dir(self.game_info())
 
     def panel_title(self):
-        return self.settings["panel_title"] or "Neuro plays|" + self.game().get("name", "")
+        return self.settings["panel_title"] or "Neuro plays|" + self.game_info().get("name", "")
 
     def find_scummvm(self):
         if self.settings["scummvm"]:
@@ -323,7 +336,7 @@ class Console:
         folder = Path(self.settings["save_dir"])
         if not folder.is_dir():
             return found
-        target = self.game().get("target", "")
+        target = self.game_info().get("target", "")
         for path in folder.iterdir():
             suffix = path.suffix
             if len(suffix) != 4 or suffix[1] != "s" or not suffix[2:].isdigit():
@@ -371,7 +384,7 @@ class Console:
         game_dir = Path(self.game_dir())
         if not game_dir.is_dir():
             return f"The game folder does not exist: {game_dir}"
-        game_file = self.game().get("game_file")
+        game_file = self.game_info().get("game_file")
         if game_file and not (game_dir / game_file).exists():
             return f"The game folder has no {game_file}: {game_dir}"
         save_dir = Path(s["save_dir"])
@@ -807,8 +820,7 @@ class Console:
         print("Ctrl+C stops the console and the game.")
         sys.stdout.flush()
         if self.open_browser:
-            import webbrowser
-            webbrowser.open(f"http://{shown}:{self.port}/?t={self.token}")
+            open_page(f"http://{shown}:{self.port}/?t={self.token}")
         asyncio.ensure_future(self.run_upstream())
         try:
             async with server:
