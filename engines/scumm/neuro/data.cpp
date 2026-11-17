@@ -29,6 +29,11 @@
 
 namespace Scumm {
 
+/** The N of "script N". */
+static int scriptNumber(const Common::String &value) {
+	return atoi(value.hasPrefixIgnoreCase("script") ? value.c_str() + 6 : value.c_str());
+}
+
 void NeuroData::load(const Common::String &path) {
 	Common::FSNode node(Common::Path(path, Common::Path::kNativeSeparator));
 	Common::SeekableReadStream *stream = node.createReadStream();
@@ -70,15 +75,18 @@ void NeuroData::load(const Common::String &path) {
 			addLineNote(name);
 		} else if (name.hasPrefix("watch.")) {
 			addWatch(name);
+		} else if (name.hasPrefix("press.")) {
+			Press press;
+			press.whileScript = scriptNumber(get(name, "while"));
+			press.key = atoi(get(name, "key").c_str());
+			if (!get(name, "every").empty())
+				press.everyMs = (uint32)(atof(get(name, "every").c_str()) * 1000);
+			if (press.whileScript && press.key)
+				_presses.push_back(press);
 		} else if (name.hasPrefix("alert.")) {
 			addAlert(name);
 		}
 	}
-}
-
-/** The N of "script N". */
-static int scriptNumber(const Common::String &value) {
-	return atoi(value.hasPrefixIgnoreCase("script") ? value.c_str() + 6 : value.c_str());
 }
 
 void NeuroData::addLineNote(const Common::String &section) {

@@ -348,6 +348,8 @@ private:
 	// Game variables whose rise is worth a sentence, with the value last seen
 	Common::HashMap<int, int> _watched;
 	void checkWatches();
+	uint32 _lastKeyPressAt = 0;
+	void pressKeys();
 	/** Fills in {varN}, {bitsA-B} and {pickN: a | b | c} from the game's variables. */
 	Common::String expandText(const Common::String &text) const;
 	/** Reads a variable (or, with 0x8000 set, a bit variable) named in the data file; 0 if the game has none by that number. */

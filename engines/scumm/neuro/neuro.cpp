@@ -211,6 +211,7 @@ void NeuroBridge::update() {
 		sendSpeechEnded();
 
 	flushDrawnText();
+	pressKeys();
 	updateSpeed();
 	updateClick();
 	updatePager();

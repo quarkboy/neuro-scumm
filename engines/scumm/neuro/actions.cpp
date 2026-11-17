@@ -211,9 +211,9 @@ const NeuroThing *NeuroBridge::findThing(const NeuroThingList &things, const Com
 }
 
 void NeuroBridge::actionSkipCutscene(const Common::String &id) {
-	// Versions 1 and 2 do not count how deep in cutscenes the game is
-	const int depth = _vm->vm.cutSceneStackPointer;
-	if ((depth == 0 && _vm->_game.version > 2) || _vm->vm.cutScenePtr[depth] == 0) {
+	// What the Escape key skips: a scene that has said where it resumes when
+	// cut short. That need not be a cutscene in the game's own sense.
+	if (_vm->vm.cutScenePtr[_vm->vm.cutSceneStackPointer] == 0) {
 		sendActionResult(id, true, "No cutscene to skip.");
 		return;
 	}

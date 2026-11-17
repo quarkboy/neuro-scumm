@@ -96,6 +96,12 @@ namespace Scumm {
  *   var       the game variable
  *   change    "any" to speak whenever it changes, not only when it goes up
  *   say       what she is told; {value} is the new value
+ * [press.ID] sections press a key for her, for a screen that only takes the
+ * keyboard and that she is not meant to deal with (a copy protection question
+ * the engine lets any answer pass):
+ *   while     "script N": while that game script is running
+ *   key       the key's ASCII code (13 is Enter)
+ *   every     seconds between presses (1 if not given)
  * In what an alert or a watch says, {varN} is the value of game variable N and
  * {pickN: one | two | three} is the text for its value, counting from 1.
  * An alert with no "ask" only tells her what happened.
@@ -212,6 +218,13 @@ public:
 	};
 	const Common::Array<Watch> &watches() const { return _watches; }
 
+	struct Press {
+		int whileScript = 0;
+		int key = 0;
+		uint32 everyMs = 1000;
+	};
+	const Common::Array<Press> &presses() const { return _presses; }
+
 	/**
 	 * A remark on lines she can say, from what the game keeps about them. It is
 	 * given once, above the list, with the numbers of the lines it goes for. While
@@ -258,6 +271,7 @@ private:
 	Game _game;
 	Common::Array<Alert> _alerts;
 	Common::Array<Watch> _watches;
+	Common::Array<Press> _presses;
 	Common::Array<LineNote> _lineNotes;
 	Common::StringMap _lineSpeakers;
 };

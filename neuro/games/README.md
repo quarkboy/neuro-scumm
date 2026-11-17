@@ -8,8 +8,9 @@ A game's folder holds:
 - `descriptions.ini`: the description file. Its `[game]` section names the game and says
   what the module cannot work out about its screen (the verb slot of the sentence line,
   the inventory's buttons and variables, the verbs for walking, giving and opening), and
-  `[synonyms]` lists other words for its verbs, and `[verbs]` names verbs the game
-  draws as pictures. The rest is the rooms, goals, clues and
+  `[synonyms]` lists other words for its verbs, `[verbs]` names verbs the game
+  draws as pictures, and `[press.*]` sections press keys for her on a screen that
+  only takes the keyboard (a copy protection question). The rest is the rooms, goals, clues and
   alerts. The format is described in `engines/scumm/neuro/data.h` and `journal.h`.
 - `game.json`: for the launchers and tools, one `"key": "value"` to a line:
   `name`, `steam_folder` (under `steamapps/common`), `game_file` (a file that must be in
@@ -28,7 +29,8 @@ warning in the log) for anything else.
 | Games | State |
 |---|---|
 | The Secret of Monkey Island (Special Edition, classic mode) | Played from start to finish |
-| Other version 4 and 5 games: Monkey Island 1 on floppy or CD, Monkey Island 2, Fate of Atlantis | Same engine code as above; each needs its folder here. Not yet tried |
+| Monkey Island 2 (Special Edition, classic mode) | Starts and plays from its folder here; nearly all of its hand-written text is still to do ([status](monkey2/STATUS.md)) |
+| Other version 4 and 5 games: Monkey Island 1 on floppy or CD, Fate of Atlantis | Same engine code as above; each needs its folder here. Not yet tried |
 | Day of the Tentacle (version 6); Indiana Jones and the Last Crusade (version 3); Maniac Mansion and Zak McKracken (versions 1 to 3) | The differences known from reading the engine are handled: several player characters, verbs drawn as pictures (name them in `[verbs]`), bit variables, cutscenes and unusable things in the old versions. None of it has been run with those games |
 | Sam & Max, Loom, Full Throttle, The Dig, The Curse of Monkey Island | Not supported: no verb bar, so they need another way to act |
 | Humongous Entertainment games, the Commodore 64 and NES versions of Maniac Mansion | Not supported |

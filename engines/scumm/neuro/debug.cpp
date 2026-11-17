@@ -168,6 +168,10 @@ bool NeuroBridge::handleDeveloperAction(const Common::String &id, const Common::
 		int x = 0, y = 0;
 		sscanf(data.c_str(), "%d,%d", &x, &y);
 		clickInRoom(x, y);
+	} else if (name == "debug_key") {
+		// "CODE": press the key with that ASCII code (13 is Enter)
+		const int code = atoi(data.c_str());
+		_vm->_keyPressed = Common::KeyState((Common::KeyCode)code, code);
 	} else if (name == "debug_sentence") {
 		// "VERB OBJECT [OBJECT]"
 		int verb = 0, a = 0, b = 0;

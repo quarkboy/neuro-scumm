@@ -215,6 +215,18 @@ Common::String NeuroBridge::expandText(const Common::String &text) const {
 	}
 }
 
+/** Presses the keys the description file says to press on screens that only take the keyboard. */
+void NeuroBridge::pressKeys() {
+	const uint32 now = g_system->getMillis();
+	for (const auto &press : _data.presses()) {
+		if (now - _lastKeyPressAt < press.everyMs || !_vm->isScriptRunning(press.whileScript))
+			continue;
+		_vm->_keyPressed = Common::KeyState((Common::KeyCode)press.key, press.key);
+		_lastKeyPressAt = now;
+		return;
+	}
+}
+
 void NeuroBridge::checkWatches() {
 	Common::String text;
 	for (const auto &watch : _data.watches()) {

@@ -32,7 +32,7 @@ KEY = re.compile(r"^\s*([^=;#\s][^=]*?)\s*=\s*(.*)$")
 # Sections that are one of a kind, and the prefixes of those that come in numbers
 SINGLE = ("states", "game", "actors", "synonyms")
 LISTS = {"goal": "goals", "clue": "clues", "line": "lines", "nudge": "nudges",
-         "alert": "alerts", "watch": "watches", "linenote": "linenotes"}
+         "alert": "alerts", "watch": "watches", "linenote": "linenotes", "press": "presses"}
 SAFE_SECTION = re.compile(r"(room\d+|(%s)\.[\w-]+|%s)" % ("|".join(LISTS), "|".join(SINGLE)))
 SAFE_KEY = re.compile(r"[^\s=\[\]#;][^=\[\]#\r\n]*")
 
