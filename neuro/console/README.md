@@ -37,7 +37,12 @@ console can talk to both sides without a restart:
   for actions that are not available; giving them back registers them again and repeats the
   question she had been asked, if any. The game itself keeps running meanwhile.
 
-Settings that ScummVM only reads when it starts (the game folder, the window's size, whether it
+The game to play is chosen in the top bar, beside "Start the game": every folder under
+`neuro/games` with a `game.json` is offered. The savegames listed and the game folder
+follow the choice. The game folder and the column's title can be left empty, to use the
+folder Steam installs that game to and "Neuro plays" with the game's name.
+
+Settings that ScummVM only reads when it starts (the game, the game folder, the window's size, whether it
 has a column, the way dialogue is sent) apply the next time the game is started. If the Neuro
 server goes away, the console keeps trying and, once it is back, tells it again what the game has
 registered. If a started game has not connected after twelve seconds, the console stops it and

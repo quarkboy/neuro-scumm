@@ -4,19 +4,22 @@ This is a fork of [ScummVM](https://www.scummvm.org/) that lets [Neuro-sama](htt
 
 It is an unofficial fan project. It is not affiliated with the ScummVM team, Vedal, or the owners of Monkey Island, and it contains no game data: you need your own copy of the game.
 
-**Status: playable from start to finish.** A stand-in language model has played the whole game through it, from a new game to the end credits, with stops for fixes along the way. Part One's descriptions have been reviewed by a person; the other three parts are a first pass. It is built for Linux and Windows; nearly all of the testing so far has been on Linux under WSL, and the Windows build is new. Neuro herself has not played it. What is left is in [`neuro/ROADMAP.md`](neuro/ROADMAP.md).
+**Status: playable from start to finish.** A stand-in language model has played the whole game through it, from a new game to the end credits, with stops for fixes along the way. Part One's descriptions have been reviewed by a person; the other three parts are a first pass. It is built for Linux and Windows; nearly all of the testing so far has been on Linux under WSL. Neuro herself has not played it. What is left is in [`neuro/ROADMAP.md`](neuro/ROADMAP.md).
+
+**Other games.** The module is not tied to Monkey Island: everything about a game lives in a folder of its own, and it starts for any SCUMM game of versions 1 to 6 that has a verb bar. *Monkey Island 2* is set up as a second game and starts and plays, but its descriptions are not written. See [Other SCUMM games](#other-scumm-games) below.
 
 ## How it works
 
 Neuro cannot see the screen, so everything goes through text.
 
 - **What she is told.** A description of each room and the things, people and exits in it; every line of dialogue, with who said it; text that is only drawn on the screen, such as a map or a note; and what changed as a result of her actions.
-- **What she can do.** `interact` uses any of the game's verbs on anything in the room or her inventory, and also walks. `choose_dialogue` picks a line in a conversation. `answer` replies to a quick yes/no question. `read_journal` and `add_note` keep track of goals and of the clues she has come across. `wait` and `skip_cutscene` do what they say.
+- **What she can do.** `interact` uses any of the game's verbs on anything in the room or her inventory, and also walks. `choose_dialogue` picks a line in a conversation. `answer` replies to a quick yes/no question. `read_journal` and `add_note` keep track of goals and of the clues she has come across. `wait` lets time pass, and `skip_cutscene` skips a scene the way the Escape key does.
 - **Timing.** Moments that need a fast reaction (slipping past the cook, for example) are sent as a high-priority question, timed to her reaction speed. An action can also carry a second step that runs the instant the first one ends.
+- **Not talking over the game.** A line's end is reported together with the start of the next one when lines follow each other closely, and a line that the script follows straight away with another is marked as not to be replied to, so she is not handed the short gaps inside a conversation.
 - **On screen.** The mouse pointer travels to each thing she uses, the way a player's would, so viewers can follow what she is doing.
 - **Hand-written text.** Room descriptions, names for characters the game leaves unnamed, goals, clues and timed questions live in a plain text file, [`neuro/games/monkey1/descriptions.ini`](neuro/games/monkey1/descriptions.ini). They say what is on screen and what characters have told her, never how to solve a puzzle.
 
-The Neuro code is in [`engines/scumm/neuro/`](engines/scumm/neuro/) and knows nothing about any one game; everything about Monkey Island is in [`neuro/games/monkey1/`](neuro/games/monkey1/README.md), and another SCUMM game would get a folder of its own beside it ([`neuro/games/`](neuro/games/README.md)). The design is explained in [`neuro/PLAN.md`](neuro/PLAN.md).
+The Neuro code is in [`engines/scumm/neuro/`](engines/scumm/neuro/) and knows nothing about any one game; everything about Monkey Island is in [`neuro/games/monkey1/`](neuro/games/monkey1/README.md). The design is explained in [`neuro/PLAN.md`](neuro/PLAN.md).
 
 ## Quick start
 
@@ -24,8 +27,8 @@ The Neuro code is in [`engines/scumm/neuro/`](engines/scumm/neuro/) and knows no
 2. **Get a server for the game to talk to.** That is Neuro herself, or a stand-in for testing: the SDK lists several, among them [Gary](https://github.com/Govorunb/gary), Tony and Jippity. Start it and note its address (often `ws://127.0.0.1:8000`). If your stand-in rejects the SDK's `speech/started` and `speech/ended` messages, set "Dialogue sent as" to "Plain context" on the console page.
 3. **Download a package** for Windows or Linux from the [Releases](https://github.com/quarkboy/neuro-scumm/releases) page and unpack it anywhere. You also need Python 3.9 or newer, for the console.
 4. **Start the console:** double-click `console.bat` on Windows, or run `./console.sh` on Linux. A page opens in your browser.
-5. **Check two settings on the page:** the Neuro server address, and the game folder (the usual Steam folder is filled in).
-6. **Press "Start the game".** The game opens in a 16:9 window made to be captured for a stream: the game on one side, and a column showing where she is and what she is doing on the other.
+5. **Check the settings on the page:** the Neuro server address, and the game folder if yours is not where Steam installs it (left empty, the Steam folder is used).
+6. **Press "Start the game".** The game to play is chosen in the box beside the button. The game opens in a 16:9 window made to be captured for a stream: the game on one side, and a column showing where she is and what she is doing on the other.
 
 From the page you can also save and load, send her a message, take her controls away for a moment, and watch what she is told and what she does. More about it in [`neuro/console/README.md`](neuro/console/README.md).
 
@@ -55,7 +58,7 @@ mkdir build && cd build
 make -j$(nproc)
 ```
 
-This builds only the SCUMM engine (Monkey Island 1 and 2 among others) with the Neuro module. Without a server address configured, the result behaves like ordinary ScummVM.
+This builds only the SCUMM engine with the Neuro module. The module is off unless it is asked for with `--enable-engine=neuro`, and needs libcurl. Without a server address configured, the result behaves like ordinary ScummVM.
 
 ## Pointing it at the game
 
@@ -73,7 +76,7 @@ neuro/run.sh
 
 It looks for the build in the `build` folder made above; set `BUILD_DIR` if yours is elsewhere. Add `-x N` to start from savegame slot N. Savegames go to the folder in `NEURO_SAVE_DIR` (by default a `saves` folder beside the repository).
 
-The console works from a source checkout too: `python3 neuro/console/console.py`. It finds the build in a `build` folder at the top of the repository, or takes its path in the settings.
+The console works from a source checkout too: `python3 neuro/console/console.py --open`. It finds the build in a `build` folder at the top of the repository, or takes its path in the settings.
 
 | Setting | Default | Meaning |
 |---|---|---|
@@ -88,13 +91,27 @@ The console works from a source checkout too: `python3 neuro/console/console.py`
 | `NEURO_SKIP_CUTSCENES` | on | `off` takes the `skip_cutscene` action away from her, so every scene plays out. |
 | `NEURO_FAST_MODE` | off | `always`, or `scenes` to run fast only while she cannot act. For testing. |
 | `NEURO_STREAM_SIZE` | unset | A window size such as `1920x1080`. The game stays 4:3 and whatever is wider becomes a column showing where she is and what she is doing. Only ScummVM's SDL software renderer (`--gfx-mode=surfacesdl`) does this. |
-| `NEURO_PANEL_SIDE`, `NEURO_PANEL_TITLE`, `NEURO_PANEL_CHAT` | `right`, a default title, `30` | The column's side, its title (a vertical bar in it starts a new line), and the height in percent of the empty box for chat. |
+| `NEURO_PANEL_SIDE`, `NEURO_PANEL_TITLE`, `NEURO_PANEL_CHAT` | `right`, "Neuro plays" and the game's name, `30` | The column's side, its title (a vertical bar in it starts a new line), and the height in percent of the empty box for chat. |
 | `NEURO_DEBUG_ACTIONS` | off | `operator` lets the server side save, load, read the status and change settings with unregistered `debug_` actions (the console sets this for itself and passes none on from the server). `all` adds the developer's ones, which can change the game's state. |
 | `NEURO_PANEL_HIDE` | unset | Parts of the column to leave out, separated by commas: `title`, `chat`, `location`, `now`, `goals`, `inventory`, `recent`. |
 
 Each setting can also be given as a ScummVM config key of the same name in lower case, for example `neuro_idle_force_seconds`. The one exception is the server URL, whose key is `neuro_ws_url`. An environment variable wins over the config key.
 
 In the game window, Space pauses the game until it is pressed again.
+
+## Other SCUMM games
+
+Everything the module needs to know about a game is in a folder under [`neuro/games/`](neuro/games/README.md): a description file (rooms, names, goals, clues, timed questions, and a `[game]` section for what cannot be worked out from the game itself, such as how its inventory buttons are numbered) and a small `game.json` for the launchers. The console lists every game it finds there, and `run.sh` takes one in `NEURO_GAME`.
+
+| Games | State |
+|---|---|
+| The Secret of Monkey Island (Special Edition, classic mode) | Played from start to finish |
+| Monkey Island 2 (Special Edition, classic mode) | Starts and plays from its folder; its descriptions, goals and clues are not written |
+| Other games of SCUMM versions 4 and 5 (Monkey Island 1 on floppy or CD, Fate of Atlantis) | Same engine code; each needs a folder. Not tried |
+| Day of the Tentacle, Indiana Jones and the Last Crusade, Maniac Mansion, Zak McKracken | The differences known from reading the engine are handled. Never run |
+| Sam & Max, Loom, Full Throttle, The Dig, The Curse of Monkey Island, the Humongous Entertainment games | Not supported; the module stays off |
+
+Writing a game's folder is most of the work. The tools for it (a dump of every room and every line from the game's scripts, a script disassembler, and a review page that edits the description file) are in [`neuro/tools/transcribe/`](neuro/tools/transcribe/README.md).
 
 ## Changes to ScummVM itself
 
