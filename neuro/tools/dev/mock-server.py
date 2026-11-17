@@ -102,6 +102,9 @@ for step in STEPS:
                 seen = hits[0] + 1
             else:
                 log("!", f"timed out waiting for {rest!r}")
+                for message in received[-5:]:
+                    log("!", message)
+                sys.exit(1)
     elif kind == "act":
         name, _, data = rest.partition(" ")
         message = {"command": "action", "data": {"id": str(uuid.uuid4()), "name": name}}
