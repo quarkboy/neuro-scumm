@@ -265,16 +265,40 @@ void NeuroBridge::onSaveLoad(bool saved, int slot) {
 }
 
 void NeuroBridge::resetAfterLoad() {
+	if (_forceActive && _ws.isConnected()) {
+		unregisterAction(_forceAction.c_str());
+		registerActions();
+	}
+	_forceActive = false;
+	_forcedDialogue.clear();
+	_questionCommand.clear();
+	_questionThen.clear();
+	_questionHoldVar = 0;
+	_pendingAlert = -1;
+	_openedDoor.clear();
+	_awaitingOutcome = false;
+	_walkTarget = 0;
+	_lastTargets[0] = _lastTargets[1] = 0;
+	_controlSince = _speechBlockSince = 0;
+	_actorSeen.clear();
+	_leftAt.clear();
+	_lastHeard.clear();
+	_lastLine.clear();
+	_lastLineText.clear();
+	_drawnText.clear();
+	_lastDrawnText.clear();
+	_strangers.clear();
+	_voiceColors.clear();
 	_described = NeuroWorld();
 	_queue.clear();
 	_clickPhase = kClickIdle;
 	_clickQueue.clear();
 	_shownSentence = false;
 	_pendingDialogue.clear();
+	if (_speechEndDueAt || (_speechOpen && !_heldSpeech.waiting && !_dialogueAsContext))
+		sendSpeechEnded();
 	_speechOpen = false;
 	_heldSpeech.waiting = false;
-	if (_speechEndDueAt)
-		sendSpeechEnded();
 	_namedCostume.clear();
 	_recentLines.clear();
 	_lastActivity = g_system->getMillis();
@@ -374,7 +398,7 @@ void NeuroBridge::sendActionResult(const Common::String &id, bool success, const
 	// named, and anything that did something settles it. Reading, noting and
 	// waiting do nothing, and may have been sent before the prompt arrived.
 	const bool passive = _currentAction == "read_journal" || _currentAction == "add_note" || _currentAction == "wait";
-	if (success && _forceActive && (_currentAction == _forceAction || !passive))
+	if (success && _forceActive && !_currentAction.empty() && (_currentAction == _forceAction || !passive))
 		_forceActive = false;
 	Common::JSONObject data;
 	data.setVal("id", new Common::JSONValue(id));
@@ -427,6 +451,7 @@ void NeuroBridge::handleAction(const Common::String &id, const Common::String &r
 
 	// The operator's and the developer's aids are not her actions, and only work where they were asked for
 	if (name.hasPrefix("debug_")) {
+		_currentAction.clear();
 		handleDebugAction(id, name, data);
 		return;
 	}

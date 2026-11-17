@@ -549,6 +549,9 @@ class Console:
         elif command == "actions/unregister":
             for name in data.get("action_names", []):
                 self.actions.pop(name, None)
+                if self.force and name in self.force["data"]["action_names"]:
+                    self.force = None
+                    view["state"], view["question"], view["lines"] = "acting", "", {}
         elif command == "actions/force":
             self.force = message
             view["state"] = "thinking"
