@@ -36,6 +36,7 @@ namespace Scumm {
  *   text    what a character told her to do, in plain words
  *   start   when the goal appears
  *   done    when it is ticked off
+ *   panel   "no" keeps it out of the stream column (a goal that only holds notes)
  * A trigger is one of:
  *   heard: WORDS   a spoken line contains the words
  *   have: NAME     an inventory item's name contains the name
@@ -87,8 +88,8 @@ public:
 	/** The clues noted for one unfinished goal, named by its title, id or opening words. */
 	Common::String describeClues(const Common::String &which) const;
 
-	/** The unfinished goals, each as its text. */
-	Common::StringArray activeGoals() const;
+	/** The unfinished goals to show viewers, each as its text. */
+	Common::StringArray panelGoals() const;
 
 	/** Bridge state that has to survive a save and load along with the goals. */
 	Common::StringMap memos;
@@ -110,6 +111,7 @@ private:
 		Common::String id, text, start, done, title;
 		State state;
 		bool nudge;
+		bool onPanel;
 	};
 	struct Clue {
 		Common::String id, goal, when, text;

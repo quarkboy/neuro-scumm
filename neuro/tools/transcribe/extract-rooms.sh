@@ -7,15 +7,13 @@
 #
 # The game is started from a savegame (default slot 1) so that it is in a
 # normal state. A room that crashes or hangs the game is skipped and listed
-# in OUTPUT_DIR/skipped. Environment: GAME_DIR, BUILD_DIR, NEURO_SAVE_DIR as
-# for neuro/run.sh.
+# in OUTPUT_DIR/skipped. Environment: NEURO_GAME, GAME_DIR, BUILD_DIR and
+# NEURO_SAVE_DIR, as for neuro/run.sh.
 set -u
 out=${1:?usage: extract-rooms.sh OUTPUT_DIR [SAVE_SLOT]}
 slot=${2:-1}
-here=$(cd "$(dirname "$0")" && pwd)
-: "${GAME_DIR:=${MONKEY1_DIR:-/mnt/c/Program Files (x86)/Steam/steamapps/common/The Secret of Monkey Island Special Edition}}"
-: "${BUILD_DIR:=$here/../../../../build-linux}"
-: "${NEURO_SAVE_DIR:=$here/../../../../saves}"
+here=$(cd "$(dirname "$0")/../.." && pwd)
+. "$here/game-env.sh"
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
 : > "$out/skipped"

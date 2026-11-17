@@ -1,6 +1,8 @@
 # Transcription tools
 
-For writing and checking the description file (`neuro/data/*.ini`) of a SCUMM game.
+For writing and checking the description file (`neuro/games/NAME/descriptions.ini`) of a
+SCUMM game. The scripts take the game's folder name in `NEURO_GAME` (default `monkey1`)
+and find the installed game from its `game.json`; see [`neuro/games/`](../../games/README.md).
 
 ## 1. Extract the rooms
 
@@ -12,8 +14,7 @@ Starts the game headless from savegame slot 1, visits every room, and writes for
 each one `roomNNN.png` (the whole room, scrolled and stitched into one picture) and
 `roomNNN.json` (its objects with ids, names, boxes and states, and the actors present).
 It uses the extraction mode built into the Neuro module (`engines/scumm/neuro/extract.cpp`),
-so it works for any game the SCUMM engine runs. Set `GAME_DIR` for games other than
-Monkey Island 1.
+so it works for any game the SCUMM engine runs.
 
 The script drives the game with four environment variables, described at the top of
 `engines/scumm/neuro/extract.cpp`: `NEURO_EXTRACT_DIR` (where to write; this turns the
@@ -40,13 +41,15 @@ the script it is in (for an object's script, which verb it answers: "poster / Lo
 the actor it is printed for, and the text colour where the script sets one.
 
 It reads the scripts directly (nothing is played), so it covers every room and every
-branch, including lines no walkthrough reaches. It is not a decompiler: it finds the
+branch, including lines no walkthrough reaches. It understands the scripts of SCUMM
+version 5 games only (Monkey Island 1 on CD, Monkey Island 2, Fate of Atlantis); the room
+extraction above has no such limit. It is not a decompiler: it finds the
 instructions that carry text and knows nothing about when they run.
 
 ## 3. Draft and review
 
 ```sh
-python3 neuro/tools/transcribe/review.py ../extract/monkey1 neuro/data/monkey1.ini
+python3 neuro/tools/transcribe/review.py ../extract/monkey1 neuro/games/monkey1/descriptions.ini
 ```
 
 Opens a page on http://127.0.0.1:8070/ with each room's picture, its objects outlined
@@ -89,4 +92,5 @@ section, or edit the headings between groups of sections.
 scripts from the same dump as readable instructions, one per line with its offset. Use it to
 find out how a puzzle works: which variable gates an exit, where a character walks, what an
 object does for each verb. Add `--decimal` to compare offsets with `lines.json`.
-
+Like `lines.py` it reads SCUMM version 5 scripts only. `--game neuro/games/NAME/game.json`
+names the verb numbers.

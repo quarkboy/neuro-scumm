@@ -33,8 +33,6 @@
 
 namespace Scumm {
 
-static const char *const kWalkVerbName = "Walk to";
-
 /** What a click sets off takes this long to show. */
 static const uint32 kClickTakesMs = 1000;
 /** A command is not judged finished before it has had this long to start. */
@@ -102,7 +100,7 @@ void NeuroBridge::registerActions(bool interactOnly) {
 		Common::JSONArray names;
 		for (const auto &offered : _offeredVerbs)
 			names.push_back(new Common::JSONValue(offered.name));
-		names.push_back(new Common::JSONValue(kWalkVerbName));
+		names.push_back(new Common::JSONValue(_walkVerb));
 		verb.setVal("enum", new Common::JSONValue(names));
 	}
 	Common::JSONObject interact;
@@ -113,11 +111,10 @@ void NeuroBridge::registerActions(bool interactOnly) {
 	interact.setVal("then_target", typeSchema("string"));
 
 	Common::JSONArray actions;
-	actions.push_back(actionDefinition("interact",
-		"Use a verb on something here or in your inventory. \"Walk to\" moves you. "
+	const Common::String interactHelp = "Use a verb on something here or in your inventory. \"" + _walkVerb + "\" moves you. "
 		"second_target: what an item is used on or given to. "
-		"then_verb and then_target: an optional second step, done the instant the first ends.",
-		objectSchema(interact, "verb", "target")));
+		"then_verb and then_target: an optional second step, done the instant the first ends.";
+	actions.push_back(actionDefinition("interact", interactHelp.c_str(), objectSchema(interact, "verb", "target")));
 
 	if (!interactOnly) {
 		Common::JSONObject option;
@@ -283,26 +280,19 @@ bool NeuroBridge::resolveCommand(const NeuroWorld &world, const Common::String &
 		const Common::String &secondName, NeuroCommand &command, Common::String &error) {
 	command = NeuroCommand();
 
-	// Walking is what a click does when no verb is selected, so it has no verb of its own
-	static const char *const walkWords[] = {"walk", "go to", "go", "move to", "walk to the", "enter", "approach"};
-	command.walk = verbName.equalsIgnoreCase(kWalkVerbName);
-	for (const char *word : walkWords)
-		command.walk |= verbName.equalsIgnoreCase(word);
+	// Walking is what a click does when no verb is selected, so it has no verb
+	// of its own. Words she is likely to use for a verb the game spells
+	// differently come from the description file.
+	Common::String meant;
+	const bool known = _data.synonym(verbName, meant);
+	command.walk = verbName.equalsIgnoreCase(_walkVerb) || (known && meant.equalsIgnoreCase(_walkVerb));
 	if (!command.walk) {
 		const NeuroThing *verb = findThing(world.verbs, verbName);
-		// Words she is likely to use for a verb the game spells differently
-		static const char *const synonyms[][2] = {
-			{"take", "Pick up"}, {"grab", "Pick up"}, {"get", "Pick up"}, {"pickup", "Pick up"},
-			{"examine", "Look at"}, {"inspect", "Look at"}, {"read", "Look at"},
-			{"speak", "Talk to"}, {"speak to", "Talk to"}, {"speak with", "Talk to"}, {"talk with", "Talk to"}, {"ask", "Talk to"}
-		};
-		for (uint i = 0; !verb && i < ARRAYSIZE(synonyms); i++) {
-			if (verbName.equalsIgnoreCase(synonyms[i][0]))
-				verb = findThing(world.verbs, synonyms[i][1]);
-		}
+		if (!verb && known)
+			verb = findThing(world.verbs, meant);
 		if (!verb) {
 			error = Common::String::format("No verb '%s'. Verbs: %s, %s.",
-				verbName.c_str(), neuroListNames(world.verbs).c_str(), kWalkVerbName);
+				verbName.c_str(), neuroListNames(world.verbs).c_str(), _walkVerb.c_str());
 			return false;
 		}
 		command.verb = verb->id;
@@ -333,7 +323,7 @@ bool NeuroBridge::resolveCommand(const NeuroWorld &world, const Common::String &
 
 	if (command.objects[0] < 0 || command.objects[1] < 0) {
 		if (!command.walk || command.objects[1]) {
-			error = "That is a place: you can only \"Walk to\" it.";
+			error = "That is a place: you can only \"" + _walkVerb + "\" it.";
 			return false;
 		}
 		const int spot = -command.objects[0] - 1;
@@ -341,11 +331,12 @@ bool NeuroBridge::resolveCommand(const NeuroWorld &world, const Common::String &
 		command.y = world.spotPositions[spot].y;
 		command.note = world.spots[spot].note;
 		command.isSpot = true;
+		command.stepTwice = world.spotTwice[spot];
 		return true;
 	}
 
 	if (command.walk && (!findThing(room, targetName) || !findClickPoint(command.objects[0], command.x, command.y))) {
-		error = Common::String::format("Walk to something in the room: %s.", neuroListNames(room, world.spots).c_str());
+		error = Common::String::format("%s something in the room: %s.", _walkVerb.c_str(), neuroListNames(room, world.spots).c_str());
 		return false;
 	}
 	// Normally the thing acted on has its own script for the verb, and running
@@ -472,7 +463,7 @@ void NeuroBridge::finishAction(const NeuroWorld &world) {
 		for (const auto &thing : world.objects) {
 			const Common::String state = thing.id == _walkTarget ? _data.stateName(thing.name, thing.state) : "";
 			if (!state.empty())
-				cue = Common::String::format("Guybrush is at the %s. It is %s.", thing.name.c_str(), state.c_str());
+				cue = Common::String::format("%s is at the %s. It is %s.", egoNameCapital().c_str(), thing.name.c_str(), state.c_str());
 		}
 		sendContext(cue, false);
 	}
@@ -547,7 +538,7 @@ void NeuroBridge::actionInteract(const Common::String &id, const NeuroArgs &args
 		Common::StringArray verbNames;
 		for (const auto &verb : world.verbs)
 			verbNames.push_back(verb.name);
-		verbNames.push_back(kWalkVerbName);
+		verbNames.push_back(_walkVerb);
 		const Common::String sentence = verbName.empty() ? args.get("text|sentence|input", true) : verbName;
 		splitSentence(sentence, verbNames, verbName, targetName, secondName);
 	}
@@ -580,7 +571,7 @@ void NeuroBridge::actionInteract(const Common::String &id, const NeuroArgs &args
 	}
 	// A place may only react to a step taken from a standstill right next
 	// to it: walk there, pause, then step onto it again.
-	if (first.isSpot) {
+	if (first.stepTwice) {
 		NeuroCommand again = first;
 		again.settleMs = kSpotSettleMs;
 		_queue.push_back(again);

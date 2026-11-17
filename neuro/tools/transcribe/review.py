@@ -30,7 +30,7 @@ PORT = int(sys.argv[3]) if len(sys.argv) > 3 else 8070
 SECTION = re.compile(r"^\s*\[([^\]]+)\]\s*$")
 KEY = re.compile(r"^\s*([^=;#\s][^=]*?)\s*=\s*(.*)$")
 # Sections that are one of a kind, and the prefixes of those that come in numbers
-SINGLE = ("states", "game", "actors")
+SINGLE = ("states", "game", "actors", "synonyms")
 LISTS = {"goal": "goals", "clue": "clues", "line": "lines", "nudge": "nudges",
          "alert": "alerts", "watch": "watches", "linenote": "linenotes"}
 SAFE_SECTION = re.compile(r"(room\d+|(%s)\.[\w-]+|%s)" % ("|".join(LISTS), "|".join(SINGLE)))

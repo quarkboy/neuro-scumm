@@ -39,17 +39,38 @@ WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 START_WAIT = 12
 START_ATTEMPTS = 3
 
-STEAM_GAME = "Steam/steamapps/common/The Secret of Monkey Island Special Edition"
-if os.name == "nt":
-    GAME_DIR = str(Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / STEAM_GAME)
-elif "microsoft" in os.uname().release.lower():
-    GAME_DIR = "/mnt/c/Program Files (x86)/" + STEAM_GAME
-else:
-    GAME_DIR = str(Path.home() / ".steam/steam/steamapps/common/The Secret of Monkey Island Special Edition")
+GAMES_DIR = REPO / "neuro" / "games"
+
+
+def load_games():
+    """Each folder under neuro/games with a game.json is a game that can be played."""
+    games = {}
+    for path in sorted(GAMES_DIR.glob("*/game.json")):
+        try:
+            games[path.parent.name] = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as error:
+            print(f"Skipping {path}: {error}", file=sys.stderr)
+    return games
+
+
+GAMES = load_games()
+
+
+def steam_dir(game):
+    """Where Steam installs the game by default on this machine."""
+    folder = "steamapps/common/" + game.get("steam_folder", "")
+    if os.name == "nt":
+        return str(Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / "Steam" / folder)
+    if "microsoft" in os.uname().release.lower():
+        return "/mnt/c/Program Files (x86)/Steam/" + folder
+    return str(Path.home() / ".steam/steam" / folder)
+
 
 DEFAULTS = {
-    # Where things are
-    "game_dir": GAME_DIR,
+    # Which game (a folder under neuro/games), and where things are
+    "game": next(iter(GAMES), ""),
+    # Empty: the folder Steam installs that game to
+    "game_dir": "",
     "scummvm": "",
     # In a source checkout savegames stay outside the repository; in an unpacked release, inside its folder
     "save_dir": str((REPO.parent if (REPO / ".git").exists() else REPO) / "saves"),
@@ -63,7 +84,8 @@ DEFAULTS = {
     "filtering": True,
     "panel": True,
     "panel_side": "right",
-    "panel_title": "Neuro plays|The Secret of Monkey Island",
+    # Empty: "Neuro plays" and the game's name
+    "panel_title": "",
     "panel_chat": 30,
     "panel_hide": [],
     "music_volume": 192,
@@ -252,10 +274,28 @@ class Console:
         for key, value in (saved.get("settings") or {}).items():
             if key in DEFAULTS:
                 self.settings[key] = value
+        # What was saved as a game's default follows the game from now on
+        for game in GAMES.values():
+            if self.settings["game_dir"] == steam_dir(game):
+                self.settings["game_dir"] = ""
+            if self.settings["panel_title"] == "Neuro plays|" + game.get("name", ""):
+                self.settings["panel_title"] = ""
         self.save_config()
 
     def save_config(self):
         CONFIG.write_text(json.dumps({"token": self.token, "settings": self.settings}, indent=2), encoding="utf-8")
+
+    def game(self):
+        return GAMES.get(self.settings["game"]) or next(iter(GAMES.values()), {})
+
+    def game_folder(self):
+        return GAMES_DIR / (self.settings["game"] if self.settings["game"] in GAMES else next(iter(GAMES), ""))
+
+    def game_dir(self):
+        return self.settings["game_dir"] or steam_dir(self.game())
+
+    def panel_title(self):
+        return self.settings["panel_title"] or "Neuro plays|" + self.game().get("name", "")
 
     def find_scummvm(self):
         if self.settings["scummvm"]:
@@ -283,9 +323,13 @@ class Console:
         folder = Path(self.settings["save_dir"])
         if not folder.is_dir():
             return found
+        target = self.game().get("target", "")
         for path in folder.iterdir():
             suffix = path.suffix
             if len(suffix) != 4 or suffix[1] != "s" or not suffix[2:].isdigit():
+                continue
+            # Savegames are named after the game; one folder can hold several games'
+            if target and path.stem != target:
                 continue
             name = ""
             try:
@@ -308,6 +352,9 @@ class Console:
             "neuro_connected": self.upstream is not None,
             "neuro_error": self.upstream_error,
             "hold": self.hold,
+            "games": [{"id": key, "name": game.get("name", key)} for key, game in GAMES.items()],
+            "game_dir": self.game_dir(),
+            "panel_title": self.panel_title(),
         }
 
     # The game process
@@ -319,9 +366,14 @@ class Console:
         if not exe or not exe.is_file():
             return "ScummVM was not found. Build it, or give its path in the settings."
         s = self.settings
-        game_dir = Path(s["game_dir"])
+        if not GAMES:
+            return f"No game is set up: there is no game.json under {GAMES_DIR}"
+        game_dir = Path(self.game_dir())
         if not game_dir.is_dir():
             return f"The game folder does not exist: {game_dir}"
+        game_file = self.game().get("game_file")
+        if game_file and not (game_dir / game_file).exists():
+            return f"The game folder has no {game_file}: {game_dir}"
         save_dir = Path(s["save_dir"])
         save_dir.mkdir(parents=True, exist_ok=True)
 
@@ -348,7 +400,7 @@ class Console:
         env.setdefault("NEURO_DEBUG_ACTIONS", "operator")
         env.update({
             "NEURO_SDK_WS_URL": f"ws://127.0.0.1:{self.port}/game?t={self.token}",
-            "NEURO_DESCRIPTIONS": str(REPO / "neuro" / "data" / "monkey1.ini"),
+            "NEURO_DESCRIPTIONS": str(self.game_folder() / "descriptions.ini"),
             "NEURO_DIALOGUE_MODE": str(s["dialogue_mode"]),
             "NEURO_IDLE_FORCE_SECONDS": str(int(s["idle_force_seconds"])),
             "NEURO_REACTION_MS": str(int(s["reaction_ms"])),
@@ -358,7 +410,7 @@ class Console:
             "NEURO_FAST_MODE": str(s["fast_mode"]),
             "NEURO_STREAM_SIZE": f"{width}x{height}",
             "NEURO_PANEL_SIDE": str(s["panel_side"]),
-            "NEURO_PANEL_TITLE": str(s["panel_title"]),
+            "NEURO_PANEL_TITLE": self.panel_title(),
             "NEURO_PANEL_CHAT": str(int(s["panel_chat"])),
             "NEURO_PANEL_HIDE": ",".join(s["panel_hide"]),
         })
@@ -644,6 +696,8 @@ class Console:
                     value = "on" if value else "off"
                 elif isinstance(value, list):
                     value = ",".join(value) or "none"
+                elif key == "panel_title":
+                    value = self.panel_title()
                 self.to_game("debug_set", f"{key} {value}")
         if self.settings["neuro_url"] != old["neuro_url"] and self.upstream is not None:
             self.upstream.close()

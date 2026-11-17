@@ -45,6 +45,21 @@ void NeuroData::load(const Common::String &path) {
 		return;
 	}
 
+	_game.name = get("game", "name");
+	_game.intro = get("game", "intro");
+	_game.egoName = get("game", "ego_name");
+	_game.walkVerb = get("game", "walk_verb");
+	_game.giveVerb = get("game", "give_verb");
+	_game.openVerb = get("game", "open_verb");
+	_game.doorOpenState = get("game", "door_open_state");
+	_game.doorQuestion = !get("game", "door_question").equalsIgnoreCase("no");
+	_game.sentenceLineVerb = atoi(get("game", "sentence_line_verb").c_str());
+	_game.inventoryFirstVerb = atoi(get("game", "inventory_first_verb").c_str());
+	_game.inventorySlots = atoi(get("game", "inventory_slots").c_str());
+	_game.inventorySlotVar = atoi(get("game", "inventory_slot_var").c_str());
+	_game.inventoryUpVerb = atoi(get("game", "inventory_up_verb").c_str());
+	_game.inventoryDownVerb = atoi(get("game", "inventory_down_verb").c_str());
+
 	for (const auto &section : _ini.getSections()) {
 		const Common::String &name = section.name;
 		if (name.hasPrefix("line.")) {
@@ -179,8 +194,17 @@ Common::String NeuroData::roomPrompt(int room) const {
 	return roomGet(room, "prompt");
 }
 
-bool NeuroData::doorQuestion() const {
-	return !get("game", "door_question").equalsIgnoreCase("no");
+bool NeuroData::synonym(const Common::String &word, Common::String &verb) const {
+	if (word.empty() || !_ini.hasSection("synonyms"))
+		return false;
+	for (const auto &kv : _ini.getKeys("synonyms")) {
+		if (kv.key.equalsIgnoreCase(word)) {
+			verb = kv.value;
+			verb.trim();
+			return true;
+		}
+	}
+	return false;
 }
 
 Common::String NeuroData::roomDescription(int room) const {
@@ -242,6 +266,7 @@ const NeuroData::Places &NeuroData::places(int room) const {
 			if (sscanf(kv.value.c_str(), "%d,%d", &spot.x, &spot.y) != 2)
 				continue;
 			spot.effect = text;
+			spot.twice = kv.value.substr(0, bar).contains("twice");
 			_places.spots.push_back(spot);
 		} else if (kv.key.hasPrefix("standing.") && bar != Common::String::npos) {
 			Common::StringTokenizer boxes(kv.value.substr(0, bar), " ,");

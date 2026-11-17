@@ -202,7 +202,7 @@ bool NeuroBridge::speakerOf(int actor, const Common::String &line, Common::Strin
 	}
 	if (speaker.empty()) {
 		if (isEgo) {
-			speaker = "Guybrush";
+			speaker = egoNameCapital();
 		} else if (isActor) {
 			// Keep unnamed speakers apart so a conversation can be followed
 			uint index = 0;

@@ -64,6 +64,8 @@ void NeuroJournal::loadGoals(const Common::INIFile &ini) {
 		if (const Common::INIFile::KeyValue *kv = section.getKey("title"))
 			goal.title = kv->value;
 		goal.title.trim();
+		const Common::INIFile::KeyValue *panel = section.getKey("panel");
+		goal.onPanel = !(panel && panel->value.equalsIgnoreCase("no"));
 		if (nudge && goal.text.empty())
 			goal.text = "That sounded worth remembering. You can write it down with add_note.";
 		if (const Common::INIFile::KeyValue *kv = section.getKey("done"))
@@ -214,10 +216,10 @@ void NeuroJournal::addNote(const Common::String &text) {
 		_notes.remove_at(0);
 }
 
-Common::StringArray NeuroJournal::activeGoals() const {
+Common::StringArray NeuroJournal::panelGoals() const {
 	Common::StringArray result;
 	for (const auto &goal : _goals) {
-		if (goal.state == kActive && !goal.nudge)
+		if (goal.state == kActive && !goal.nudge && goal.onPanel)
 			result.push_back(goal.text);
 	}
 	return result;

@@ -48,14 +48,8 @@ Common::String panelSetting(const char *env, const char *fallback) {
 // A goal in the journal is a full sentence of instructions; the column shows its title
 Common::String goalTitle(const Common::String &goal) {
 	const size_t colon = goal.findFirstOf(':');
-	if (colon != Common::String::npos && colon > 0 && colon < 40) {
-		Common::String rest = goal.substr(colon + 1);
-		rest.trim();
-		// The catch-all goal that only holds notes
-		if (rest.hasPrefix("what you learn"))
-			return Common::String();
+	if (colon != Common::String::npos && colon > 0 && colon < 40)
 		return goal.substr(0, colon);
-	}
 	size_t cut = goal.size();
 	for (uint i = 0; i < goal.size(); i++) {
 		if (goal[i] == ',' || goal[i] == '.' || goal[i] == '(') {
@@ -241,7 +235,7 @@ Common::String NeuroBridge::describeForPanel(const Common::String &name, const N
 			return args.get("text|sentence|input", true);
 		Common::String text = verb + " " + target;
 		if (!second.empty())
-			text += (verb.equalsIgnoreCase("give") ? " to " : " with ") + second;
+			text += (verb.equalsIgnoreCase(_data.game().giveVerb) ? " to " : " with ") + second;
 		if (!thenVerb.empty())
 			text += ", then " + thenVerb + " " + thenTarget;
 		return text;
@@ -290,7 +284,7 @@ void NeuroBridge::updatePanel() {
 	_panelCheckedAt = now;
 
 	if (_panelTitle.empty()) {
-		_panelTitle = panelSetting("NEURO_PANEL_TITLE", "Neuro plays|The Secret of Monkey Island");
+		_panelTitle = panelSetting("NEURO_PANEL_TITLE", ("Neuro plays|" + _gameName).c_str());
 		_panelChat = CLIP(atoi(panelSetting("NEURO_PANEL_CHAT", "30").c_str()), 0, 80);
 		if (_panelHide.empty())
 			_panelHide = "," + panelSetting("NEURO_PANEL_HIDE", "") + ",";
@@ -306,7 +300,7 @@ void NeuroBridge::updatePanel() {
 		for (const auto &item : world.inventory)
 			content.inventory.push_back(item.name);
 
-		for (const auto &goal : _journal.activeGoals()) {
+		for (const auto &goal : _journal.panelGoals()) {
 			const Common::String title = goalTitle(goal);
 			if (!title.empty())
 				content.goals.push_back(title);

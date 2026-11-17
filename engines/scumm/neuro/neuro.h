@@ -90,6 +90,8 @@ struct NeuroCommand {
 	// Where to click, for walking
 	int x = 0, y = 0;
 	bool isSpot = false;
+	/** A place that only reacts to a second step, taken from right next to it. */
+	bool stepTwice = false;
 
 	/** As a follow-up: how long the player's character must have stood still before it starts. */
 	uint32 settleMs = 0;
@@ -118,6 +120,7 @@ struct NeuroWorld {
 	/** Places without an object that can still be walked to; id is -(index + 1). */
 	NeuroThingList spots;
 	Common::Array<Common::Point> spotPositions;
+	Common::Array<bool> spotTwice;
 
 	/** Which part of the room the player's character is in, where the description file tells them apart. */
 	Common::String standing;
@@ -183,8 +186,13 @@ private:
 
 	ScummEngine *_vm;
 	Common::String _url;
-	Common::String _gameName;
 	NeuroData _data;
+	// From the description file's [game] section, with defaults
+	Common::String _gameName;
+	Common::String _egoName;
+	Common::String _walkVerb;
+	/** The player's character's name, to start a sentence with. */
+	Common::String egoNameCapital() const;
 
 	Actor *ego() const;
 	bool playerHasControl() const;

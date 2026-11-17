@@ -74,26 +74,19 @@ NeuroBridge *NeuroBridge::create(ScummEngine *vm) {
 }
 
 NeuroBridge::NeuroBridge(ScummEngine *vm, const Common::String &url) : _vm(vm), _url(url) {
-	// The API identifies a game by its display name, which must never change
-	switch (_vm->_game.id) {
-	case GID_MONKEY:
-	case GID_MONKEY_EGA:
-	case GID_MONKEY_VGA:
-		_gameName = "The Secret of Monkey Island";
-		break;
-	case GID_MONKEY2:
-		_gameName = "Monkey Island 2: LeChuck's Revenge";
-		break;
-	default:
-		_gameName = _vm->_game.gameid;
-		break;
-	}
-
 	_dialogueAsContext = neuroSetting("NEURO_DIALOGUE_MODE").equalsIgnoreCase("context");
 
 	const Common::String descriptions = neuroSetting("NEURO_DESCRIPTIONS");
 	if (!descriptions.empty())
 		_data.load(descriptions);
+	else
+		warning("Neuro: No description file (NEURO_DESCRIPTIONS): she gets the game's own names and nothing else");
+
+	// The API identifies a game by its display name, which must never change
+	const NeuroData::Game &game = _data.game();
+	_gameName = game.name.empty() ? Common::String(_vm->_game.gameid) : game.name;
+	_egoName = game.egoName.empty() ? Common::String("your character") : game.egoName;
+	_walkVerb = game.walkVerb.empty() ? Common::String("Walk to") : game.walkVerb;
 
 	_journal.loadGoals(_data.ini());
 	_journal.setExpander([](void *bridge, const Common::String &text) { return ((NeuroBridge *)bridge)->expandText(text); }, this);
@@ -128,6 +121,12 @@ NeuroBridge::NeuroBridge(ScummEngine *vm, const Common::String &url) : _vm(vm), 
 
 Actor *NeuroBridge::ego() const {
 	return _vm->_actors[_vm->VAR(_vm->VAR_EGO)];
+}
+
+Common::String NeuroBridge::egoNameCapital() const {
+	Common::String name = _egoName;
+	name.setChar(toupper(name[0]), 0);
+	return name;
 }
 
 bool NeuroBridge::playerHasControl() const {
@@ -214,12 +213,11 @@ void NeuroBridge::onConnected() {
 
 void NeuroBridge::sendIntro() {
 	sendContext(Common::String::format(
-		"You are playing %s, a classic point-and-click adventure game. "
-		"You control Guybrush Threepwood, who wants to become a pirate. "
+		"You are playing %s, a classic point-and-click adventure game. %s"
 		"You cannot see the screen, so each location and what is in it will be described to you. "
 		"Things that share a name are numbered from left to right. "
 		"Your goals are kept in a journal that you can read at any time with read_journal.",
-		_gameName.c_str()), true);
+		_gameName.c_str(), _data.game().intro.empty() ? "" : (_data.game().intro + " ").c_str()), true);
 	_introSentAt = _tokensSent;
 }
 

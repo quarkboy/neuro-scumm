@@ -14,9 +14,9 @@ Neuro cannot see the screen, so everything goes through text.
 - **What she can do.** `interact` uses any of the game's verbs on anything in the room or her inventory, and also walks. `choose_dialogue` picks a line in a conversation. `answer` replies to a quick yes/no question. `read_journal` and `add_note` keep track of goals and of the clues she has come across. `wait` and `skip_cutscene` do what they say.
 - **Timing.** Moments that need a fast reaction (slipping past the cook, for example) are sent as a high-priority question, timed to her reaction speed. An action can also carry a second step that runs the instant the first one ends.
 - **On screen.** The mouse pointer travels to each thing she uses, the way a player's would, so viewers can follow what she is doing.
-- **Hand-written text.** Room descriptions, names for characters the game leaves unnamed, goals, clues and timed questions live in a plain text file, [`neuro/data/monkey1.ini`](neuro/data/monkey1.ini). They say what is on screen and what characters have told her, never how to solve a puzzle.
+- **Hand-written text.** Room descriptions, names for characters the game leaves unnamed, goals, clues and timed questions live in a plain text file, [`neuro/games/monkey1/descriptions.ini`](neuro/games/monkey1/descriptions.ini). They say what is on screen and what characters have told her, never how to solve a puzzle.
 
-The Neuro code is in [`engines/scumm/neuro/`](engines/scumm/neuro/). The design is explained in [`neuro/PLAN.md`](neuro/PLAN.md).
+The Neuro code is in [`engines/scumm/neuro/`](engines/scumm/neuro/) and knows nothing about any one game; everything about Monkey Island is in [`neuro/games/monkey1/`](neuro/games/monkey1/README.md), and another SCUMM game would get a folder of its own beside it ([`neuro/games/`](neuro/games/README.md)). The design is explained in [`neuro/PLAN.md`](neuro/PLAN.md).
 
 ## Quick start
 
@@ -59,22 +59,14 @@ This builds only the SCUMM engine (Monkey Island 1 and 2 among others) with the 
 
 ## Pointing it at the game
 
-The console has the game folder as a setting. The launcher script used without it, `neuro/run.sh`, needs the folder that contains `Monkey1.pak` in `MONKEY1_DIR`:
-
-| Where the game is | `MONKEY1_DIR` |
-|---|---|
-| Steam on Windows, used from WSL | `/mnt/c/Program Files (x86)/Steam/steamapps/common/The Secret of Monkey Island Special Edition` (the default) |
-| Steam on Linux (Proton) | `~/.steam/steam/steamapps/common/The Secret of Monkey Island Special Edition` |
-| Anywhere else | the folder you copied or installed it to |
-
-Nothing is copied out of that folder or written to it.
+The console and the launcher script used without it, `neuro/run.sh`, look for the game where Steam installs it. If yours is elsewhere, give the console the folder in its settings, or `run.sh` the folder in `GAME_DIR`. Nothing is copied out of that folder or written to it. [`neuro/games/monkey1/README.md`](neuro/games/monkey1/README.md) has the details for this game.
 
 ## Running
 
 Without the console, [`neuro/run.sh`](neuro/run.sh) starts the game with the settings below:
 
 ```sh
-MONKEY1_DIR="/path/to/The Secret of Monkey Island Special Edition" \
+GAME_DIR="/path/to/The Secret of Monkey Island Special Edition" \
 NEURO_SDK_WS_URL=ws://127.0.0.1:8000 \
 neuro/run.sh
 ```
@@ -86,7 +78,8 @@ The console works from a source checkout too: `python3 neuro/console/console.py`
 | Setting | Default | Meaning |
 |---|---|---|
 | `NEURO_SDK_WS_URL` | `ws://127.0.0.1:8000` in `run.sh` | The Neuro API server. Unset, the Neuro module stays off. |
-| `NEURO_DESCRIPTIONS` | `neuro/data/monkey1.ini` in `run.sh` | The description file. |
+| `NEURO_GAME` | `monkey1` | For `run.sh` and the tools: which game, a folder under `neuro/games`. |
+| `NEURO_DESCRIPTIONS` | the game's `descriptions.ini` in `run.sh` | The description file. |
 | `NEURO_DIALOGUE_MODE` | `speech` | `speech` reports dialogue with the SDK's `speech/started` and `speech/ended`. `context` sends it as ordinary context messages, for servers that do not know those commands yet. |
 | `NEURO_IDLE_FORCE_SECONDS` | `45` | Prompt her after this long with nothing happening. `0` turns it off. |
 | `NEURO_REACTION_MS` | `300` | How long she takes to react; timed questions go out that much early. A language model standing in for her needs about `2500`. |

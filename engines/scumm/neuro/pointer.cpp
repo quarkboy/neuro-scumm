@@ -169,8 +169,7 @@ bool NeuroBridge::verbButton(int verbId, NeuroClick &click) const {
  * thing, in the inventory or in the room.
  */
 bool NeuroBridge::planClicks(const NeuroWorld &world, NeuroCommand &command) {
-	// Monkey Island's inventory: picture buttons 200 and up, filled in order
-	static const int kFirstInventoryButton = 200;
+	const NeuroData::Game &game = _data.game();
 
 	command.clicks.clear();
 	NeuroClick click;
@@ -187,21 +186,24 @@ bool NeuroBridge::planClicks(const NeuroWorld &world, NeuroCommand &command) {
 				index = i;
 		}
 		if (index >= 0) {
-			// Eight things carried are shown at a time, the newest by default. The
-			// game keeps which object each button stands for in variables 133 to
-			// 140, and buttons 208 and 209 scroll a row up and down.
-			static const int kShownVar = 133, kShown = 8, kScrollUp = 208, kScrollDown = 209;
+			// Only for an inventory that is a row of verb slots, which the
+			// description file has to describe. Some of what is carried is on
+			// show at a time; the game keeps the object each slot stands for
+			// in a run of variables, and two more buttons scroll.
+			if (!game.inventoryFirstVerb || !game.inventorySlotVar)
+				return false;
 			int button = -1;
-			for (int pass = 0; pass < 24 && button < 0; pass++) {
-				for (int i = 0; i < kShown; i++) {
-					if (_vm->readVar(kShownVar + i) == thing)
+			for (int pass = 0; pass < 3 * game.inventorySlots && button < 0; pass++) {
+				for (int i = 0; i < game.inventorySlots; i++) {
+					if (readDataVar(game.inventorySlotVar + i) == thing)
 						button = i;
 				}
 				// First all the way up, then down a row at a time
-				if (button < 0)
-					_vm->runInputScript(kVerbClickArea, pass < 8 ? kScrollUp : kScrollDown, 1);
+				const int arrow = pass < game.inventorySlots ? game.inventoryUpVerb : game.inventoryDownVerb;
+				if (button < 0 && arrow)
+					_vm->runInputScript(kVerbClickArea, arrow, 1);
 			}
-			if (button < 0 || !verbButton(kFirstInventoryButton + button, click))
+			if (button < 0 || !verbButton(game.inventoryFirstVerb + button, click))
 				return false;
 		} else {
 			int x, y;

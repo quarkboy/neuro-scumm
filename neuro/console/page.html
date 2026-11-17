@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Monkey Island console</title>
+<title>Neuro SCUMM console</title>
 <style>
 :root {
   --bg: #14181d; --panel: #1d232b; --line: #2e3742; --text: #e6e9ed; --dim: #96a1ad;
@@ -64,7 +64,7 @@ code { background: #12161b; padding: 1px 5px; border-radius: 4px; font-size: 13p
 </head>
 <body>
 <header>
-  <h1>Monkey Island console</h1>
+  <h1>Neuro SCUMM console</h1>
   <span class="pill" id="p-game">Game stopped</span>
   <span class="pill" id="p-link">Game not connected</span>
   <span class="pill" id="p-neuro">Neuro not connected</span>
@@ -133,7 +133,7 @@ code { background: #12161b; padding: 1px 5px; border-radius: 4px; font-size: 13p
     <h3>The column (changes at once)</h3>
     <label class="field"><span>Side</span>
       <select id="panel_side"><option value="right">Right</option><option value="left">Left</option></select></label>
-    <label class="field"><span>Title</span><input id="panel_title" title="A | starts a new line"></label>
+    <label class="field"><span>Title</span><input id="panel_title" title="A | starts a new line" placeholder="Neuro plays, and the game's name"></label>
     <label class="field"><span>Chat box height (%)</span><input id="panel_chat" type="number" min="0" max="80"></label>
     <div class="row" id="parts">
       <label class="check"><input type="checkbox" data-part="title"> Title</label>
@@ -145,7 +145,8 @@ code { background: #12161b; padding: 1px 5px; border-radius: 4px; font-size: 13p
       <label class="check"><input type="checkbox" data-part="recent"> Lately</label>
     </div>
     <h3>Where things are (next start)</h3>
-    <label class="field"><span>Game folder</span><input id="game_dir"></label>
+    <label class="field"><span>Game</span><select id="game"></select></label>
+    <label class="field"><span>Game folder</span><input id="game_dir" placeholder="where Steam installs it"></label>
     <label class="field"><span>ScummVM</span><input id="scummvm" placeholder="found automatically"></label>
     <label class="field"><span>Savegames</span><input id="save_dir"></label>
     <div class="row" style="margin-top:10px"><button id="save-settings">Save settings</button><span class="hint" id="settings-note"></span></div>
@@ -183,7 +184,7 @@ const token = new URLSearchParams(location.search).get('t') || '';
 const $ = id => document.getElementById(id);
 const FIELDS = ['neuro_url', 'operator_name', 'idle_force_seconds', 'reaction_ms', 'context_tokens', 'fast_mode',
   'pointer', 'skip_cutscenes', 'music_volume', 'sfx_volume', 'speech_volume', 'stream_size', 'panel', 'panel_side', 'panel_title',
-  'panel_chat', 'fullscreen', 'filtering', 'dialogue_mode', 'game_dir', 'scummvm', 'save_dir'];
+  'panel_chat', 'fullscreen', 'filtering', 'dialogue_mode', 'game', 'game_dir', 'scummvm', 'save_dir'];
 let since = 0, filled = false, lastSaves = '', state = null;
 
 async function api(path, body) {
@@ -289,7 +290,12 @@ function show(s) {
   $('hold').textContent = st.hold ? 'Give her controls back' : 'Take her controls away';
   $('hold').className = st.hold ? 'primary' : '';
   $('p-hold').hidden = !st.hold;
-  if (!filled) { fillForm(s.settings); filled = true; fillSaves(s.saves, s.settings); }
+  if (!filled) {
+    for (const game of st.games) $('game').add(new Option(game.name, game.id));
+    fillForm(s.settings); filled = true; fillSaves(s.saves, s.settings);
+  }
+  $('game_dir').placeholder = st.game_dir;
+  $('panel_title').placeholder = st.panel_title.replace('|', ' | ');
   else fillSaves(s.saves, s.settings);
 
   const v = s.view;

@@ -57,7 +57,9 @@ namespace Scumm {
  *   comings = quiet        characters wander in and out of sight all the time here;
  *                          do not report each one
  *   spot.NAME = X,Y | TEXT a place with no object that she can walk to; the
- *                          optional text says what she sees when she does
+ *                          optional text says what she sees when she does.
+ *                          "X,Y twice" steps onto it a second time after a pause,
+ *                          for a place that only reacts to a step from next to it
  *   standing.NAME = BOX BOX ... | TEXT
  *                          where the player's character is, for a room with
  *                          parts that do not connect on foot: the text is
@@ -101,9 +103,26 @@ namespace Scumm {
  * actor nor the text colour settles it (sound effects shown as text, say):
  *   text      the line, exactly as it is sent
  *   speaker   the name to use; "-" drops the line altogether
- * A [game] section holds switches:
- *   door_question = no     do not ask "Go through it?" after she opens a door
- * and two global sections:
+ * A [game] section says what the module cannot work out about the game:
+ *   name                   the game's name, as she and the server are told it
+ *   intro                  a sentence for the opening explanation: who she plays
+ *   ego_name               what the player's character is called in what she is told
+ *   walk_verb              the name her interact action gives walking ("Walk to")
+ *   give_verb              the verb whose second thing is given "to", not used "with"
+ *   sentence_line_verb     id of a verb slot that is the sentence line, not a verb
+ *   inventory_first_verb   id of the first inventory button, where the inventory is
+ *                          a row of verb slots; the next four keys go with it
+ *   inventory_slots        how many of them are on screen
+ *   inventory_slot_var     the first of the variables that hold the object each shows
+ *   inventory_up_verb, inventory_down_verb
+ *                          ids of the buttons that scroll the inventory
+ *   open_verb              the verb that opens a door; with it, opening one is
+ *                          followed by the question "Go through it?"
+ *   door_open_state        the state label that means a door stands open ("open")
+ *   door_question = no     never ask that question
+ * [synonyms] maps words she may use for a verb to the verb's name on screen
+ * (take = Pick up); mapped to the walk verb, the word means walking.
+ * Two more global sections:
  *   [actors]  ID = name    fallback names for unnamed actors
  *   [states]  object name = label for state 0, label for state 1, ...
  */
@@ -122,7 +141,18 @@ public:
 	bool shiftingLayout(int room) const;
 	bool relativePlaces(int room) const;
 	Common::String roomPrompt(int room) const;
-	bool doorQuestion() const;
+
+	/** The [game] section. */
+	struct Game {
+		Common::String name, intro, egoName, walkVerb, giveVerb, openVerb, doorOpenState;
+		bool doorQuestion = true;
+		int sentenceLineVerb = 0;
+		int inventoryFirstVerb = 0, inventorySlots = 0, inventorySlotVar = 0, inventoryUpVerb = 0, inventoryDownVerb = 0;
+	};
+	const Game &game() const { return _game; }
+
+	/** The verb a word stands for, from [synonyms]; false if the file has none. */
+	bool synonym(const Common::String &word, Common::String &verb) const;
 	Common::String roomDescription(int room) const;
 	Common::String objectNote(int room, int object) const;
 	/** Returns false if the file does not rename this object; an empty name hides it. */
@@ -142,6 +172,9 @@ public:
 
 		/** What stepping there looks like. */
 		Common::String effect;
+
+		/** It only reacts to a second step, taken from right next to it. */
+		bool twice;
 	};
 	const Common::Array<Spot> &spots(int room) const;
 
@@ -215,6 +248,7 @@ private:
 	const Places &places(int room) const;
 
 	Common::INIFile _ini;
+	Game _game;
 	Common::Array<Alert> _alerts;
 	Common::Array<Watch> _watches;
 	Common::Array<LineNote> _lineNotes;

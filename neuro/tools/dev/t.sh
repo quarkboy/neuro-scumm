@@ -23,7 +23,8 @@ log)
 waitfor)
 	for i in $(seq 1 ${3:-60}); do grep -aq "$2" $S/game.out && exit 0; sleep 1; done; echo "TIMEOUT waiting for $2"; exit 1 ;;
 boot)
-	$0 start; $0 waitfor "Deep in the Caribbean" 60; sleep 2; $0 act skip_cutscene > /dev/null; $0 waitfor "Location: Dock" 120; $0 log > /dev/null ;;
+	# Skips the opening: BOOT_OPENING is text from it, BOOT_ROOM where it ends (Monkey Island's by default)
+	$0 start; $0 waitfor "${BOOT_OPENING:-Deep in the Caribbean}" 60; sleep 2; $0 act skip_cutscene > /dev/null; $0 waitfor "Location: ${BOOT_ROOM:-Dock}" 120; $0 log > /dev/null ;;
 dbg)
 	python3 - "$(cat $S/gid)" "$2" "$3" <<'PY' | curl -s -X POST -H Content-Type:application/json -H Accept:application/json,text/event-stream http://127.0.0.1:8000/mcp -d @- > /dev/null
 import json,sys

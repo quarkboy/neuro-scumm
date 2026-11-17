@@ -6,6 +6,7 @@ Usage:
     disasm.py SCRIPT_DUMP_DIR script N        global script N
     disasm.py SCRIPT_DUMP_DIR --out DIR       one text file per room and per global script
     options: --decimal   print offsets in decimal instead of hex
+             --game GAME.json   name the verb numbers (neuro/games/NAME/game.json)
 
 SCRIPT_DUMP_DIR is the directory written by the Neuro module's NEURO_DUMP_SCRIPTS mode
 (roomNNN.room = whole ROOM block, scriptNNN.scrp = whole SCRP block).
@@ -30,13 +31,18 @@ Reading the output
   strings       0xFF escape codes are shown as {newline} {keep} {wait} {int v} {verb v}
                 {name v} {string v} {anim n} {sound n} {color n} {font n}
 """
+import json
 import os
 import re
 import struct
 import sys
 
-VERB_NAMES = {1: "(inventory)", 2: "Open", 3: "Close", 4: "Give", 5: "Push", 6: "Pull", 7: "Use",
-              8: "Look at", 9: "Pick up", 10: "Talk to", 11: "Walk to", 255: "(any other verb)"}
+# Names for the game's verb numbers, from the "verbs" of a game.json; 255 is the same in every game
+VERB_NAMES = {255: "(any other verb)"}
+
+
+def load_verb_names(game_json):
+    VERB_NAMES.update({int(number): name for number, name in json.load(open(game_json, encoding="utf-8")).get("verbs", {}).items()})
 
 VAR_NAMES = {
     0: "keypress", 1: "ego", 2: "camera_pos_x", 3: "have_msg", 4: "room", 5: "override",
@@ -1060,6 +1066,12 @@ def main(argv):
         if i + 1 >= len(args):
             sys.exit(__doc__)
         out_dir = args[i + 1]
+        del args[i:i + 2]
+    if "--game" in args:
+        i = args.index("--game")
+        if i + 1 >= len(args):
+            sys.exit(__doc__)
+        load_verb_names(args[i + 1])
         del args[i:i + 2]
     if not args or (out_dir is None and len(args) != 3):
         sys.exit(__doc__)

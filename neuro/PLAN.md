@@ -72,7 +72,8 @@ engines/scumm/neuro/     the module
   debug.cpp              the operator console's commands and developer aids
   extract.cpp            developer tool: dumps rooms and scripts for writing descriptions
 neuro/
-  data/monkey1.ini       the description file for this game
+  games/monkey1/         everything about one game: its description file, what the
+                         launchers need to know about it, notes and status
   run.sh                 launcher
   console/               the operator's web console
   tools/                 extraction, review page and test scripts
@@ -105,12 +106,13 @@ How commands are carried out:
 - With a force: the current state, and the lines to choose from when there are any, as ephemeral context.
 
 ### The description file
-The game has object names but no text describing a room. `neuro/data/monkey1.ini` supplies:
+The game has object names but no text describing a room. The game's `descriptions.ini` (`neuro/games/monkey1/`) supplies:
 - `[room.*]`: a name and a few sentences per room, saying only what is visible on screen, plus names and notes for individual things where the picture carries meaning the name does not.
 - Names for characters the game leaves unnamed, and speaker overrides for lines that would otherwise be credited to the wrong voice.
 - `[goal.*]` and `[clue.*]`: journal entries, revealed by lines heard, items held and rooms entered. A clue records only what a character said or what she saw.
 - `[alert.*]`: timed questions (see below).
 - `[watch.*]` and `[states]`: things whose change of look carries information, with a label per state.
+- `[game]` and `[synonyms]`: the game's name, who she plays, and what the module cannot work out about the game's screen (which verb slot is the sentence line, how the inventory's buttons are numbered, the verbs for walking, giving and opening).
 
 The rule for all of it: say what is on screen and what characters said, never how to solve anything.
 

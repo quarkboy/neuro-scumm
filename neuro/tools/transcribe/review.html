@@ -213,8 +213,8 @@ function parseRoom({ keys, comment }) {
 		else if ((m = /^actor\.(\d+)$/.exec(k))) ini.actors[m[1]] = v;
 		else if ((m = /^voice\.(?:(\d+)\.)?(\d+)$/.exec(k))) ini.voices.push({ color: m[2], actor: m[1] || "", name: v });
 		else if (k.startsWith("spot.")) {
-			const bar = v.indexOf("|"), [x, y] = (bar < 0 ? v : v.slice(0, bar)).split(",");
-			ini.spots.push({ name: k.slice(5), x: (x || "").trim(), y: (y || "").trim(), text: bar < 0 ? "" : v.slice(bar + 1).trim() });
+			const bar = v.indexOf("|"), where = bar < 0 ? v : v.slice(0, bar), [x, y] = where.replace("twice", "").split(",");
+			ini.spots.push({ name: k.slice(5), x: (x || "").trim(), y: (y || "").trim(), twice: where.includes("twice") ? "twice" : "", text: bar < 0 ? "" : v.slice(bar + 1).trim() });
 		} else if (k.startsWith("standing.")) {
 			const bar = v.indexOf("|");
 			ini.standing.push({ name: k.slice(9), boxes: (bar < 0 ? v : v.slice(0, bar)).trim(), text: bar < 0 ? "" : v.slice(bar + 1).trim() });
@@ -444,7 +444,7 @@ function renderRoom() {
 			inputs.color.addEventListener("input", paint); paint();
 			return swatch;
 		});
-	const spots = rowsEditor([{ key: "name", label: "name she uses", grow: 2, width: "90px" }, { key: "x", label: "x", width: "38px" }, { key: "y", label: "y", width: "38px" }, { key: "text", label: "what she sees on getting there (optional)", grow: 4, width: "120px" }],
+	const spots = rowsEditor([{ key: "name", label: "name she uses", grow: 2, width: "90px" }, { key: "x", label: "x", width: "38px" }, { key: "y", label: "y", width: "38px" }, { key: "twice", label: "\"twice\": step on it a second time", placeholder: "once", width: "46px" }, { key: "text", label: "what she sees on getting there (optional)", grow: 4, width: "120px" }],
 		ini.spots, "+ place", inputs => el("button", { class: "small", type: "button", title: "Then click the spot in the picture", onclick: () => {
 			picking = { x: inputs.x, y: inputs.y }; document.getElementById("picturePane").classList.add("picking");
 		} }, "pick"));
@@ -508,7 +508,7 @@ async function saveRoom(form, parts) {
 	// Rows that can be removed: clear every key of the kind, then write the rows that are left
 	for (const key of Object.keys(ini.keys)) if (/^(voice|spot|standing)\./.test(key)) set[key] = null;
 	for (const v of parts.voices.read()) if (v.color && v.name) set[v.actor ? `voice.${v.actor}.${v.color}` : `voice.${v.color}`] = v.name;
-	for (const s of parts.spots.read()) if (s.name && s.x && s.y) set[`spot.${s.name}`] = `${s.x},${s.y}` + (s.text ? ` | ${s.text}` : "");
+	for (const s of parts.spots.read()) if (s.name && s.x && s.y) set[`spot.${s.name}`] = `${s.x},${s.y}` + (s.twice.trim() ? " twice" : "") + (s.text ? ` | ${s.text}` : "");
 	for (const s of parts.standing.read()) if (s.name && s.boxes) set[`standing.${s.name}`] = `${s.boxes} | ${s.text}`;
 	const more = { blank };
 	if (parts.comment.value.trim() !== ini.comment) more.comment = parts.comment.value;
@@ -871,7 +871,12 @@ function adder(placeholder, label, make) {
 const triggerGist = value => (value || "").split(" | ").map(t => t.trim()).filter(Boolean).join("  ·  ");
 
 /* ---------- goals, clues and nudges ---------- */
-const GOAL_FIELDS = [["title", "Short title (the words she uses to ask for its clues)"], ["text", "The goal, as she reads it", "area"], ["start", "Appears when (nothing: there from the beginning)", "triggers"], ["done", "Finished when", "triggers"]];
+const GAME_FIELDS = [["name", "Name of the game"], ["intro", "Who she plays, for the opening explanation", "area"], ["ego_name", "What the player's character is called"],
+	["walk_verb", "Name for walking (Walk to)"], ["give_verb", "Verb that gives one thing to another"], ["open_verb", "Verb that opens a door"],
+	["door_open_state", "State label of an open door (open)"], ["door_question", "After she opens a door", "select", [["", "ask \"Go through it?\""], ["no", "do not ask"]]],
+	["sentence_line_verb", "Verb slot that is the sentence line", "num"], ["inventory_first_verb", "First inventory button", "num"], ["inventory_slots", "Inventory buttons on screen", "num"],
+	["inventory_slot_var", "First variable holding what they show", "num"], ["inventory_up_verb", "Button that scrolls the inventory up", "num"], ["inventory_down_verb", "Button that scrolls it down", "num"]];
+const GOAL_FIELDS = [["title", "Short title (the words she uses to ask for its clues)"], ["text", "The goal, as she reads it", "area"], ["start", "Appears when (nothing: there from the beginning)", "triggers"], ["done", "Finished when", "triggers"], ["panel", "In the stream column", "select", [["", "shown"], ["no", "left out"]]]];
 const CLUE_FIELDS = [["goal", "Goal", "goal"], ["text", "The clue", "area"], ["when", "Noted when", "triggers"]];
 const NUDGE_FIELDS = [["when", "Suggest writing a note when", "triggers"], ["say", "Wording (blank: just says it may be worth a note)", "area"]];
 function renderJournal() {
@@ -956,7 +961,7 @@ function pairsCard(section, data, keyLabel, valueLabel) {
 }
 function renderOther() {
 	const list = el("div");
-	const keys = () => [...KINDS.flatMap(k => journal[k.list].map(item => `${k.prefix}.${item.id}`)), "states", "actors", "game", "roomextras"];
+	const keys = () => [...KINDS.flatMap(k => journal[k.list].map(item => `${k.prefix}.${item.id}`)), "states", "actors", "synonyms", "game", "roomextras"];
 	const bar = searchBar(otherSearch, "Search alerts and rules: any word in the text, a room number or an id", () => draw(), keys);
 	function draw() {
 		const q = otherSearch.q.trim().toLowerCase(), out = [];
@@ -978,8 +983,12 @@ function renderOther() {
 				fold("actors", [what("Names for unnamed actors"), gist(Object.entries(journal.actors.keys).map(([k, v]) => `${k} ${v}`).join(", ")), tag(`${Object.keys(journal.actors.keys).length}`)], () => [
 					el("div", { class: "help" }, "Used in any room whose own section does not name the actor."),
 					pairsCard("actors", journal.actors, "actor number", "name")]),
-				fold("game", [what("Switches"), gist(Object.entries(journal.game.keys).map(([k, v]) => `${k} = ${v}`).join(", ") || "all as usual")], () =>
-					card("game", [["door_question", "After she opens a door", "select", [["", "ask \"Go through it?\""], ["no", "do not ask"]]]], journal.game.keys, { comment: journal.game.comment, keep: true })),
+				fold("synonyms", [what("Other words for verbs"), gist(Object.entries(journal.synonyms.keys).map(([k, v]) => `${k} = ${v}`).join(", ")), tag(`${Object.keys(journal.synonyms.keys).length}`)], () => [
+					el("div", { class: "help" }, "Words she may use for a verb, and the verb on screen each stands for. A word that stands for the walk verb means walking."),
+					pairsCard("synonyms", journal.synonyms, "her word", "verb on screen")]),
+				fold("game", [what("The game"), gist(Object.entries(journal.game.keys).map(([k, v]) => `${k} = ${v}`).join(", ") || "nothing set")], () => [
+					el("div", { class: "help" }, "What the game is called, and what the module cannot work out about its screen. The numbers are verb slot ids and variable numbers from the game's scripts."),
+					card("game", GAME_FIELDS, journal.game.keys, { comment: journal.game.comment, keep: true })]),
 				fold("roomextras", [what("Rooms with settings of their own"), gist("voices, hidden things, places to walk to and the like"), tag(`${special.length}`)], () => [
 					el("div", { class: "help" }, "Everything here is edited on the room's own tab; click a room to go there."),
 					...special.map(([n, keys, extras]) => el("div", { class: "roomrow", onclick: () => go(+n, "room") },

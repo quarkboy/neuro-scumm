@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""lines.py SCRIPT_DUMP_DIR OUTPUT.json: every line of text in a SCUMM v5 game's scripts.
+"""lines.py SCRIPT_DUMP_DIR OUTPUT.json [GAME.json]: every line of text in a SCUMM v5 game's scripts.
 
 Reads the raw rooms and global scripts written by the Neuro module's NEURO_DUMP_SCRIPTS
 mode and finds every instruction that carries text: lines printed for an actor, lines
-Guybrush says, dialogue choices (verb names), actor names, object names and loaded
+the player's character says, dialogue choices (verb names), actor names, object names and loaded
 strings. For each it records where it is (room, script, and for an object's script
 which verb it answers), who says it as far as the script shows, and the text colour.
 
 This is not a full decompiler. It looks for the instructions that carry text and
 parses those exactly; a byte sequence only counts if the whole instruction parses and
 the text looks like text. That finds what the game can say; it does not know when.
+
+GAME.json (neuro/games/NAME/game.json) names the game's verb numbers; without it they
+are given as numbers.
 """
 import json
 import os
@@ -17,8 +20,12 @@ import re
 import struct
 import sys
 
-VERB_NAMES = {1: "(inventory)", 2: "Open", 3: "Close", 4: "Give", 5: "Push", 6: "Pull", 7: "Use",
-              8: "Look at", 9: "Pick up", 10: "Talk to", 11: "Walk to", 255: "(any other verb)"}
+# Names for the game's verb numbers, from the "verbs" of a game.json; 255 is the same in every game
+VERB_NAMES = {255: "(any other verb)"}
+
+
+def load_verb_names(game_json):
+    VERB_NAMES.update({int(number): name for number, name in json.load(open(game_json, encoding="utf-8")).get("verbs", {}).items()})
 
 
 class Bad(Exception):
@@ -293,6 +300,8 @@ def read_room(data, room):
 
 def main():
     dump, out = sys.argv[1], sys.argv[2]
+    if len(sys.argv) > 3:
+        load_verb_names(sys.argv[3])
     rooms, lines, actor_info = {}, [], {}
     global_rooms = {}
     for entry in open(os.path.join(dump, "index.txt")):

@@ -46,9 +46,7 @@ static const uint32 kDoorQuestionQuietMs = 5000;
 /** How near (in pixels) a character must have been to a thing to count as having left by it. */
 static const int kLeftByDistance = 30;
 
-// In the games with a sentence line ("Walk to door") above the verbs, it is
-// a verb slot with this id and not a verb.
-static const int kSentenceLineVerb = 100;
+
 
 /** Things sharing a name get numbered from left to right. */
 static void numberDuplicates(NeuroThingList &objects, NeuroThingList &actors) {
@@ -150,8 +148,8 @@ void NeuroBridge::collectObjects(NeuroWorld &world, Common::Array<bool> &usable)
 		thing.note = _data.objectNote(world.room, od.obj_nr);
 		if (_data.relativePlaces(world.room)) {
 			// Left or right is all the game's own pointer tells apart in such a room
-			const char *where = thing.x < ego()->getPos().x ? "to Guybrush's left" : "to Guybrush's right";
-			thing.note = thing.note.empty() ? Common::String(where) : thing.note + "; " + where;
+			const Common::String where = "to " + _egoName + (thing.x < ego()->getPos().x ? "'s left" : "'s right");
+			thing.note = thing.note.empty() ? where : thing.note + "; " + where;
 		}
 		// Several objects given one name and note are one thing to her;
 		// whichever can be used stands for all
@@ -219,7 +217,8 @@ static bool inRows(const NeuroThingList &verbs) {
 void NeuroBridge::collectVerbs(NeuroWorld &world) {
 	for (int slot = 1; slot < _vm->_numVerbs; slot++) {
 		const VerbSlot &vs = _vm->_verbs[slot];
-		if (!vs.verbid || vs.verbid == kSentenceLineVerb || vs.saveid != 0 || vs.curmode != 1 || vs.type != kTextVerbType)
+		// The sentence line above the verbs can be a verb slot too
+		if (!vs.verbid || vs.verbid == _data.game().sentenceLineVerb || vs.saveid != 0 || vs.curmode != 1 || vs.type != kTextVerbType)
 			continue;
 
 		NeuroThing thing;
@@ -261,6 +260,7 @@ void NeuroBridge::collectSpots(NeuroWorld &world) {
 		thing.note = spots[i].effect;
 		world.spots.push_back(thing);
 		world.spotPositions.push_back(Common::Point(spots[i].x, spots[i].y));
+		world.spotTwice.push_back(spots[i].twice);
 	}
 
 	// A close-up of something she is reading has nothing in it; a click anywhere puts it away
@@ -271,6 +271,7 @@ void NeuroBridge::collectSpots(NeuroWorld &world) {
 		thing.name = "away (stop looking at this)";
 		world.spots.push_back(thing);
 		world.spotPositions.push_back(Common::Point(_vm->_roomWidth / 2, _vm->_roomHeight / 2));
+		world.spotTwice.push_back(false);
 	}
 }
 
@@ -528,7 +529,7 @@ Common::String NeuroBridge::describeChanges(const NeuroWorld &before, const Neur
 			continue;
 		}
 		text += Common::String::format("Now %s: %s\n", label.c_str(), changed[i].name.c_str());
-		if (label == "open")
+		if (label == (_data.game().doorOpenState.empty() ? Common::String("open") : _data.game().doorOpenState))
 			_openedDoor = changed[i].name;
 		changed.remove_at(i);
 	}
@@ -665,7 +666,7 @@ void NeuroBridge::reportChanges(const NeuroWorld &world) {
 	Common::String changes = describeChanges(_described, world, layoutChanged, comings);
 	// A room redrawn as somewhere else is told like a new room
 	if (_data.shiftingLayout(world.room) && layoutChanged) {
-		changes = "The place has changed around Guybrush.\n" + describeRoom(world, kRoomRevisit);
+		changes = "The place has changed around " + _egoName + ".\n" + describeRoom(world, kRoomRevisit);
 		comings = false;
 	}
 	if (changes.empty())
@@ -680,8 +681,9 @@ void NeuroBridge::askAboutDoor(const NeuroWorld &world, uint32 now) {
 	if (_openedDoor.empty())
 		return;
 	// Not when the opening was itself the first half of an answer
-	if (_data.doorQuestion() && _queue.empty() && now - _lastQueuedStepAt > kDoorQuestionQuietMs && !_forceActive && !world.inDialogue && world.room == _described.room)
-		ask("You opened: " + _openedDoor + ".", "Go through it?", "Open | " + _openedDoor, "Walk to | " + _openedDoor);
+	const NeuroData::Game &game = _data.game();
+	if (game.doorQuestion && !game.openVerb.empty() && _queue.empty() && now - _lastQueuedStepAt > kDoorQuestionQuietMs && !_forceActive && !world.inDialogue && world.room == _described.room)
+		ask("You opened: " + _openedDoor + ".", "Go through it?", game.openVerb + " | " + _openedDoor, _walkVerb + " | " + _openedDoor);
 	_openedDoor.clear();
 }
 
