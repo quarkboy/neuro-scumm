@@ -52,19 +52,31 @@ file, keeping its comments and everything the page does not edit.
 
 `status` and `review_note` are for reviewers only; the game ignores them.
 
-The page has three tabs:
+The page has four tabs:
 
-- **Room:** the description, object notes and actor names, as above.
+- **Room:** the description, object notes and actor names, as above, and everything
+  else a room's section can hold: other names for things, things and actors left out of
+  what she is told, voices by text colour, places to walk to (pick the point in the
+  picture), where Guybrush stands, passages, and the room's switches.
 - **Lines:** every line found in the room's scripts, with a swatch of its text colour and
   the speaker the game will report. Lines whose speaker is a guess (text printed with no
   actor, which the game calls "Narrator" unless told otherwise) can be filtered for. Click
   a line to name who says it, for that line alone or for every line in that colour, and
   to mark it as giving a new goal, finishing a goal, or being a clue for a goal. Replies to
   commands such as "Look at poster" are lines like any other.
-- **Goals and clues:** everything her journal can show, editable in one place.
+- **Goals and clues:** everything her journal can show: goals with their clues folded
+  under them, and nudges. The search box narrows the list to goals and clues that
+  mention a word.
+- **Alerts and rules:** alerts, watched variables, notes on dialogue choices, speakers
+  set for single lines, state labels, fallback actor names and the game's switches, plus
+  a list of the rooms that have settings of their own.
 
-Saving writes `[goal.*]`, `[clue.*]`, `[line.*]` sections and `voice.*` keys into the
-description file (formats: `engines/scumm/neuro/journal.h` and `data.h`).
+Every section has a box for its comment in the file. A comment saved from the page is
+written above the section.
+
+The page writes every kind of section and key the game reads (formats:
+`engines/scumm/neuro/journal.h` and `data.h`). It does not reorder the file, rename a
+section, or edit the headings between groups of sections.
 
 ## Reading the game's logic: `disasm.py`
 

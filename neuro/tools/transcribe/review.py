@@ -9,7 +9,10 @@ into the description file, keeping its comments and the order of everything else
 If EXTRACT_DIR also holds lines.json (made by lines.py from a script dump), the page
 gets a Lines view: every line the game's scripts can say, with its speaker and text
 colour, where a reviewer names speakers and marks lines as starting or finishing a goal
-or as a clue for one. Those marks are saved as [goal.*], [clue.*] and [line.*] sections.
+or as a clue for one.
+
+Two more views cover the rest of the file: goals, clues and nudges; and alerts, watches,
+notes on dialogue lines, single-line speakers and the global sections.
 
 Only listens on 127.0.0.1. Open http://127.0.0.1:PORT/ (8070 unless given).
 """
@@ -24,10 +27,14 @@ EXTRACT_DIR = os.path.abspath(sys.argv[1])
 INI_FILE = os.path.abspath(sys.argv[2])
 PORT = int(sys.argv[3]) if len(sys.argv) > 3 else 8070
 
-# Keys the page edits; anything else in a room's section (spots, voices) is kept as it is
-ROOM_KEYS = ("name", "description", "status", "review_note")
 SECTION = re.compile(r"^\s*\[([^\]]+)\]\s*$")
 KEY = re.compile(r"^\s*([^=;#\s][^=]*?)\s*=\s*(.*)$")
+# Sections that are one of a kind, and the prefixes of those that come in numbers
+SINGLE = ("states", "game", "actors")
+LISTS = {"goal": "goals", "clue": "clues", "line": "lines", "nudge": "nudges",
+         "alert": "alerts", "watch": "watches", "linenote": "linenotes"}
+SAFE_SECTION = re.compile(r"(room\d+|(%s)\.[\w-]+|%s)" % ("|".join(LISTS), "|".join(SINGLE)))
+SAFE_KEY = re.compile(r"[^\s=\[\]#;][^=\[\]#\r\n]*")
 
 
 def read_ini():
@@ -45,6 +52,26 @@ def read_ini():
     return blocks
 
 
+def write_ini(blocks):
+    text = "\n".join(line for _, lines in blocks for line in lines).rstrip("\n") + "\n"
+    with open(INI_FILE + ".tmp", "w", encoding="utf-8") as f:
+        f.write(text)
+    os.replace(INI_FILE + ".tmp", INI_FILE)
+
+
+def is_comment(line):
+    return line.lstrip().startswith(";")
+
+
+def split_tail(block):
+    """A block's own lines, and the comment lines ending it, which belong to the next section."""
+    name, lines = block
+    start = len(lines)
+    while start > (0 if name is None else 1) and is_comment(lines[start - 1]):
+        start -= 1
+    return lines[:start], lines[start:]
+
+
 def section_keys(lines):
     keys = {}
     for line in lines[1:]:
@@ -54,138 +81,116 @@ def section_keys(lines):
     return keys
 
 
-def room_info(blocks, room):
-    for name, lines in blocks:
-        if name == f"room{room}":
-            return section_keys(lines)
-    return {}
+def keys_end(own):
+    """Where a section's keys stop; a heading for the sections after it may follow."""
+    return max((i + 1 for i, line in enumerate(own) if i and KEY.match(line)), default=1)
 
 
-def save_room(room, fields):
-    """Rewrites one [roomN] section with the page's fields, keeping everything else."""
+def comment_of(blocks, index):
+    """The comment written above a section and any among its keys, as plain text."""
+    own, _ = split_tail(blocks[index])
+    lines = split_tail(blocks[index - 1])[1] + [line for line in own[1:keys_end(own)] if is_comment(line)]
+    return "\n".join(re.sub(r"^\s*; ?", "", line) for line in lines).strip()
+
+
+def kind_of(section):
+    return "room" if re.fullmatch(r"room\d+", section) else section.split(".")[0]
+
+
+def update_section(section, changes, delete=False, blank=(), comment=None):
+    """Sets keys of one section (None or "" removes one), creating it if needed; or deletes it.
+
+    A key named in blank is written with an empty value instead of being removed.
+    A comment, when given, replaces the one above the section and any among its keys.
+    """
+    if not SAFE_SECTION.fullmatch(section):
+        raise ValueError(f"section {section!r} is not one this page edits")
+    clean = {}
+    for key, value in changes.items():
+        if not SAFE_KEY.fullmatch(key) or key != key.strip():
+            raise ValueError(f"bad key {key!r}")
+        value = None if value is None else " ".join(str(value).split())
+        clean[key] = "" if (not value and key in blank) else (value or None)
+    line_for = lambda key, value: f"{key} = {value}".rstrip()
+
     blocks = read_ini()
-    wanted = {}
-    for key in ROOM_KEYS:
-        value = " ".join(str(fields.get(key, "")).split())
-        if value:
-            wanted[key] = value
-    for kind in ("object", "actor"):
-        for thing_id, value in (fields.get(kind + "s") or {}).items():
-            value = " ".join(str(value).split())
-            if value:
-                wanted[f"{kind}.{int(thing_id)}"] = value
-    edited = set(ROOM_KEYS)
-    edited.update(f"object.{int(i)}" for i in (fields.get("objects") or {}))
-    edited.update(f"actor.{int(i)}" for i in (fields.get("actors") or {}))
-
-    section = f"room{room}"
-    for index, (name, lines) in enumerate(blocks):
-        if name != section:
-            continue
-        kept = [lines[0]]
-        for line in lines[1:]:
+    index = next((i for i, (name, _) in enumerate(blocks) if name == section), None)
+    if index is None:
+        if delete:
+            return
+        # A new section goes after the last one of its kind, so the file stays grouped
+        kind = kind_of(section)
+        last = max((i for i, (name, _) in enumerate(blocks) if name and kind_of(name) == kind), default=len(blocks) - 1)
+        before, tail = split_tail(blocks[last])
+        if before and before[-1].strip():
+            before.append("")
+        blocks[last] = (blocks[last][0], before)
+        index = last + 1
+        lines = [f"[{section}]"] + [line_for(k, v) for k, v in clean.items() if v is not None] + [""]
+        blocks.insert(index, (section, lines + tail))
+    elif delete:
+        before, _ = split_tail(blocks[index - 1])
+        own, tail = split_tail(blocks[index])
+        rest = own[keys_end(own):]
+        while rest and before and not rest[0].strip() and not before[-1].strip():
+            rest = rest[1:]
+        blocks[index - 1] = (blocks[index - 1][0], before + rest + tail)
+        del blocks[index]
+        write_ini(blocks)
+        return
+    else:
+        own, tail = split_tail(blocks[index])
+        kept = [own[0]]
+        for line in own[1:]:
             m = KEY.match(line)
-            if m and m.group(1) in edited:
-                if m.group(1) in wanted:
-                    kept.append(f"{m.group(1)} = {wanted.pop(m.group(1))}")
+            if m and m.group(1) in clean:
+                value = clean.pop(m.group(1))
+                if value is not None:
+                    kept.append(line_for(m.group(1), value))
                 continue
             kept.append(line)
         # New keys go after the last key line, before any trailing blank lines
         insert = len(kept)
         while insert > 1 and not kept[insert - 1].strip():
             insert -= 1
-        kept[insert:insert] = [f"{k} = {v}" for k, v in wanted.items()]
-        blocks[index] = (name, kept)
-        break
-    else:
-        lines = [f"[{section}]"] + [f"{k} = {v}" for k, v in wanted.items()] + [""]
-        if blocks[-1][1] and blocks[-1][1][-1].strip():
-            blocks[-1][1].append("")
-        blocks.append((section, lines))
+        kept[insert:insert] = [line_for(k, v) for k, v in clean.items() if v is not None]
+        blocks[index] = (section, kept + tail)
 
-    text = "\n".join(line for _, lines in blocks for line in lines).rstrip("\n") + "\n"
-    with open(INI_FILE + ".tmp", "w", encoding="utf-8") as f:
-        f.write(text)
-    os.replace(INI_FILE + ".tmp", INI_FILE)
-
-
-SAFE_SECTION = re.compile(r"(room\d+|goal\.[\w-]+|clue\.[\w-]+|line\.[\w-]+)")
-SAFE_KEY = re.compile(r"[\w. -]+")
-
-
-def update_section(section, changes, delete=False):
-    """Sets (or with None removes) keys of one section, creating it if needed; or deletes it."""
-    if not SAFE_SECTION.fullmatch(section):
-        raise ValueError(f"section {section!r} is not one this page edits")
-    clean = {}
-    for key, value in changes.items():
-        if not SAFE_KEY.fullmatch(key):
-            raise ValueError(f"bad key {key!r}")
-        clean[key] = None if value is None else " ".join(str(value).split())
-    blocks = read_ini()
-    for index, (name, lines) in enumerate(blocks):
-        if name != section:
-            continue
-        if delete:
-            del blocks[index]
-            break
-        kept = [lines[0]]
-        for line in lines[1:]:
-            m = KEY.match(line)
-            if m and m.group(1) in clean:
-                value = clean.pop(m.group(1))
-                if value:
-                    kept.append(f"{m.group(1)} = {value}")
-                continue
-            kept.append(line)
-        insert = len(kept)
-        while insert > 1 and not kept[insert - 1].strip():
-            insert -= 1
-        kept[insert:insert] = [f"{k} = {v}" for k, v in clean.items() if v]
-        blocks[index] = (name, kept)
-        break
-    else:
-        if delete:
-            return
-        lines = [f"[{section}]"] + [f"{k} = {v}" for k, v in clean.items() if v] + [""]
-        # New sections go after the last one of their kind, so the file stays grouped
-        kind = section.split(".")[0] if "." in section else "room"
-        last = max((i for i, (name, _) in enumerate(blocks) if name and (name.split(".")[0] if "." in name else "room") == kind), default=None)
-        if last is None:
-            if blocks[-1][1] and blocks[-1][1][-1].strip():
-                blocks[-1][1].append("")
-            blocks.append((section, lines))
-        else:
-            if blocks[last][1] and blocks[last][1][-1].strip():
-                blocks[last][1].append("")
-            blocks.insert(last + 1, (section, lines))
-    text = "\n".join(line for _, lines in blocks for line in lines).rstrip("\n") + "\n"
-    with open(INI_FILE + ".tmp", "w", encoding="utf-8") as f:
-        f.write(text)
-    os.replace(INI_FILE + ".tmp", INI_FILE)
+    if comment is not None:
+        before, _ = split_tail(blocks[index - 1])
+        wanted = ["; " + line.strip() for line in str(comment).splitlines() if line.strip()]
+        if wanted and before and before[-1].strip():
+            before.append("")
+        blocks[index - 1] = (blocks[index - 1][0], before + wanted)
+        own, tail = split_tail(blocks[index])
+        end = keys_end(own)
+        blocks[index] = (section, [own[0]] + [line for line in own[1:end] if not is_comment(line)] + own[end:] + tail)
+    write_ini(blocks)
 
 
 def journal():
-    """The goal, clue and line sections, and each room's voice and actor names."""
-    out = {"goals": [], "clues": [], "lines": [], "rooms": {}}
-    for name, lines in read_ini():
+    """Every section that is not a room, grouped by kind, and each room's keys."""
+    out = {name: [] for name in LISTS.values()}
+    out.update({name: {"keys": {}, "comment": ""} for name in SINGLE})
+    out["rooms"] = {}
+    blocks = read_ini()
+    for index, (name, lines) in enumerate(blocks):
         if not name:
             continue
-        keys = section_keys(lines)
-        if name.startswith("goal."):
-            out["goals"].append({"id": name[5:], **keys})
-        elif name.startswith("clue."):
-            out["clues"].append({"id": name[5:], **keys})
-        elif name.startswith("line."):
-            out["lines"].append({"id": name[5:], **keys})
+        keys = section_keys(split_tail(blocks[index])[0])
+        kind, _, ident = name.partition(".")
+        if kind in LISTS and ident:
+            out[LISTS[kind]].append({**keys, "id": ident, "_comment": comment_of(blocks, index)})
+        elif name in SINGLE:
+            out[name] = {"keys": keys, "comment": comment_of(blocks, index)}
         elif re.fullmatch(r"room\d+", name):
-            out["rooms"][name[4:]] = {"name": keys.get("name", ""),
-                                      **{k: v for k, v in keys.items() if k.startswith(("voice.", "actor."))}}
+            out["rooms"][name[4:]] = keys
     return out
 
 
 def rooms():
     blocks = read_ini()
+    found = {name: index for index, (name, _) in enumerate(blocks) if name}
     out = []
     for file in sorted(os.listdir(EXTRACT_DIR)):
         m = re.fullmatch(r"room(\d+)\.json", file)
@@ -193,16 +198,10 @@ def rooms():
             continue
         with open(os.path.join(EXTRACT_DIR, file), encoding="utf-8") as f:
             room = json.load(f)
-        info = room_info(blocks, room["room"])
+        index = found.get(f"room{room['room']}")
         room["ini"] = {
-            "name": info.get("name", ""),
-            "description": info.get("description", ""),
-            "status": info.get("status", ""),
-            "review_note": info.get("review_note", ""),
-            "objects": {k.split(".", 1)[1]: v for k, v in info.items() if k.startswith("object.")},
-            "actors": {k.split(".", 1)[1]: v for k, v in info.items() if k.startswith("actor.")},
-            "other": {k: v for k, v in info.items()
-                      if k not in ROOM_KEYS and not k.startswith(("object.", "actor."))},
+            "keys": section_keys(split_tail(blocks[index])[0]) if index is not None else {},
+            "comment": comment_of(blocks, index) if index is not None else "",
         }
         room["image"] = f"img/{file[:-5]}.png"
         out.append(room)
@@ -241,13 +240,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         fields = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)))
-        m = re.fullmatch(r"/api/room/(\d+)", self.path)
         try:
-            if m:
-                save_room(int(m.group(1)), fields)
-            elif self.path == "/api/section":
-                # {"section": "clue.flower", "set": {"goal": "idol", ...}} or {"section": ..., "delete": true}
-                update_section(fields["section"], fields.get("set") or {}, bool(fields.get("delete")))
+            if self.path == "/api/section":
+                # {"section": "clue.flower", "set": {"goal": "idol", ...}, "blank": [...], "comment": "..."}
+                # or {"section": ..., "delete": true}
+                update_section(fields["section"], fields.get("set") or {}, bool(fields.get("delete")),
+                               fields.get("blank") or (), fields.get("comment"))
             else:
                 self._send(404, b"not found", "text/plain")
                 return

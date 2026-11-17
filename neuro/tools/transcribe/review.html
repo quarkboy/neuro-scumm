@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Room Review</title>
+<title>Description Review</title>
 <style>
 :root {
 	--bg: #f6f5f2; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6a66; --line: #dddbd5;
@@ -98,8 +98,48 @@ button.danger { color: #c62828; }
 .editor { grid-column: 1 / -1; padding: 10px 10px 14px; border: 1px solid var(--line); border-top: 0; background: var(--panel); margin-bottom: 6px; display: grid; gap: 12px; cursor: default; }
 .editor h4 { margin: 0; font-size: 13px; }
 .editor .pair { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: end; }
+.pair { display: flex; gap: 6px; align-items: end; } .pair > label, .pair > span, .pair > input { flex: 1; min-width: 0; } .pair > select { max-width: 48%; }
 .card { border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: var(--panel); display: grid; gap: 8px; margin-bottom: 8px; }
 .card .head { display: flex; justify-content: space-between; align-items: center; font-weight: 600; }
+
+.editor .pair > span, .trigger { min-width: 0; }
+
+/* Folding lists */
+.searchbar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; position: sticky; top: 38px; z-index: 2; background: var(--bg); padding: 8px 0; }
+.searchbar input[type=search] { flex: 1; min-width: 160px; }
+.searchbar .count { color: var(--muted); font-size: 12px; flex-basis: 100%; }
+details.fold { border: 1px solid var(--line); border-radius: 6px; background: var(--panel); margin-bottom: 5px; }
+details.fold > summary { cursor: pointer; padding: 6px 10px; display: flex; gap: 8px; align-items: baseline; list-style: none; }
+details.fold > summary::-webkit-details-marker { display: none; }
+details.fold > summary::before { content: "▸"; color: var(--muted); flex: none; }
+details.fold[open] > summary::before { content: "▾"; }
+details.fold[open] > summary { border-bottom: 1px solid var(--line); }
+details.fold > summary:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+summary .what { font-weight: 600; flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+summary .gist { color: var(--muted); font-size: 12px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+summary .tag { flex: none; font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 9px; padding: 0 7px; white-space: nowrap; }
+summary .tag.goal { color: var(--goal); border-color: var(--goal); } summary .tag.clue { color: var(--clue); border-color: var(--clue); }
+.foldbody { padding: 10px; display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr); }
+.foldbody details.fold { background: var(--bg); margin-bottom: 0; }
+.foldbody h4 { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+.fields { display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr); }
+.fields .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; align-items: end; }
+.help { color: var(--muted); font-size: 12px; margin: 2px 0 8px; }
+.addrow { display: flex; gap: 6px; margin: 6px 0 4px; } .addrow input { max-width: 260px; }
+.rows { display: grid; gap: 4px; } .rows .r { display: flex; gap: 4px; align-items: center; } .rows .r > * { min-width: 0; }
+.rows .heads { font-size: 11px; color: var(--muted); }
+.roomrow { display: flex; gap: 8px; align-items: baseline; padding: 4px 6px; border-bottom: 1px solid var(--line); cursor: pointer; flex-wrap: wrap; }
+.roomrow:hover { background: var(--panel); }
+.chip { font-size: 11px; border-radius: 9px; padding: 0 7px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+details.group { border-top: 1px solid var(--line); padding-top: 6px; }
+details.group > summary { cursor: pointer; font-weight: 600; font-size: 14px; padding: 2px 0; }
+details.group > summary .n { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 6px; }
+details.group > .inner { display: grid; gap: 8px; padding: 6px 0 4px; }
+th { font-size: 11px; color: var(--muted); font-weight: 400; }
+td.tick { width: 2.4em; text-align: center; }
+.spot { fill: #4fd0b8; stroke: #000; stroke-width: 1; vector-effect: non-scaling-stroke; pointer-events: all; }
+.picking, .picking * { cursor: crosshair !important; }
+#toast { position: fixed; bottom: 18px; right: 18px; background: var(--ok); color: #fff; padding: 7px 14px; border-radius: 6px; display: none; z-index: 9; font-weight: 600; }
 
 @media (max-width: 1000px) {
 	body { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; height: auto; }
@@ -118,14 +158,19 @@ button.danger { color: #c62828; }
 	<div id="view"><p>Loading…</p></div>
 </main>
 <div id="tooltip"></div>
+<div id="toast"></div>
 <script>
 const STATUSES = ["", "draft", "needs-work", "checked"];
 const STATUS_LABEL = { "": "not written", draft: "draft", "needs-work": "needs work", checked: "checked" };
 const EGA = ["#000000", "#0000aa", "#00aa00", "#00aaaa", "#aa0000", "#aa00aa", "#aa5500", "#aaaaaa", "#555555", "#5555ff", "#55ff55", "#55ffff", "#ff5555", "#ff55ff", "#ffff55", "#ffffff"];
-let rooms = [], roomById = new Map(), lineRooms = {}, lines = [], journal = { goals: [], clues: [], lines: [], rooms: {} };
+const EMPTY_JOURNAL = { goals: [], clues: [], lines: [], nudges: [], alerts: [], watches: [], linenotes: [], rooms: {},
+	states: { keys: {}, comment: "" }, game: { keys: {}, comment: "" }, actors: { keys: {}, comment: "" } };
+let rooms = [], roomById = new Map(), lineRooms = {}, lines = [], journal = EMPTY_JOURNAL;
 let roomIds = [], current = 0, filter = "all", zoom = "fit", showHidden = false, view = "room";
 let lineFilter = { search: "", kind: "say", unattributed: false, marked: false }, openLine = null;
-const tooltip = document.getElementById("tooltip");
+let picking = null;
+const openFolds = new Set(), journalSearch = { q: "" }, otherSearch = { q: "" };
+const tooltip = document.getElementById("tooltip"), toast = document.getElementById("toast");
 
 function el(tag, attrs = {}, ...children) {
 	const node = document.createElement(tag);
@@ -134,7 +179,7 @@ function el(tag, attrs = {}, ...children) {
 		else if (k === "value" && tag !== "option") node.value = v ?? "";
 		else if (v !== false && v != null) node.setAttribute(k, v === true ? "" : v);
 	}
-	node.append(...children.filter(c => c !== null && c !== undefined && c !== ""));
+	node.append(...children.flat().filter(c => c !== null && c !== undefined && c !== "" && c !== false));
 	return node;
 }
 function svgEl(tag, attrs) {
@@ -147,17 +192,66 @@ async function post(url, body) {
 	if (!res.ok) alert("Save failed: " + (await res.text()));
 	return res.ok;
 }
-const saveSection = (section, set) => post("api/section", { section, set });
+const saveSection = (section, set, more = {}) => post("api/section", { section, set, ...more });
 const deleteSection = section => post("api/section", { section, delete: true });
+let toastTimer;
+function flash(text) {
+	toast.textContent = text; toast.style.display = "block";
+	clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.style.display = "none", 1800);
+}
 
-async function load() {
-	const [r, l, j] = await Promise.all([fetch("api/rooms"), fetch("api/lines"), fetch("api/journal")]);
+/** A room's section, sorted into the kinds of key the page edits. */
+const ROOM_PLAIN = ["name", "description", "status", "review_note", "prompt", "layout", "relative", "comings", "passages"];
+function parseRoom({ keys, comment }) {
+	const ini = { keys, comment, objects: {}, names: {}, actors: {}, voices: [], spots: [], standing: [], other: {} };
+	for (const key of ROOM_PLAIN) ini[key] = keys[key] || "";
+	for (const [k, v] of Object.entries(keys)) {
+		let m;
+		if (ROOM_PLAIN.includes(k)) continue;
+		if ((m = /^object\.(\d+)$/.exec(k))) ini.objects[m[1]] = v;
+		else if ((m = /^name\.(\d+)$/.exec(k))) ini.names[m[1]] = v;
+		else if ((m = /^actor\.(\d+)$/.exec(k))) ini.actors[m[1]] = v;
+		else if ((m = /^voice\.(?:(\d+)\.)?(\d+)$/.exec(k))) ini.voices.push({ color: m[2], actor: m[1] || "", name: v });
+		else if (k.startsWith("spot.")) {
+			const bar = v.indexOf("|"), [x, y] = (bar < 0 ? v : v.slice(0, bar)).split(",");
+			ini.spots.push({ name: k.slice(5), x: (x || "").trim(), y: (y || "").trim(), text: bar < 0 ? "" : v.slice(bar + 1).trim() });
+		} else if (k.startsWith("standing.")) {
+			const bar = v.indexOf("|");
+			ini.standing.push({ name: k.slice(9), boxes: (bar < 0 ? v : v.slice(0, bar)).trim(), text: bar < 0 ? "" : v.slice(bar + 1).trim() });
+		} else ini.other[k] = v;
+	}
+	return ini;
+}
+/** What is unusual about a room's section, as short labels. */
+function roomExtras(keys) {
+	const count = test => Object.entries(keys).filter(([k, v]) => test(k, v)).length, out = [];
+	const add = (n, one, many) => { if (n) out.push(n === 1 ? one : `${n} ${many}`); };
+	add(count((k, v) => /^name\.\d+$/.test(k) && !v), "1 thing hidden", "things hidden");
+	add(count((k, v) => /^name\.\d+$/.test(k) && v), "1 thing renamed", "things renamed");
+	add(count((k, v) => /^actor\.\d+$/.test(k) && !v), "1 actor hidden", "actors hidden");
+	add(count(k => k.startsWith("voice.")), "1 voice", "voices");
+	add(count(k => k.startsWith("spot.")), "1 place to walk to", "places to walk to");
+	add(count(k => k.startsWith("standing.")), "1 standing place", "standing places");
+	if (keys.passages) out.push("passages");
+	if (keys.prompt) out.push("own dialogue prompt");
+	if (keys.layout) out.push(`layout: ${keys.layout}`);
+	if (keys.relative) out.push("left/right of Guybrush");
+	if (keys.comings) out.push(`comings: ${keys.comings}`);
+	return out;
+}
+
+async function fetchAll() {
+	const [r, j] = await Promise.all([fetch("api/rooms"), fetch("api/journal")]);
 	rooms = await r.json();
+	rooms.forEach(room => room.ini = parseRoom(room.ini));
+	roomById = new Map(rooms.map(room => [room.room, room]));
+	journal = { ...EMPTY_JOURNAL, ...(await j.json()) };
+}
+async function load() {
+	const [, l] = await Promise.all([fetchAll(), fetch("api/lines")]);
 	const lineData = await l.json();
-	journal = await j.json();
 	lineRooms = lineData.rooms; lines = lineData.lines;
 	lines.forEach((line, i) => line.index = i);
-	roomById = new Map(rooms.map(room => [room.room, room]));
 	const ids = new Set([...rooms.map(room => room.room), ...Object.keys(lineRooms).map(Number)]);
 	if (lines.some(line => line.room === 0)) ids.add(0);
 	roomIds = [...ids].sort((a, b) => a - b);
@@ -165,7 +259,7 @@ async function load() {
 	current = roomIds.includes(fromHash) ? fromHash : (roomIds.find(id => id > 0) ?? 0);
 	renderFilters(); renderList(); render();
 }
-async function reloadJournal() { journal = await (await fetch("api/journal")).json(); }
+async function reloadJournal() { journal = { ...EMPTY_JOURNAL, ...(await (await fetch("api/journal")).json()) }; }
 
 function roomName(id) {
 	if (id === 0) return "Scripts used everywhere";
@@ -187,9 +281,10 @@ function renderList() {
 		el("span", { class: "label" }, roomName(id) || "—"))));
 	document.querySelector("nav button.current")?.scrollIntoView({ block: "nearest" });
 }
-function go(id) {
+function go(id, toView) {
 	if (!roomIds.includes(id)) return;
-	current = id; openLine = null;
+	current = id; openLine = null; picking = null;
+	if (toView) view = toView;
 	history.replaceState(null, "", "#" + id);
 	renderList(); render();
 }
@@ -200,10 +295,13 @@ function step(delta) {
 
 function render() {
 	const counts = lines.filter(line => line.room === current && line.op === "say").length;
-	document.getElementById("tabs").replaceChildren(...[["room", "Room"], ["lines", `Lines (${counts})`], ["journal", `Goals and clues (${journal.goals.length + journal.clues.length})`]]
-		.map(([key, label]) => el("button", { class: view === key ? "on" : "", onclick: () => { view = key; render(); } }, label)));
+	const others = journal.alerts.length + journal.watches.length + journal.linenotes.length + journal.lines.length;
+	const tabs = [["room", "Room"], ["lines", `Lines (${counts})`],
+		["journal", `Goals and clues (${journal.goals.length + journal.clues.length})`], ["other", `Alerts and rules (${others})`]];
+	document.getElementById("tabs").replaceChildren(...tabs.map(([key, label]) =>
+		el("button", { class: view === key ? "on" : "", onclick: () => { view = key; render(); } }, label)));
 	renderPicture();
-	if (view === "room") renderRoom(); else if (view === "lines") renderLines(); else renderJournal();
+	({ room: renderRoom, lines: renderLines, journal: renderJournal, other: renderOther })[view]();
 }
 
 /* ---------- picture ---------- */
@@ -220,22 +318,26 @@ function hover(node, key, text) {
 	node.addEventListener("mouseleave", () => { highlight(key, false); tooltip.style.display = "none"; });
 	node.addEventListener("click", () => { if (view !== "room") { view = "room"; render(); } focusEntry(key); });
 }
+function shownObjects(r) {
+	return r.objects.filter(o => showHidden || (o.name && !o.untouchable) || o.id in r.ini.objects || o.id in r.ini.names);
+}
 function renderPicture() {
 	const pane = document.getElementById("picturePane"), r = roomById.get(current);
+	pane.classList.toggle("picking", !!picking);
 	if (!r) {
 		pane.replaceChildren(el("div", { class: "nopicture" }, current === 0
 			? "These scripts are not tied to one room: Guybrush's stock replies, the inventory, and scenes that run in several places."
 			: "No picture was captured for this room."));
 		return;
 	}
-	const objects = r.objects.filter(o => showHidden || (o.name && !o.untouchable));
 	const fit = zoom === "fit";
 	const frame = el("div", { class: "frame" + (fit ? " fit" : "") });
 	const img = el("img", { src: r.image, alt: `Room ${r.room}`, ...(fit ? {} : { width: r.width * zoom, height: r.height * zoom }) });
 	const svg = svgEl("svg", { viewBox: `0 0 ${r.width} ${r.height}`, preserveAspectRatio: "none" });
-	for (const o of [...objects].sort((a, b) => b.w * b.h - a.w * a.h)) {
-		const box = svgEl("rect", { x: o.x, y: o.y, width: Math.max(o.w, 2), height: Math.max(o.h, 2), class: "box" + (o.untouchable ? " hidden" : ""), "data-thing": "o" + o.id });
-		hover(box, "o" + o.id, `${o.name || "(no name)"} · object ${o.id}`);
+	for (const o of [...shownObjects(r)].sort((a, b) => b.w * b.h - a.w * a.h)) {
+		const hidden = o.untouchable || r.ini.names[o.id] === "";
+		const box = svgEl("rect", { x: o.x, y: o.y, width: Math.max(o.w, 2), height: Math.max(o.h, 2), class: "box" + (hidden ? " hidden" : ""), "data-thing": "o" + o.id });
+		hover(box, "o" + o.id, `${r.ini.names[o.id] || o.name || "(no name)"} · object ${o.id}${r.ini.names[o.id] === "" ? " · hidden from her" : ""}`);
 		svg.append(box);
 	}
 	for (const a of r.actors) {
@@ -243,51 +345,179 @@ function renderPicture() {
 		hover(dot, "a" + a.id, `${r.ini.actors[a.id] || a.name || "(no name)"} · actor ${a.id}`);
 		svg.append(dot);
 	}
+	for (const s of r.ini.spots) {
+		const x = +s.x, y = +s.y;
+		if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+		const mark = svgEl("polygon", { points: `${x},${y - 5} ${x + 5},${y} ${x},${y + 5} ${x - 5},${y}`, class: "spot" });
+		mark.addEventListener("mouseenter", () => { tooltip.textContent = `${s.name} · a place she can walk to (${s.x},${s.y})`; tooltip.style.display = "block"; });
+		mark.addEventListener("mousemove", e => { tooltip.style.left = e.clientX + 12 + "px"; tooltip.style.top = e.clientY + 12 + "px"; });
+		mark.addEventListener("mouseleave", () => tooltip.style.display = "none");
+		svg.append(mark);
+	}
 	frame.append(img, svg);
+	// Choosing a point for a place to walk to: the next click on the picture gives its coordinates
+	frame.addEventListener("click", e => {
+		if (!picking) return;
+		e.stopPropagation();
+		const b = img.getBoundingClientRect();
+		picking.x.value = Math.round((e.clientX - b.left) / b.width * r.width);
+		picking.y.value = Math.round((e.clientY - b.top) / b.height * r.height);
+		picking = null; pane.classList.remove("picking");
+	}, true);
 	const zoomButton = z => el("button", { class: "small" + (z === zoom ? " on" : ""), type: "button", onclick: () => { zoom = z; renderPicture(); } }, z === "fit" ? "fit" : `${z}×`);
 	pane.replaceChildren(el("div", { class: "toolbar" }, ...["fit", 2, 3, 4].map(zoomButton),
-		el("button", { class: "small" + (showHidden ? " on" : ""), type: "button", onclick: () => { showHidden = !showHidden; render(); } }, "untouchable"),
+		el("button", { class: "small" + (showHidden ? " on" : ""), type: "button", title: "Also show things with no name and things the game does not let her touch", onclick: () => { showHidden = !showHidden; render(); } }, "untouchable"),
 		el("span", { class: "info" }, `${r.width}×${r.height}`)), frame);
+}
+
+/* ---------- editable rows ---------- */
+/** A small table of rows that can be added and removed; read() gives the rows as objects. */
+function rowsEditor(columns, rows, addLabel, extra) {
+	const box = el("div", { class: "rows" });
+	const style = c => `flex:${c.grow || 1} 1 ${c.width || "60px"}`;
+	const list = el("div", { class: "rows" });
+	const addRow = row => {
+		const inputs = Object.fromEntries(columns.map(c => [c.key, el("input", { value: row[c.key] || "", placeholder: c.placeholder || "", style: style(c), title: c.label })]));
+		const line = el("div", { class: "r" }, ...columns.map(c => inputs[c.key]), extra ? extra(inputs) : "",
+			el("button", { class: "small danger", type: "button", title: "remove this row", onclick: () => line.remove() }, "×"));
+		line.read = () => Object.fromEntries(columns.map(c => [c.key, inputs[c.key].value.trim()]));
+		list.append(line);
+	};
+	rows.forEach(addRow);
+	box.append(el("div", { class: "r heads" }, ...columns.map(c => el("span", { style: style(c) }, c.label)), el("span", { style: `flex:none;width:${extra ? 76 : 26}px` })),
+		list, el("div", {}, el("button", { class: "small", type: "button", onclick: () => addRow({}) }, addLabel)));
+	box.read = () => [...list.children].map(line => line.read());
+	return box;
+}
+function group(title, count, ...nodes) {
+	return el("details", { class: "group", open: count > 0 }, el("summary", {}, title, count ? el("span", { class: "n" }, count) : ""), el("div", { class: "inner" }, ...nodes));
 }
 
 /* ---------- room ---------- */
 function renderRoom() {
 	const r = roomById.get(current), main = document.getElementById("view");
 	if (!r) { main.replaceChildren(el("h1", {}, current === 0 ? "Scripts used everywhere" : `Room ${current}`), el("p", { class: "sub" }, "Nothing to describe here; see the Lines tab.")); return; }
-	const ini = r.ini, objects = r.objects.filter(o => showHidden || (o.name && !o.untouchable));
-	const field = (key, labelText, tag = "input") => el("label", {}, labelText, tag === "textarea" ? el("textarea", { name: key }, ini[key]) : el("input", { name: key, value: ini[key] }));
+	const ini = r.ini;
+	const field = (key, labelText, tag = "input", hint) => el("label", {}, labelText,
+		tag === "textarea" ? el("textarea", { name: key, class: hint === "short" ? "short" : null }, ini[key]) : el("input", { name: key, value: ini[key], placeholder: hint || "" }));
 	const status = el("select", { name: "status" }, ...STATUSES.map(s => el("option", { value: s, selected: (ini.status || "") === s }, STATUS_LABEL[s])));
 	const rowEvents = key => ({ "data-thing": key, onmouseenter: () => highlight(key, true), onmouseleave: () => highlight(key, false) });
-	const objectRows = objects.filter(o => o.name).map(o => el("tr", { class: o.untouchable ? "hidden" : "", ...rowEvents("o" + o.id) },
-		el("td", { class: "id" }, o.id), el("td", { class: "name" }, o.name + (o.state ? ` (state ${o.state})` : "")),
-		el("td", {}, el("input", { id: "o" + o.id, "data-object": o.id, value: ini.objects[o.id] || "", placeholder: "note after the name" }))));
-	const actorRows = r.actors.map(a => el("tr", rowEvents("a" + a.id),
-		el("td", { class: "id" }, a.id), el("td", { class: "name" }, (a.name || "—") + ` (costume ${a.costume})`),
-		el("td", {}, el("input", { id: "a" + a.id, "data-actor": a.id, value: ini.actors[a.id] || "", placeholder: "name; leading - = speaker only" }))));
+
+	// Things: what the capture found, and anything else the file already mentions
+	const byId = new Map(r.objects.map(o => [String(o.id), o]));
+	const objectRow = id => {
+		const o = byId.get(String(id)), hidden = ini.names[id] === "";
+		return el("tr", { class: o?.untouchable ? "hidden" : "", "data-oid": id, ...rowEvents("o" + id) },
+			el("td", { class: "id" }, id),
+			el("td", { class: "name" }, o ? (o.name || "(no name)") + (o.state ? ` (state ${o.state})` : "") : el("span", { class: "note" }, "not in the capture")),
+			el("td", {}, el("input", { class: "rename", value: ini.names[id] || "", placeholder: "same" })),
+			el("td", { class: "tick" }, el("input", { type: "checkbox", class: "hide", checked: hidden, title: "Leave this thing out of what she is told" })),
+			el("td", {}, el("input", { id: "o" + id, class: "notefield", value: ini.objects[id] || "", placeholder: "note after the name" })));
+	};
+	const objectIds = [...new Set([...shownObjects(r).map(o => String(o.id)), ...Object.keys(ini.objects), ...Object.keys(ini.names)])].sort((a, b) => a - b);
+	const objectTable = el("table", {}, el("tr", {}, el("th", {}, "id"), el("th", {}, "in the game"), el("th", {}, "call it"), el("th", {}, "hide"), el("th", {}, "note")), ...objectIds.map(objectRow));
+	const captured = new Map(r.actors.map(a => [String(a.id), a]));
+	const actorRow = id => {
+		const a = captured.get(String(id)), hidden = id in ini.actors && ini.actors[id] === "";
+		return el("tr", { "data-aid": id, ...rowEvents("a" + id) },
+			el("td", { class: "id" }, id),
+			el("td", { class: "name" }, a ? (a.name || "—") + ` (costume ${a.costume})` : el("span", { class: "note" }, "not in the capture")),
+			el("td", {}, el("input", { id: "a" + id, class: "actorname", value: ini.actors[id] || "", placeholder: "name; leading - = speaker only" })),
+			el("td", { class: "tick" }, el("input", { type: "checkbox", class: "hide", checked: hidden, title: "Leave this actor out of what she is told" })));
+	};
+	const actorIds = [...new Set([...captured.keys(), ...Object.keys(ini.actors)])].sort((a, b) => a - b);
+	const actorTable = el("table", {}, el("tr", {}, el("th", {}, "id"), el("th", {}, "in the game"), el("th", {}, "name"), el("th", {}, "hide")), ...actorIds.map(actorRow));
+	const rowAdder = (table, makeRow, attr, what) => {
+		const id = el("input", { placeholder: `${what} number`, inputmode: "numeric" });
+		return el("div", { class: "addrow" }, id, el("button", { class: "small", type: "button", onclick: () => {
+			const n = parseInt(id.value);
+			if (!n || table.querySelector(`tr[${attr}="${n}"]`)) return;
+			table.append(makeRow(String(n))); id.value = "";
+		} }, `Add a row for another ${what}`));
+	};
+
+	const palette = lineRooms[current]?.palette || EGA;
+	const voices = rowsEditor([{ key: "color", label: "text colour", width: "50px" }, { key: "actor", label: "actor (blank: none)", width: "70px" }, { key: "name", label: "who is speaking (- drops the text)", grow: 4, width: "120px" }],
+		ini.voices, "+ voice", inputs => {
+			const swatch = el("span", { class: "swatch", style: "flex:none" });
+			const paint = () => { const c = parseInt(inputs.color.value); swatch.style.background = Number.isFinite(c) ? (palette[c] || EGA[c % 16]) : "none"; };
+			inputs.color.addEventListener("input", paint); paint();
+			return swatch;
+		});
+	const spots = rowsEditor([{ key: "name", label: "name she uses", grow: 2, width: "90px" }, { key: "x", label: "x", width: "38px" }, { key: "y", label: "y", width: "38px" }, { key: "text", label: "what she sees on getting there (optional)", grow: 4, width: "120px" }],
+		ini.spots, "+ place", inputs => el("button", { class: "small", type: "button", title: "Then click the spot in the picture", onclick: () => {
+			picking = { x: inputs.x, y: inputs.y }; document.getElementById("picturePane").classList.add("picking");
+		} }, "pick"));
+	const standing = rowsEditor([{ key: "name", label: "label", width: "70px" }, { key: "boxes", label: "walk boxes", width: "70px" }, { key: "text", label: "what she is told while Guybrush stands there", grow: 5, width: "140px" }],
+		ini.standing, "+ part of the room");
+	const check = (key, on, text) => el("label", { class: "inline" }, el("input", { type: "checkbox", "data-switch": key, "data-on": on, checked: ini[key].toLowerCase() === on }), text);
+	const names = id => { const o = byId.get(id); return o ? `${id} ${ini.names[id] || o.name}` : `${id} (not in the capture)`; };
+	const passageHint = el("div", { class: "note" });
+	const passages = el("input", { name: "passages", value: ini.passages, placeholder: "object numbers, e.g. 436 435", oninput: () => showPassages() });
+	const showPassages = () => passageHint.textContent = passages.value.trim() ? passages.value.trim().split(/[ ,]+/).map(names).join(" · ") : "";
+	showPassages();
+	const alerts = journal.alerts.filter(a => +a.room === current);
+	const comment = el("textarea", { class: "short", rows: ini.comment.split("\n").length + 1 }, ini.comment);
+
 	const saved = el("span", { class: "saved" });
-	const form = el("form", { class: "stack", onsubmit: e => { e.preventDefault(); saveRoom(form, saved); } },
+	const form = el("form", { class: "stack", onsubmit: e => { e.preventDefault(); saveRoom(form, { voices, spots, standing, comment }); } },
 		el("div", { class: "row" }, field("name", "Room name"), el("label", {}, "Status", status)),
 		field("description", "Description (what is on screen; no solutions)", "textarea"),
 		field("review_note", "Reviewer note (not shown to her)"),
-		el("h3", {}, "Objects"), objectRows.length ? el("table", {}, ...objectRows) : el("p", { class: "note" }, "No named objects."),
-		el("h3", {}, "Actors"), actorRows.length ? el("table", {}, ...actorRows) : el("p", { class: "note" }, "None in this room when it was captured."),
-		Object.keys(ini.other).length ? el("div", { class: "other" }, "Also in the file (not edited here):\n" + Object.entries(ini.other).map(([k, v]) => `${k} = ${v}`).join("\n")) : "",
+		el("h3", {}, "Things"), objectIds.length ? objectTable : el("p", { class: "note" }, "No named objects."),
+		rowAdder(objectTable, objectRow, "data-oid", "object"),
+		el("h3", {}, "Actors"), actorIds.length ? actorTable : el("p", { class: "note" }, "None in this room when it was captured."),
+		rowAdder(actorTable, actorRow, "data-aid", "actor"),
+		group("Voices", ini.voices.length, el("div", { class: "help" }, "Who is speaking when text of a colour appears: with no actor (a dog in the scenery, someone off screen), or from one actor who stands in for several people."), voices),
+		group("Places to walk to", ini.spots.length, el("div", { class: "help" }, "Places with no object that she can walk to by name. They show as green diamonds in the picture."), spots),
+		group("Where Guybrush stands", ini.standing.length, el("div", { class: "help" }, "For a room with parts that do not connect on foot. She is told the text while he stands in one of the walk boxes, and again when he reaches another part."), standing),
+		group("How the room behaves", (ini.prompt ? 1 : 0) + (ini.layout ? 1 : 0) + (ini.relative ? 1 : 0) + (ini.comings ? 1 : 0) + (ini.passages ? 1 : 0),
+			field("prompt", "What she is asked when picking a line here (blank: \"Pick a line to say.\")", "textarea", "short"),
+			check("layout", "shifting", "The room is redrawn as a new place without being left; list it afresh when things change"),
+			check("relative", "yes", "Say whether each thing is to the left or the right of Guybrush"),
+			check("comings", "quiet", "Characters wander in and out all the time here; do not report each one"),
+			el("label", {}, "Passages: things that bring a part of a wide room into view when walked to", passages), passageHint),
+		alerts.length ? el("div", {}, el("h3", {}, "Alerts in this room"), ...alerts.map(a => el("div", { class: "roomrow", onclick: () => { openFolds.add("alert." + a.id); view = "other"; render(); } },
+			el("strong", {}, a.id), el("span", { class: "chip" }, a.when || ""), el("span", { class: "note" }, a.ask || a.say || "")))) : "",
+		Object.keys(ini.other).length ? el("div", { class: "other" }, "Also in the file (keys this page does not know):\n" + Object.entries(ini.other).map(([k, v]) => `${k} = ${v}`).join("\n")) : "",
+		el("label", {}, "Comments in the file for this room (not shown to her)", comment),
 		el("div", { class: "savebar" }, el("button", { class: "primary", type: "submit" }, "Save"), saved, el("span", { class: "note" }, "ctrl+s save · j/k next/previous room")));
 	main.replaceChildren(el("h1", {}, `Room ${r.room}${ini.name ? ": " + ini.name : ""}`),
-		el("div", { class: "sub" }, `${r.objects.filter(o => o.name && !o.untouchable).length} usable objects · ${r.actors.length} actors${r.stayed ? "" : " · the game left this room while it was captured"}`), form);
+		el("div", { class: "sub" }, `${r.objects.filter(o => o.name && !o.untouchable).length} usable objects · ${r.actors.length} actors${roomExtras(ini.keys).map(t => " · " + t).join("")}${r.stayed ? "" : " · the game left this room while it was captured"}`), form);
 }
-async function saveRoom(form, saved) {
-	const r = roomById.get(current), data = Object.fromEntries(new FormData(form));
-	data.objects = {}; data.actors = {};
-	form.querySelectorAll("[data-object]").forEach(i => data.objects[i.dataset.object] = i.value);
-	form.querySelectorAll("[data-actor]").forEach(i => data.actors[i.dataset.actor] = i.value);
-	if (!await post(`api/room/${r.room}`, data)) return;
-	Object.assign(r.ini, { name: data.name, description: data.description, status: data.status, review_note: data.review_note });
-	for (const [k, v] of Object.entries(data.objects)) v ? r.ini.objects[k] = v : delete r.ini.objects[k];
-	for (const [k, v] of Object.entries(data.actors)) v ? r.ini.actors[k] = v : delete r.ini.actors[k];
-	await reloadJournal();
-	saved.textContent = "Saved";
-	renderFilters(); renderList();
+async function saveRoom(form, parts) {
+	const r = roomById.get(current), ini = r.ini, set = {}, blank = [];
+	const data = Object.fromEntries(new FormData(form));
+	for (const key of ["name", "description", "status", "review_note", "prompt", "passages"]) set[key] = (data[key] || "").trim() || null;
+	form.querySelectorAll("[data-switch]").forEach(box => {
+		// A value the page has no box for (written by hand) is left alone unless the box is ticked
+		const key = box.dataset.switch, known = !ini[key] || ini[key].toLowerCase() === box.dataset.on;
+		if (box.checked) set[key] = box.dataset.on; else if (known) set[key] = null;
+	});
+	form.querySelectorAll("tr[data-oid]").forEach(tr => {
+		const id = tr.dataset.oid;
+		set[`object.${id}`] = tr.querySelector(".notefield").value.trim() || null;
+		if (tr.querySelector(".hide").checked) { set[`name.${id}`] = ""; blank.push(`name.${id}`); }
+		else set[`name.${id}`] = tr.querySelector(".rename").value.trim() || null;
+	});
+	form.querySelectorAll("tr[data-aid]").forEach(tr => {
+		const id = tr.dataset.aid;
+		if (tr.querySelector(".hide").checked) { set[`actor.${id}`] = ""; blank.push(`actor.${id}`); }
+		else set[`actor.${id}`] = tr.querySelector(".actorname").value.trim() || null;
+	});
+	// Rows that can be removed: clear every key of the kind, then write the rows that are left
+	for (const key of Object.keys(ini.keys)) if (/^(voice|spot|standing)\./.test(key)) set[key] = null;
+	for (const v of parts.voices.read()) if (v.color && v.name) set[v.actor ? `voice.${v.actor}.${v.color}` : `voice.${v.color}`] = v.name;
+	for (const s of parts.spots.read()) if (s.name && s.x && s.y) set[`spot.${s.name}`] = `${s.x},${s.y}` + (s.text ? ` | ${s.text}` : "");
+	for (const s of parts.standing.read()) if (s.name && s.boxes) set[`standing.${s.name}`] = `${s.boxes} | ${s.text}`;
+	const more = { blank };
+	if (parts.comment.value.trim() !== ini.comment) more.comment = parts.comment.value;
+	if (!await saveSection(`room${r.room}`, set, more)) return;
+	const top = document.querySelector("main").scrollTop;
+	await fetchAll();
+	renderFilters(); renderList(); render();
+	document.querySelector("main").scrollTop = top;
+	flash("Saved");
 }
 
 /* ---------- lines ---------- */
@@ -543,52 +773,231 @@ function triggerEditor(value) {
 	Object.defineProperty(box, "value", { get: () => [...rows.children].map(r => r.read()).filter(Boolean).join(" | ") });
 	return box;
 }
-function card(title, section, fields, values) {
-	const inputs = {};
-	const saved = el("span", { class: "saved" });
-	const body = fields.map(([key, label, kind]) => {
-		if (kind === "triggers") {
-			inputs[key] = triggerEditor(values[key]);
-			return el("div", { style: "margin-top:6px" }, el("div", { class: "note", style: "font-style:normal" }, label), inputs[key]);
-		}
-		if (kind === "goal") {
-			const ids = journal.goals.map(g => g.id);
-			inputs[key] = el("select", {}, ...(ids.includes(values[key]) ? ids : [values[key] || "", ...ids]).map(id => el("option", { value: id }, id)));
-			inputs[key].value = values[key] || "";
-			return el("label", {}, label, inputs[key]);
-		}
-		inputs[key] = kind === "area" ? el("textarea", { class: "short" }, values[key] || "") : el("input", { value: values[key] || "" });
-		return el("label", {}, label, inputs[key]);
+/* ---------- folding lists ---------- */
+/** A row that opens to show more; its body is only built when first opened. */
+function fold(key, summary, build, forced) {
+	const body = el("div", { class: "foldbody" });
+	const node = el("details", { class: "fold" }, el("summary", {}, ...summary), body);
+	const fill = () => { if (!body.childNodes.length) body.append(...[build()].flat().filter(Boolean)); };
+	// Opened by a search, not by hand: do not remember it as open
+	let quiet = forced && !openFolds.has(key);
+	if (forced || openFolds.has(key)) { node.open = true; fill(); }
+	node.addEventListener("toggle", () => {
+		if (quiet) { quiet = false; if (node.open) return; }
+		if (node.open) { openFolds.add(key); fill(); } else openFolds.delete(key);
 	});
-	return el("div", { class: "card" }, el("div", { class: "head" }, el("span", {}, title),
-			el("button", { class: "small danger", type: "button", onclick: async () => { if (confirm(`Delete ${section}?`) && await deleteSection(section)) { await reloadJournal(); render(); } } }, "delete")),
-		...body,
-		el("div", { class: "savebar" }, el("button", { class: "primary", type: "button", onclick: async () => {
-			const set = Object.fromEntries(fields.map(([key]) => [key, inputs[key].value.trim() || null]));
-			if (await saveSection(section, set)) { await reloadJournal(); saved.textContent = "Saved"; }
-		} }, "Save"), saved));
+	return node;
 }
+const hit = (item, q) => !q || Object.values(item).some(v => String(v).toLowerCase().includes(q));
+const what = text => el("span", { class: "what" }, text);
+const gist = text => el("span", { class: "gist", title: text || "" }, text || "");
+const tag = (text, cls = "") => el("span", { class: "tag " + cls }, text);
+function searchBar(state, placeholder, draw, keys) {
+	const count = el("span", { class: "count" });
+	const bar = el("div", { class: "searchbar" },
+		el("input", { type: "search", placeholder, value: state.q, oninput: e => { state.q = e.target.value; draw(); } }),
+		el("button", { class: "small", type: "button", onclick: () => { keys().forEach(k => openFolds.add(k)); draw(); } }, "expand all"),
+		el("button", { class: "small", type: "button", onclick: () => { keys().forEach(k => openFolds.delete(k)); draw(); } }, "collapse all"), count);
+	bar.count = text => count.textContent = text;
+	return bar;
+}
+
+/* ---------- one section as a form ---------- */
+const ALERT_WHEN = [["arrived", "a character arrives, named"], ["left", "a character leaves, named"], ["appeared", "a thing appears, named"],
+	["disappeared", "a thing disappears, named"], ["gained", "she gains an item named"], ["lost", "she loses an item named"], ["entered", "she walks into the room"]];
+function roomOptions(first) {
+	return [el("option", { value: "" }, first), ...Object.entries(journal.rooms).sort((a, b) => a[0] - b[0]).map(([n, r]) => el("option", { value: n }, `${n} ${r.name || ""}`))];
+}
+/** The input for one key of a section: a node, and get() for the value to write. */
+function control(kind, value, extra) {
+	value = value || "";
+	if (kind === "triggers") { const box = triggerEditor(value); return { node: box, get: () => box.value }; }
+	if (kind === "when") {
+		const m = /^(\w+)\s*:\s*(.*)$/.exec(value), known = m && ALERT_WHEN.some(([k]) => k === m[1].toLowerCase());
+		const start = value.toLowerCase() === "entered" ? "entered" : known ? m[1].toLowerCase() : value ? "other" : "arrived";
+		const pick = el("select", { style: "width:auto" }, ...ALERT_WHEN.map(([k, label]) => el("option", { value: k }, label)), start === "other" ? el("option", { value: "other" }, "other (as written)") : "");
+		const text = el("input", { value: start === "other" ? value : known ? m[2] : "", placeholder: "part of the name; start with = for the exact name" });
+		pick.value = start;
+		const show = () => text.style.display = pick.value === "entered" ? "none" : "";
+		pick.addEventListener("change", show); show();
+		return { node: el("div", { class: "pair" }, pick, text), get: () => pick.value === "entered" ? "entered" : pick.value === "other" ? text.value : text.value.trim() ? `${pick.value}: ${text.value.trim()}` : "" };
+	}
+	let node;
+	if (kind === "area") node = el("textarea", { class: "short" }, value);
+	else if (kind === "goal" || kind === "room" || kind === "select") {
+		const options = kind === "goal" ? journal.goals.map(g => el("option", { value: g.id }, g.title ? `${g.id}: ${g.title}` : g.id))
+			: kind === "room" ? roomOptions("(any room)") : extra.map(([v, label]) => el("option", { value: v }, label));
+		node = el("select", {}, ...options);
+		if (![...node.options].some(o => o.value === value)) node.prepend(el("option", { value }, value || "(none)"));
+		node.value = value;
+	} else node = el("input", { value, placeholder: extra || "", ...(kind === "num" ? { inputmode: "numeric" } : {}) });
+	return { node, get: () => node.value };
+}
+/** Fields are [key, label, kind, extra]; kinds "num" and "select" of a few values share a row. */
+function card(section, fields, values, { comment = values._comment, keep = false } = {}) {
+	const controls = {}, rows = [];
+	let narrow = [];
+	const flush = () => { if (narrow.length) rows.push(el("div", { class: "cols" }, ...narrow)); narrow = []; };
+	for (const [key, label, kind, extra] of fields) {
+		const c = controls[key] = control(kind, values[key], extra);
+		if (kind === "num" || kind === "select") { narrow.push(el("label", {}, label, c.node)); continue; }
+		flush();
+		rows.push(kind === "triggers" || kind === "when" ? el("div", {}, el("div", { class: "note", style: "font-style:normal;font-weight:600" }, label), c.node) : el("label", {}, label, c.node));
+	}
+	flush();
+	const note = el("textarea", { class: "short", rows: (comment || "").split("\n").length + 1, placeholder: "A note for people editing the file; she never sees it" }, comment || "");
+	const redraw = async text => { await reloadJournal(); render(); flash(text); };
+	return el("div", { class: "fields" }, ...rows, el("label", {}, "Comment in the file", note),
+		el("div", { class: "savebar" }, el("button", { class: "primary", type: "button", onclick: async () => {
+			const set = Object.fromEntries(fields.map(([key]) => [key, controls[key].get().trim() || null]));
+			const more = note.value.trim() !== (comment || "") ? { comment: note.value } : {};
+			if (await saveSection(section, set, more)) redraw("Saved");
+		} }, "Save"), keep ? "" : el("button", { class: "small danger", type: "button", onclick: async () => {
+			if (confirm(`Delete [${section}] from the file?`) && await deleteSection(section)) redraw("Deleted");
+		} }, "delete"), el("span", { class: "note" }, `[${section}]`)));
+}
+function adder(placeholder, label, make) {
+	const id = el("input", { placeholder });
+	const add = async () => {
+		const clean = id.value.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-|-$/g, "");
+		if (!clean) return;
+		const [section, set] = make(clean);
+		openFolds.add(section);
+		if (await saveSection(section, set)) { await reloadJournal(); render(); }
+	};
+	id.addEventListener("keydown", e => { if (e.key === "Enter") add(); });
+	return el("div", { class: "addrow" }, id, el("button", { class: "small", type: "button", onclick: add }, label));
+}
+const triggerGist = value => (value || "").split(" | ").map(t => t.trim()).filter(Boolean).join("  ·  ");
+
+/* ---------- goals, clues and nudges ---------- */
+const GOAL_FIELDS = [["title", "Short title (the words she uses to ask for its clues)"], ["text", "The goal, as she reads it", "area"], ["start", "Appears when (nothing: there from the beginning)", "triggers"], ["done", "Finished when", "triggers"]];
+const CLUE_FIELDS = [["goal", "Goal", "goal"], ["text", "The clue", "area"], ["when", "Noted when", "triggers"]];
+const NUDGE_FIELDS = [["when", "Suggest writing a note when", "triggers"], ["say", "Wording (blank: just says it may be worth a note)", "area"]];
 function renderJournal() {
-	const goals = journal.goals.filter(g => !g.id.startsWith("nudge"));
-	const newGoal = el("input", { placeholder: "id for a new goal" });
+	const list = el("div");
+	const clueFold = c => fold("clue." + c.id, [tag("clue", "clue"), gist(c.text), tag(triggerGist(c.when).slice(0, 40) || "no trigger")], () => card("clue." + c.id, CLUE_FIELDS, c));
+	const keys = () => [...journal.goals.flatMap(g => ["goal." + g.id, "goalself." + g.id]), ...journal.clues.map(c => "clue." + c.id), ...journal.nudges.map(n => "nudge." + n.id)];
+	const bar = searchBar(journalSearch, "Search goals, clues and nudges: any word in the text, a trigger or an id", () => draw(), keys);
+	function draw() {
+		const q = journalSearch.q.trim().toLowerCase(), out = [];
+		let goals = 0, clues = 0;
+		for (const g of journal.goals) {
+			const mine = journal.clues.filter(c => c.goal === g.id), whole = hit(g, q);
+			const shown = whole ? mine : mine.filter(c => hit(c, q));
+			if (!whole && !shown.length) continue;
+			goals++; clues += shown.length;
+			out.push(fold("goal." + g.id, [what(g.title || g.id), gist(g.text), tag(shown.length === mine.length ? `${mine.length} clue${mine.length === 1 ? "" : "s"}` : `${shown.length} of ${mine.length} clues`, "goal")], () => [
+				fold("goalself." + g.id, [tag("goal", "goal"), gist(g.text), tag(g.start ? triggerGist(g.start).slice(0, 40) : "from the beginning")], () => card("goal." + g.id, GOAL_FIELDS, g)),
+				el("h4", {}, shown.length === mine.length ? `Clues for this goal (${mine.length})` : `Clues matching the search (${shown.length} of ${mine.length})`),
+				...shown.map(clueFold),
+				adder("id for a new clue, e.g. " + g.id + "-where", "Add a clue", id => ["clue." + id, { goal: g.id, text: "(write the clue)" }]),
+			], !!q && !whole));
+		}
+		const stray = journal.clues.filter(c => !journal.goals.some(g => g.id === c.goal) && hit(c, q));
+		const nudges = journal.nudges.filter(n => hit(n, q));
+		list.replaceChildren(
+			el("h3", {}, `Goals (${journal.goals.length})`), ...out, out.length ? "" : el("p", { class: "note" }, "No goal or clue matches."),
+			q ? "" : adder("id for a new goal, e.g. poodles", "Add a goal", id => ["goal." + id, { text: "(describe this goal)" }]),
+			stray.length ? el("h3", {}, `Clues whose goal does not exist (${stray.length})`) : "", ...stray.map(clueFold),
+			el("h3", {}, `Nudges (${journal.nudges.length})`),
+			el("div", { class: "help" }, "Lines that matter much later. She is told once that it may be worth a note; what she writes is up to her."),
+			...nudges.map(n => fold("nudge." + n.id, [what(n.id), gist(triggerGist(n.when))], () => card("nudge." + n.id, NUDGE_FIELDS, n))),
+			q ? "" : adder("id for a new nudge", "Add a nudge", id => ["nudge." + id, { when: "heard: (words from the line)" }]));
+		bar.count(q ? `Showing ${goals} of ${journal.goals.length} goals, ${clues + stray.length} of ${journal.clues.length} clues, ${nudges.length} of ${journal.nudges.length} nudges` : "");
+	}
+	draw();
 	document.getElementById("view").replaceChildren(
 		el("h1", {}, "Goals and clues"),
-		el("div", { class: "sub" }, "What her journal can show. A goal appears when any of its \"appears when\" triggers happens and is ticked off by any of its \"finished when\" triggers; a clue is noted under its goal when one of its triggers happens."),
-		el("h3", {}, `Goals (${goals.length})`),
-		...goals.map(g => el("div", {}, card(g.id, "goal." + g.id, [["title", "Short title (optional)"], ["text", "The goal, as she reads it", "area"], ["start", "Appears when", "triggers"], ["done", "Finished when", "triggers"]], g),
-			...journal.clues.filter(c => c.goal === g.id).map(c => el("div", { style: "margin-left:22px" }, card("clue: " + c.id, "clue." + c.id, [["goal", "Goal", "goal"], ["text", "The clue", "area"], ["when", "Noted when", "triggers"]], c))))),
-		el("div", { class: "pair" }, newGoal, el("button", { class: "primary", type: "button", onclick: async () => {
-			const id = newGoal.value.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-");
-			if (id && await saveSection("goal." + id, { text: "(describe this goal)" })) { await reloadJournal(); render(); }
-		} }, "Add goal")),
-		el("h3", {}, "Clues whose goal does not exist"),
-		...journal.clues.filter(c => !journal.goals.some(g => g.id === c.goal)).map(c => card("clue: " + c.id, "clue." + c.id, [["goal", "Goal", "goal"], ["text", "The clue", "area"], ["when", "Noted when", "triggers"]], c)),
-		el("h3", {}, `Speakers set for single lines (${journal.lines.length})`),
-		...journal.lines.map(l => card(l.speaker || "(none)", "line." + l.id, [["speaker", "Speaker (- drops the line)"], ["text", "The line, exactly"]], l)));
+		el("div", { class: "sub" }, "What her journal can show. A goal appears when any of its \"appears when\" triggers happens and is ticked off by any of its \"finished when\" triggers; a clue is noted under its goal when one of its triggers happens. Click a row to open it."),
+		bar, list);
+}
+
+/* ---------- alerts and the other rules ---------- */
+const PRIORITIES = [["", "(not set)"], ["low", "low"], ["medium", "medium"], ["high", "high"], ["critical", "critical"]];
+const KINDS = [
+	{ list: "alerts", prefix: "alert", title: "Alerts", add: "an alert",
+		help: "Moments she must not miss. An alert with a question is sent as a forced yes/no; yes carries out the command at once. One without a question only tells her what happened. In the text, {exit} is where a character who left was last seen, {varN} a game variable, {pickN: one | two} the text for its value.",
+		fields: [["room", "Room", "room"], ["when", "When", "when"],
+			["say", "What a player watching would have just seen", "area"], ["ask", "The yes/no question (blank: only tell her)"],
+			["do", "On yes, do", "", "VERB | TARGET | SECOND TARGET"], ["then", "Then at once", "", "VERB | TARGET | SECOND TARGET"],
+			["priority", "Priority", "select", PRIORITIES], ["lead", "Seconds after the moment to act", "num"], ["hold", "Game timer variable to hold", "num"],
+			["while", "Only while this game script runs", "", "script N"]],
+		summary: a => [what(a.id), tag(a.room ? `${a.room} ${journal.rooms[a.room]?.name || ""}` : "any room"), gist(`${a.when || ""}${a.ask ? "  ·  " + a.ask : "  ·  tells her only"}`)],
+		fresh: () => ({ when: "entered", say: "(what she is told)" }) },
+	{ list: "watches", prefix: "watch", title: "Watched variables", add: "a watch",
+		help: "Things the game shows only as animation and keeps as a number. She is told the text when the variable changes; {value} is the new value.",
+		fields: [["var", "Game variable", "num"], ["change", "Speak", "select", [["", "when it goes up"], ["any", "on any change"]]], ["say", "What she is told", "area"]],
+		summary: w => [what(w.id), tag(`variable ${w.var || "?"}`), gist(w.say)],
+		fresh: () => ({ say: "(what she is told)" }) },
+	{ list: "linenotes", prefix: "linenote", title: "Notes on dialogue choices", add: "a note on choices",
+		help: "Marks some of the lines she can pick from with a heading (insults she has not heard the comeback to). The numbers come from the game's scripts.",
+		fields: [["note", "Heading she sees"], ["while", "While this game script runs", "", "script N"], ["first_verb", "First verb slot", "num"], ["slot_var", "Variable of the first slot", "num"],
+			["min", "Lowest value", "num"], ["max", "Highest value", "num"], ["unless_bit", "Skip if this bit is set (first value's bit)", "num"]],
+		summary: n => [what(n.id), gist(n.note)],
+		fresh: () => ({ note: "(heading)" }) },
+	{ list: "lines", prefix: "line", title: "Speakers set for single lines", add: "a line",
+		help: "For a line whose speaker neither the actor nor the text colour settles. These are usually made from the Lines tab.",
+		fields: [["speaker", "Speaker (- drops the line)"], ["text", "The line, exactly as it is sent"]],
+		summary: l => [what(l.speaker === "-" ? "(dropped)" : l.speaker || "(none)"), gist(l.text)],
+		fresh: () => ({ speaker: "-", text: "(the line)" }) },
+];
+/** A whole section of free keys and values ([states], [actors]). */
+function pairsCard(section, data, keyLabel, valueLabel) {
+	const rows = rowsEditor([{ key: "key", label: keyLabel, width: "110px" }, { key: "value", label: valueLabel, grow: 2, width: "140px" }],
+		Object.entries(data.keys).map(([key, value]) => ({ key, value })), "+ row");
+	const note = el("textarea", { class: "short" }, data.comment);
+	return el("div", { class: "fields" }, rows, el("label", {}, "Comment in the file", note), el("div", { class: "savebar" }, el("button", { class: "primary", type: "button", onclick: async () => {
+		const set = Object.fromEntries(Object.keys(data.keys).map(k => [k, null]));
+		for (const row of rows.read()) if (row.key && row.value) set[row.key] = row.value;
+		const more = note.value.trim() !== data.comment ? { comment: note.value } : {};
+		if (await saveSection(section, set, more)) { await reloadJournal(); render(); flash("Saved"); }
+	} }, "Save"), el("span", { class: "note" }, `[${section}]`)));
+}
+function renderOther() {
+	const list = el("div");
+	const keys = () => [...KINDS.flatMap(k => journal[k.list].map(item => `${k.prefix}.${item.id}`)), "states", "actors", "game", "roomextras"];
+	const bar = searchBar(otherSearch, "Search alerts and rules: any word in the text, a room number or an id", () => draw(), keys);
+	function draw() {
+		const q = otherSearch.q.trim().toLowerCase(), out = [];
+		let shownCount = 0, total = 0;
+		for (const kind of KINDS) {
+			const all = journal[kind.list], shown = all.filter(item => hit(item, q));
+			total += all.length; shownCount += shown.length;
+			if (q && !shown.length) continue;
+			out.push(el("h3", {}, `${kind.title} (${all.length})`), el("div", { class: "help" }, kind.help),
+				...shown.map(item => fold(`${kind.prefix}.${item.id}`, kind.summary(item), () => card(`${kind.prefix}.${item.id}`, kind.fields, item))),
+				q ? "" : adder(`id for ${kind.add}`, `Add ${kind.add}`, id => [`${kind.prefix}.${id}`, kind.fresh()]));
+		}
+		if (!q) {
+			const special = Object.entries(journal.rooms).map(([n, keys]) => [n, keys, roomExtras(keys)]).filter(([, , extras]) => extras.length).sort((a, b) => a[0] - b[0]);
+			out.push(el("h3", {}, "For the whole game"),
+				fold("states", [what("State labels"), gist(Object.keys(journal.states.keys).join(", ")), tag(`${Object.keys(journal.states.keys).length}`)], () => [
+					el("div", { class: "help" }, "For things whose look tells her something: a label for each state the game keeps for a thing of that name, in order from state 0 (door = closed, open)."),
+					pairsCard("states", journal.states, "thing's name", "labels, separated by commas")]),
+				fold("actors", [what("Names for unnamed actors"), gist(Object.entries(journal.actors.keys).map(([k, v]) => `${k} ${v}`).join(", ")), tag(`${Object.keys(journal.actors.keys).length}`)], () => [
+					el("div", { class: "help" }, "Used in any room whose own section does not name the actor."),
+					pairsCard("actors", journal.actors, "actor number", "name")]),
+				fold("game", [what("Switches"), gist(Object.entries(journal.game.keys).map(([k, v]) => `${k} = ${v}`).join(", ") || "all as usual")], () =>
+					card("game", [["door_question", "After she opens a door", "select", [["", "ask \"Go through it?\""], ["no", "do not ask"]]]], journal.game.keys, { comment: journal.game.comment, keep: true })),
+				fold("roomextras", [what("Rooms with settings of their own"), gist("voices, hidden things, places to walk to and the like"), tag(`${special.length}`)], () => [
+					el("div", { class: "help" }, "Everything here is edited on the room's own tab; click a room to go there."),
+					...special.map(([n, keys, extras]) => el("div", { class: "roomrow", onclick: () => go(+n, "room") },
+						el("span", { class: "num" }, n), el("strong", {}, keys.name || "—"), ...extras.map(text => el("span", { class: "chip" }, text))))]));
+		}
+		list.replaceChildren(...out, out.length ? "" : el("p", { class: "note" }, "Nothing matches."));
+		bar.count(q ? `Showing ${shownCount} of ${total}` : "");
+	}
+	draw();
+	document.getElementById("view").replaceChildren(
+		el("h1", {}, "Alerts and rules"),
+		el("div", { class: "sub" }, "The parts of the description file that are not about one room's text: timed questions, things put into words, and settings for the whole game."),
+		bar, list);
 }
 
 document.addEventListener("keydown", e => {
 	if ((e.ctrlKey || e.metaKey) && e.key === "s") { e.preventDefault(); document.querySelector("form")?.requestSubmit(); return; }
+	if (e.key === "Escape" && picking) { picking = null; document.getElementById("picturePane").classList.remove("picking"); }
 	if (e.target.matches("input, textarea, select")) return;
 	if (e.key === "j") step(1);
 	if (e.key === "k") step(-1);
