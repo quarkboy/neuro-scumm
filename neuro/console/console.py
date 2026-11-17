@@ -268,6 +268,7 @@ class Console:
         self.startup = None         # the game's startup message, replayed on every server connection
         self.actions = {}           # her registered actions, by name
         self.force = None           # the last actions/force not yet answered
+        self.pending_actions = {}   # forwarded action id -> normalized name
         self.backlog = []           # context sent while no server was connected
         self.hold = False
 
@@ -495,6 +496,7 @@ class Console:
         if self.game is not None:
             self.game.close()
         self.game = ws
+        self.pending_actions.clear()
         self.actions, self.force, self.backlog, self.startup = {}, None, [], None
         self.view = self.empty_view()
         self.event("console", "link", "The game connected")
@@ -540,6 +542,7 @@ class Console:
             return
 
         if command == "startup":
+            self.pending_actions.clear()
             self.game_name = message.get("game", "")
             self.startup = message
             self.actions, self.force = {}, None
@@ -571,11 +574,12 @@ class Console:
             view["speech"] = None
         elif command == "action/result":
             ok = bool(data.get("success"))
-            if ok:
+            name = self.pending_actions.pop(data.get("id"), None)
+            passive = name in ("read_journal", "add_note", "wait")
+            if ok and name and self.force and (not passive or name in self.force["data"]["action_names"]):
                 self.force = None
-                if view["state"] == "thinking":
-                    view["state"] = "acting"
-                    view["question"], view["lines"] = "", {}
+                view["state"] = "acting"
+                view["question"], view["lines"] = "", {}
             self.event("to_neuro", "result", ("OK" if ok else "Refused") +
                        (": " + data["message"] if data.get("message") else ""), message)
 
@@ -640,7 +644,8 @@ class Console:
             return
         if command == "action":
             name = data.get("name", "")
-            if name.strip().lower().replace("-", "_").replace(" ", "_").startswith("debug_"):
+            normalized = name.strip().lower().replace("-", "_").replace(" ", "_")
+            if normalized.startswith("debug_"):
                 # Those are this console's and the developer's; the server has no business sending one
                 self.to_upstream({"command": "action/result", "game": self.game_name,
                                   "data": {"id": data.get("id", ""), "success": False, "message": "Unknown action."}})
@@ -653,7 +658,10 @@ class Console:
                                            "message": "The game is paused for a moment."}})
                 return
             self.view["now"] = said
-            self.view["state"] = "acting"
+            if self.force is None:
+                self.view["state"] = "acting"
+            if self.game is not None:
+                self.pending_actions[data.get("id")] = normalized
         if self.game is not None:
             self.game.send(text)
 
