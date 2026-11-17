@@ -90,6 +90,12 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 	if (ego()->isInCurrentRoom())
 		world.standing = _data.standing(world.room, ego()->_walkbox);
 
+	for (const auto &rule : _data.scenery(world.room)) {
+		const int i = _vm->getObjectIndex(rule.object);
+		if (i > 0 && _vm->_objs[i].state == rule.state)
+			world.scenery.push_back(rule.text);
+	}
+
 	// Things that cannot be used right now still take part in numbering, so
 	// that "door 2" stays "door 2" when door 1 becomes unusable.
 	Common::Array<bool> usable;
@@ -114,6 +120,19 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 	noteLines(world);
 }
 
+bool NeuroBridge::usableRoomObject(int index) const {
+	const int id = _vm->_objs[index].obj_nr;
+	if (untouchable(id) || _vm->whereIsObject(id) != WIO_ROOM)
+		return false;
+	while (_vm->_objs[index].parent) {
+		const byte required = _vm->_objs[index].parentstate;
+		index = _vm->_objs[index].parent;
+		if ((_vm->_objs[index].state & 0xF) != required)
+			return false;
+	}
+	return true;
+}
+
 void NeuroBridge::collectObjects(NeuroWorld &world, Common::Array<bool> &usable) {
 	for (int i = 1; i < _vm->_numLocalObjects; i++) {
 		const ObjectData &od = _vm->_objs[i];
@@ -122,25 +141,12 @@ void NeuroBridge::collectObjects(NeuroWorld &world, Common::Array<bool> &usable)
 		// Scripts park what a screen does not use beyond the edge of the room
 		if (od.x_pos >= _vm->_roomWidth || od.x_pos + od.width <= 0)
 			continue;
-		const bool available = !untouchable(od.obj_nr) && _vm->whereIsObject(od.obj_nr) == WIO_ROOM;
-
-		// Same test as findObject(): an object nested in another one only
-		// exists while each parent is in the required state.
-		bool reachable = false;
-		int b = i;
-		byte a;
-		do {
-			a = _vm->_objs[b].parentstate;
-			b = _vm->_objs[b].parent;
-			if (b == 0) {
-				reachable = true;
-				break;
-			}
-		} while ((_vm->_objs[b].state & 0xF) == a);
+		const bool available = usableRoomObject(i);
 
 		NeuroThing thing;
 		thing.id = od.obj_nr;
 		thing.x = od.x_pos + od.width / 2;
+		thing.y = od.y_pos + od.height / 2;
 		thing.state = od.state;
 		const bool renamed = _data.objectName(world.room, od.obj_nr, thing.name);
 		if (!renamed)
@@ -158,7 +164,7 @@ void NeuroBridge::collectObjects(NeuroWorld &world, Common::Array<bool> &usable)
 			if (world.objects[j].name != thing.name || world.objects[j].note != thing.note)
 				continue;
 			merged = true;
-			if (!usable[j] && available && reachable) {
+			if (!usable[j] && available) {
 				world.objects[j] = thing;
 				usable[j] = true;
 			}
@@ -167,7 +173,7 @@ void NeuroBridge::collectObjects(NeuroWorld &world, Common::Array<bool> &usable)
 			continue;
 		if (!thing.name.empty()) {
 			world.objects.push_back(thing);
-			usable.push_back(available && reachable);
+			usable.push_back(available);
 		}
 	}
 }
@@ -365,6 +371,8 @@ Common::String NeuroBridge::describeRoom(const NeuroWorld &world, RoomDetail det
 	if (detail == kRoomFirstVisit && !description.empty())
 		text += description + "\n\n";
 
+	for (const auto &sentence : world.scenery)
+		text += sentence + "\n\n";
 	if (!world.standing.empty())
 		text += world.standing + "\n\n";
 	text += "- Things: " + joinDescribed(world.objects, _data) + "\n";
@@ -496,6 +504,13 @@ Common::String NeuroBridge::describeChanges(const NeuroWorld &before, const Neur
 	};
 	const bool quiet = _data.quietComings(after.room);
 	layoutChanged = !appeared.empty() || !gone.empty();
+	if (!layoutChanged && _data.shiftingLayout(after.room)) {
+		layoutChanged = before.objects.size() != after.objects.size();
+		for (uint i = 0; !layoutChanged && i < after.objects.size(); i++) {
+			const NeuroThing &a = after.objects[i], &b = before.objects[i];
+			layoutChanged = a.id != b.id || a.x != b.x || a.y != b.y;
+		}
+	}
 	comings = !quiet && (!lines[4].things.empty() || !lines[5].things.empty());
 
 	Common::String text;
@@ -503,6 +518,11 @@ Common::String NeuroBridge::describeChanges(const NeuroWorld &before, const Neur
 		const bool coming = &line == &lines[4] || &line == &lines[5];
 		if (!line.things.empty() && !(quiet && coming))
 			text += Common::String::format("%s: %s\n", line.label, neuroListNames(line.things).c_str());
+	}
+
+	for (const auto &sentence : after.scenery) {
+		if (Common::find(before.scenery.begin(), before.scenery.end(), sentence) == before.scenery.end())
+			text += sentence + "\n";
 	}
 
 	// Getting to a part of the room that is cut off from the rest

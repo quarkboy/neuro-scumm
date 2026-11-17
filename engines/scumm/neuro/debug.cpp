@@ -156,7 +156,14 @@ void NeuroBridge::applySetting(const Common::String &setting, const Common::Stri
 
 bool NeuroBridge::handleDeveloperAction(const Common::String &id, const Common::String &name, const Common::String &data) {
 	Common::String text;
-	if (name == "debug_screenshot") {
+	if (name == "debug_capture") {
+		const bool ok = captureRoom(data);
+		const char *result = ok ? "Room captured." : "Capture failed. Check NEURO_CAPTURE_DIR, the label, and PNG support.";
+		debug("Neuro: %s", result);
+		if (id != kQuietId)
+			sendActionResult(id, ok, result);
+		return true;
+	} else if (name == "debug_screenshot") {
 		g_system->saveScreenshot();
 	} else if (name == "debug_dump") {
 		debugDump();

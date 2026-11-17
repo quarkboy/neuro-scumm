@@ -191,19 +191,35 @@ def journal():
 def rooms():
     blocks = read_ini()
     found = {name: index for index, (name, _) in enumerate(blocks) if name}
-    out = []
+    grouped = {}
     for file in sorted(os.listdir(EXTRACT_DIR)):
-        m = re.fullmatch(r"room(\d+)\.json", file)
+        m = re.fullmatch(r"room(\d+)(?:--([\w-]+))?\.json", file)
         if not m:
             continue
-        with open(os.path.join(EXTRACT_DIR, file), encoding="utf-8") as f:
-            room = json.load(f)
-        index = found.get(f"room{room['room']}")
+        try:
+            with open(os.path.join(EXTRACT_DIR, file), encoding="utf-8") as f:
+                room = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            if m[2]:  # A live capture may still be arriving.
+                continue
+            raise
+        image = file[:-5] + ".png"
+        if m[2] and not os.path.isfile(os.path.join(EXTRACT_DIR, image)):
+            continue
+        room["image"] = "img/" + image
+        room["label"] = m[2].replace("-", " ").replace("_", " ") if m[2] else "Room survey"
+        grouped.setdefault(room["room"], []).append(room)
+
+    out = []
+    for number, captures in sorted(grouped.items()):
+        captures.sort(key=lambda c: c["label"] != "Room survey")
+        room = captures[0].copy()
+        room["captures"] = captures
+        index = found.get(f"room{number}")
         room["ini"] = {
             "keys": section_keys(split_tail(blocks[index])[0]) if index is not None else {},
             "comment": comment_of(blocks, index) if index is not None else "",
         }
-        room["image"] = f"img/{file[:-5]}.png"
         out.append(room)
     return out
 
@@ -232,7 +248,7 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(200, f.read(), "application/json")
             else:
                 self._send(200, b'{"rooms":{},"lines":[]}', "application/json")
-        elif re.fullmatch(r"/img/room\d+\.png", self.path):
+        elif re.fullmatch(r"/img/room\d+(?:--[\w-]+)?\.png", self.path):
             with open(os.path.join(EXTRACT_DIR, os.path.basename(self.path)), "rb") as f:
                 self._send(200, f.read(), "image/png")
         else:

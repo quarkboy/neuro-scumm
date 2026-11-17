@@ -272,7 +272,12 @@ const NeuroData::Places &NeuroData::places(int room) const {
 			text = kv.value.substr(bar + 1);
 			text.trim();
 		}
-		if (kv.key.hasPrefix("spot.")) {
+		if (kv.key.hasPrefix("scenery.")) {
+			int object, state;
+			char trailing;
+			if (sscanf(kv.key.c_str(), "scenery.%d.%d%c", &object, &state, &trailing) == 2 && object > 0 && state >= 0 && state <= 255 && !kv.value.empty())
+				_places.scenery.push_back({object, state, kv.value});
+		} else if (kv.key.hasPrefix("spot.")) {
 			Spot spot;
 			spot.name = kv.key.substr(5);
 			if (sscanf(kv.value.c_str(), "%d,%d", &spot.x, &spot.y) != 2)

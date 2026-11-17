@@ -60,6 +60,34 @@ file, keeping its comments and everything the page does not edit.
 
 `status` and `review_note` are for reviewers only; the game ignores them.
 
+### Review a room in more than one state
+
+The **Room** tab keeps one permanent description for the room. Under **Scenery
+that changes**, choose an object (unnamed background objects are included),
+select **Use captured state**, and enter the sentence for that state. Switch
+captures to write the other sentences. The preview follows unsaved edits and
+flags objects or states the selected capture cannot match. **Save** writes
+`scenery.OBJECT.STATE = sentence` in the room section. Object notes still belong
+on the individual targets. A scenery sentence also reaches the player on a
+revisit, after a load, or when the state changes while the player is there.
+
+To collect a named capture during play, start the developer driver with
+`NEURO_CAPTURE_DIR` set to the absolute path of the existing extraction folder.
+Once the game shows the desired scene, run:
+
+```sh
+neuro/tools/dev/t.sh dbg debug_capture Before-the-dam
+```
+
+The command needs developer actions enabled and a PNG-capable build. For the
+classic paletted game it writes the current viewport and object states together
+as `room040--Before-the-dam.png` and `.json`. Use a distinct label (letters,
+digits, hyphens or underscores) for each state; reusing it replaces the pair.
+Reload the editor to see the new capture. Existing numbered room surveys still
+work. Older surveys lack the player's position, so use a live capture to check
+left/right directions. In a scrolling room the picture shows the captured
+viewport; targets can extend into the rest of the room.
+
 The page has four tabs:
 
 - **Room:** the description, object notes and actor names, as above, and everything

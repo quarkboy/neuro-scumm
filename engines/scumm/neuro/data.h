@@ -60,6 +60,7 @@ namespace Scumm {
  *                          optional text says what she sees when she does.
  *                          "X,Y twice" steps onto it a second time after a pause,
  *                          for a place that only reacts to a step from next to it
+ *   scenery.OBJECT.STATE = sentence visible in this room while the object has this state
  *   standing.NAME = BOX BOX ... | TEXT
  *                          where the player's character is, for a room with
  *                          parts that do not connect on foot: the text is
@@ -191,7 +192,9 @@ public:
 	};
 	const Common::Array<Spot> &spots(int room) const;
 
-	/** Where in the room the player's character is when standing in that walk box; empty if the file does not say. */
+	struct Scenery { int object, state; Common::String text; };
+	const Common::Array<Scenery> &scenery(int room) const { return places(room).scenery; }
+	/** Text for the player character's current walk box. */
 	Common::String standing(int room, int box) const;
 
 	/** Things that bring another part of the room into view when walked to. */
@@ -263,6 +266,7 @@ private:
 		int room = -1;
 		Common::Array<Spot> spots;
 		Common::Array<Standing> standing;
+		Common::Array<Scenery> scenery;
 	};
 	mutable Places _places;
 	const Places &places(int room) const;

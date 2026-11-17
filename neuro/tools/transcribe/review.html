@@ -203,12 +203,13 @@ function flash(text) {
 /** A room's section, sorted into the kinds of key the page edits. */
 const ROOM_PLAIN = ["name", "description", "status", "review_note", "prompt", "layout", "relative", "comings", "passages"];
 function parseRoom({ keys, comment }) {
-	const ini = { keys, comment, objects: {}, names: {}, actors: {}, voices: [], spots: [], standing: [], other: {} };
+	const ini = { keys, comment, objects: {}, names: {}, actors: {}, scenery: [], voices: [], spots: [], standing: [], other: {} };
 	for (const key of ROOM_PLAIN) ini[key] = keys[key] || "";
 	for (const [k, v] of Object.entries(keys)) {
 		let m;
 		if (ROOM_PLAIN.includes(k)) continue;
 		if ((m = /^object\.(\d+)$/.exec(k))) ini.objects[m[1]] = v;
+		else if ((m = /^scenery\.(\d+)\.(\d+)$/.exec(k))) ini.scenery.push({ object: m[1], state: m[2], text: v });
 		else if ((m = /^name\.(\d+)$/.exec(k))) ini.names[m[1]] = v;
 		else if ((m = /^actor\.(\d+)$/.exec(k))) ini.actors[m[1]] = v;
 		else if ((m = /^voice\.(?:(\d+)\.)?(\d+)$/.exec(k))) ini.voices.push({ color: m[2], actor: m[1] || "", name: v });
@@ -230,6 +231,7 @@ function roomExtras(keys) {
 	add(count((k, v) => /^name\.\d+$/.test(k) && v), "1 thing renamed", "things renamed");
 	add(count((k, v) => /^actor\.\d+$/.test(k) && !v), "1 actor hidden", "actors hidden");
 	add(count(k => k.startsWith("voice.")), "1 voice", "voices");
+	add(count(k => k.startsWith("scenery.")), "1 scenery sentence", "scenery sentences");
 	add(count(k => k.startsWith("spot.")), "1 place to walk to", "places to walk to");
 	add(count(k => k.startsWith("standing.")), "1 standing place", "standing places");
 	if (keys.passages) out.push("passages");
@@ -321,8 +323,13 @@ function hover(node, key, text) {
 function shownObjects(r) {
 	return r.objects.filter(o => showHidden || (o.name && !o.untouchable) || o.id in r.ini.objects || o.id in r.ini.names);
 }
+const captureChoice = new Map();
+function selectedCapture(room) {
+	return room.captures.find(c => c.image === captureChoice.get(room.room)) || room.captures[0];
+}
 function renderPicture() {
-	const pane = document.getElementById("picturePane"), r = roomById.get(current);
+	const pane = document.getElementById("picturePane"), room = roomById.get(current);
+	const r = room && { ...selectedCapture(room), ini: room.ini };
 	pane.classList.toggle("picking", !!picking);
 	if (!r) {
 		pane.replaceChildren(el("div", { class: "nopicture" }, current === 0
@@ -333,7 +340,7 @@ function renderPicture() {
 	const fit = zoom === "fit";
 	const frame = el("div", { class: "frame" + (fit ? " fit" : "") });
 	const img = el("img", { src: r.image, alt: `Room ${r.room}`, ...(fit ? {} : { width: r.width * zoom, height: r.height * zoom }) });
-	const svg = svgEl("svg", { viewBox: `0 0 ${r.width} ${r.height}`, preserveAspectRatio: "none" });
+	const svg = svgEl("svg", { viewBox: `${r.origin || 0} 0 ${r.width} ${r.height}`, preserveAspectRatio: "none" });
 	for (const o of [...shownObjects(r)].sort((a, b) => b.w * b.h - a.w * a.h)) {
 		const hidden = o.untouchable || r.ini.names[o.id] === "";
 		const box = svgEl("rect", { x: o.x, y: o.y, width: Math.max(o.w, 2), height: Math.max(o.h, 2), class: "box" + (hidden ? " hidden" : ""), "data-thing": "o" + o.id });
@@ -360,13 +367,13 @@ function renderPicture() {
 		if (!picking) return;
 		e.stopPropagation();
 		const b = img.getBoundingClientRect();
-		picking.x.value = Math.round((e.clientX - b.left) / b.width * r.width);
+		picking.x.value = (r.origin || 0) + Math.round((e.clientX - b.left) / b.width * r.width);
 		picking.y.value = Math.round((e.clientY - b.top) / b.height * r.height);
 		picking = null; pane.classList.remove("picking");
 	}, true);
 	const zoomButton = z => el("button", { class: "small" + (z === zoom ? " on" : ""), type: "button", onclick: () => { zoom = z; renderPicture(); } }, z === "fit" ? "fit" : `${z}×`);
 	pane.replaceChildren(el("div", { class: "toolbar" }, ...["fit", 2, 3, 4].map(zoomButton),
-		el("button", { class: "small" + (showHidden ? " on" : ""), type: "button", title: "Also show things with no name and things the game does not let her touch", onclick: () => { showHidden = !showHidden; render(); } }, "untouchable"),
+		el("button", { class: "small" + (showHidden ? " on" : ""), type: "button", title: "Also show things with no name and things the game does not let her touch", onclick: () => { showHidden = !showHidden; renderPicture(); document.querySelector("#room-form")?.dispatchEvent(new Event("input")); } }, "untouchable"),
 		el("span", { class: "info" }, `${r.width}×${r.height}`)), frame);
 }
 
@@ -379,7 +386,7 @@ function rowsEditor(columns, rows, addLabel, extra) {
 	const addRow = row => {
 		const inputs = Object.fromEntries(columns.map(c => [c.key, el("input", { value: row[c.key] || "", placeholder: c.placeholder || "", style: style(c), title: c.label })]));
 		const line = el("div", { class: "r" }, ...columns.map(c => inputs[c.key]), extra ? extra(inputs) : "",
-			el("button", { class: "small danger", type: "button", title: "remove this row", onclick: () => line.remove() }, "×"));
+			el("button", { class: "small danger", type: "button", title: "remove this row", onclick: () => { line.remove(); box.dispatchEvent(new Event("input", { bubbles: true })); } }, "×"));
 		line.read = () => Object.fromEntries(columns.map(c => [c.key, inputs[c.key].value.trim()]));
 		list.append(line);
 	};
@@ -393,6 +400,76 @@ function group(title, count, ...nodes) {
 	return el("details", { class: "group", open: count > 0 }, el("summary", {}, title, count ? el("span", { class: "n" }, count) : ""), el("div", { class: "inner" }, ...nodes));
 }
 
+function sceneryEditor(room, objects, refresh) {
+	const rows = el("div", { class: "rows" });
+	function add(rule = { object: "", state: "", text: "" }) {
+		const ids = new Set([...objects.keys(), ...room.ini.scenery.map(r => r.object)]);
+		const object = el("select", { title: "Scenery object", required: true },
+			el("option", { value: "" }, "Choose object"),
+			...[...ids].sort((a, b) => a - b).map(id => el("option", { value: id, selected: id === rule.object },
+				id + " " + (objects.get(id)?.name || "(unnamed)"))));
+		const state = el("input", { type: "number", min: 0, max: 255, required: true, value: rule.state, title: "Object state", style: "width:5em" });
+		const text = el("input", { required: true, value: rule.text, placeholder: "What Neuro sees", title: "Scenery sentence", style: "flex:1" });
+		const use = el("button", { type: "button", class: "small", onclick: () => {
+			const found = selectedCapture(room).objects.find(o => String(o.id) === object.value);
+			if (!found) { flash("Choose an object present in this capture."); return; }
+			state.value = found.state; refresh();
+		} }, "Use captured state");
+		const row = el("div", { class: "row", style: "flex-wrap:wrap" }, object, state, use, text,
+			el("button", { type: "button", class: "small danger", title: "Remove scenery sentence", onclick: () => { row.remove(); refresh(); } }, "×"));
+		row.read = () => ({ object: object.value, state: state.value === "" ? "" : String(Number(state.value)), text: text.value.trim() });
+		rows.append(row);
+	}
+	room.ini.scenery.forEach(add);
+	const box = el("div", {}, rows, el("button", { type: "button", class: "small", onclick: () => { add(); refresh(); } }, "+ scenery sentence"));
+	box.read = () => [...rows.children].map(row => row.read());
+	return box;
+}
+
+function previewTargets(capture, table, actorTable, relative) {
+	const rows = new Map([...table.querySelectorAll("[data-oid]")].map(row => [Number(row.dataset.oid), row]));
+	const items = [];
+	for (const o of capture.objects) {
+		const row = rows.get(o.id);
+		if (!row || row.querySelector(".hide").checked || !o.w || !o.h || o.x + o.w <= 0 || o.x >= (capture.room_width || capture.width)) continue;
+		const rename = row.querySelector(".rename").value.trim();
+		const name = rename || o.name;
+		if (!name) continue;
+		const x = o.x + Math.floor(o.w / 2);
+		const notes = [row.querySelector(".notefield").value.trim()];
+		if (relative && capture.ego_x != null)
+			notes.push("to " + (journal.game.keys.ego_name || "your character") + (x < capture.ego_x ? "'s left" : "'s right"));
+		const note = notes.filter(Boolean).join("; ");
+		const item = { name, note, x, state: o.state, usable: o.usable ?? !o.untouchable };
+		const duplicate = rename && items.find(t => t.name === name && t.note === note);
+		if (!duplicate) items.push(item);
+		else if (!duplicate.usable && item.usable) Object.assign(duplicate, item);
+	}
+	const actorRows = new Map([...actorTable.querySelectorAll("[data-aid]")].map(row => [Number(row.dataset.aid), row]));
+	for (const a of capture.actors) {
+		const row = actorRows.get(a.id);
+		if (!a.visible || a.untouchable || !row || row.querySelector(".hide").checked) continue;
+		const name = row.querySelector(".actorname").value.trim() || (journal.actors.keys[a.id] ?? a.name);
+		if (name && !name.startsWith("-") && !items.some(t => !t.actor && t.name.toLowerCase() === name.toLowerCase()))
+			items.push({ name, x: a.x, usable: true, actor: true, note: "" });
+	}
+	items.sort((a, b) => a.x - b.x);
+	const totals = new Map(), counts = new Map();
+	for (const t of items) {
+		const key = t.name.toLowerCase();
+		totals.set(key, (totals.get(key) || 0) + 1);
+	}
+	const things = [], people = [];
+	for (const t of items) {
+		const key = t.name.toLowerCase(), n = (counts.get(key) || 0) + 1;
+		counts.set(key, n);
+		const state = journal.states.keys[key]?.split(",")[t.state]?.trim();
+		const note = [state, t.note].filter(Boolean).join("; ");
+		if (t.usable) (t.actor ? people : things).push(t.name + (totals.get(key) > 1 ? " " + n : "") + (note ? " (" + note + ")" : ""));
+	}
+	return { things, people };
+}
+
 /* ---------- room ---------- */
 function renderRoom() {
 	const r = roomById.get(current), main = document.getElementById("view");
@@ -404,19 +481,19 @@ function renderRoom() {
 	const rowEvents = key => ({ "data-thing": key, onmouseenter: () => highlight(key, true), onmouseleave: () => highlight(key, false) });
 
 	// Things: what the capture found, and anything else the file already mentions
-	const byId = new Map(r.objects.map(o => [String(o.id), o]));
+	const byId = new Map(r.captures.flatMap(c => c.objects.map(o => [String(o.id), o])));
 	const objectRow = id => {
 		const o = byId.get(String(id)), hidden = ini.names[id] === "";
 		return el("tr", { class: o?.untouchable ? "hidden" : "", "data-oid": id, ...rowEvents("o" + id) },
 			el("td", { class: "id" }, id),
-			el("td", { class: "name" }, o ? (o.name || "(no name)") + (o.state ? ` (state ${o.state})` : "") : el("span", { class: "note" }, "not in the capture")),
+			el("td", { class: "name" }, o ? (o.name || "(no name)") + ` (state ${o.state})` : el("span", { class: "note" }, "not in the capture")),
 			el("td", {}, el("input", { class: "rename", value: ini.names[id] || "", placeholder: "same" })),
 			el("td", { class: "tick" }, el("input", { type: "checkbox", class: "hide", checked: hidden, title: "Leave this thing out of what she is told" })),
 			el("td", {}, el("input", { id: "o" + id, class: "notefield", value: ini.objects[id] || "", placeholder: "note after the name" })));
 	};
-	const objectIds = [...new Set([...shownObjects(r).map(o => String(o.id)), ...Object.keys(ini.objects), ...Object.keys(ini.names)])].sort((a, b) => a - b);
+	const objectIds = [...new Set([...byId.keys(), ...Object.keys(ini.objects), ...Object.keys(ini.names)])].sort((a, b) => a - b);
 	const objectTable = el("table", {}, el("tr", {}, el("th", {}, "id"), el("th", {}, "in the game"), el("th", {}, "call it"), el("th", {}, "hide"), el("th", {}, "note")), ...objectIds.map(objectRow));
-	const captured = new Map(r.actors.map(a => [String(a.id), a]));
+	const captured = new Map(r.captures.flatMap(c => c.actors.map(a => [String(a.id), a])));
 	const actorRow = id => {
 		const a = captured.get(String(id)), hidden = id in ini.actors && ini.actors[id] === "";
 		return el("tr", { "data-aid": id, ...rowEvents("a" + id) },
@@ -431,7 +508,9 @@ function renderRoom() {
 		const id = el("input", { placeholder: `${what} number`, inputmode: "numeric" });
 		return el("div", { class: "addrow" }, id, el("button", { class: "small", type: "button", onclick: () => {
 			const n = parseInt(id.value);
-			if (!n || table.querySelector(`tr[${attr}="${n}"]`)) return;
+			if (!n) return;
+			const existing = table.querySelector(`tr[${attr}="${n}"]`);
+			if (existing) { existing.dataset.manual = "yes"; existing.hidden = false; existing.querySelector("input")?.focus(); return; }
 			table.append(makeRow(String(n))); id.value = "";
 		} }, `Add a row for another ${what}`));
 	};
@@ -459,10 +538,20 @@ function renderRoom() {
 	const alerts = journal.alerts.filter(a => +a.room === current);
 	const comment = el("textarea", { class: "short", rows: ini.comment.split("\n").length + 1 }, ini.comment);
 
+	const preview = el("pre", { style: "white-space:pre-wrap" });
+	const gaps = el("div", { class: "note" });
+	const scenery = sceneryEditor(r, byId, refresh);
+	const capture = el("select", { onchange: () => {
+		captureChoice.set(current, capture.value);
+		renderPicture(); refresh();
+	} }, ...r.captures.map(c => el("option", { value: c.image, selected: c === selectedCapture(r) }, c.label)));
 	const saved = el("span", { class: "saved" });
-	const form = el("form", { class: "stack", onsubmit: e => { e.preventDefault(); saveRoom(form, { voices, spots, standing, comment }); } },
+	const form = el("form", { id: "room-form", class: "stack", oninput: refresh, onchange: refresh, onsubmit: e => { e.preventDefault(); saveRoom(form, { voices, spots, standing, scenery, comment }); } },
+		el("label", {}, "Capture", capture),
 		el("div", { class: "row" }, field("name", "Room name"), el("label", {}, "Status", status)),
-		field("description", "Description (what is on screen; no solutions)", "textarea"),
+		field("description", "Permanent scenery (full description)", "textarea"),
+		group("Scenery that changes", ini.scenery.length, scenery),
+		el("details", { class: "group", open: true }, el("summary", {}, "Preview as Neuro"), preview, gaps),
 		field("review_note", "Reviewer note (not shown to her)"),
 		el("h3", {}, "Things"), objectIds.length ? objectTable : el("p", { class: "note" }, "No named objects."),
 		rowAdder(objectTable, objectRow, "data-oid", "object"),
@@ -482,8 +571,41 @@ function renderRoom() {
 		Object.keys(ini.other).length ? el("div", { class: "other" }, "Also in the file (keys this page does not know):\n" + Object.entries(ini.other).map(([k, v]) => `${k} = ${v}`).join("\n")) : "",
 		el("label", {}, "Comments in the file for this room (not shown to her)", comment),
 		el("div", { class: "savebar" }, el("button", { class: "primary", type: "submit" }, "Save"), saved, el("span", { class: "note" }, "ctrl+s save · j/k next/previous room")));
+	function refresh() {
+		const c = selectedCapture(r);
+		const objects = new Map(c.objects.map(o => [String(o.id), o]));
+		for (const row of objectTable.querySelectorAll("[data-oid]")) {
+			const id = row.dataset.oid, o = objects.get(id);
+			row.cells[1].textContent = o ? (o.name || "(no name)") + ` (state ${o.state})` : "Absent from this capture";
+			row.hidden = !showHidden && !row.dataset.manual && !(o?.name && !o.untouchable || id in ini.objects || id in ini.names ||
+				row.querySelector(".rename").value || row.querySelector(".notefield").value || row.querySelector(".hide").checked);
+		}
+		for (const row of actorTable.querySelectorAll("[data-aid]")) {
+			const a = c.actors.find(a => String(a.id) === row.dataset.aid);
+			row.cells[1].textContent = a ? (a.name || "—") + ` (costume ${a.costume})` : "Absent from this capture";
+		}
+		const rules = scenery.read(), missing = [];
+		const sentences = rules.filter(rule => objects.get(rule.object)?.state === Number(rule.state) && rule.state !== "").map(rule => rule.text);
+		for (const id of new Set(rules.map(rule => rule.object).filter(Boolean))) {
+			const o = objects.get(id);
+			if (!o || !rules.some(rule => rule.object === id && rule.state !== "" && Number(rule.state) === o.state))
+				missing.push(o ? `Object ${id} has no sentence for state ${o.state}.` : `Object ${id} is absent from this capture.`);
+		}
+		const relative = form.querySelector('[data-switch="relative"]').checked;
+		if (c.objects.some(o => o.parent && o.usable == null)) missing.push("This older capture lacks availability for nested objects.");
+		if (relative && c.ego_x == null) missing.push("This capture has no player position for left/right directions.");
+		const { things, people } = previewTargets(c, objectTable, actorTable, relative);
+		const places = spots.read().map(row => row.name).filter(Boolean);
+		if (!things.length && !people.length && !places.length) places.push("away (stop looking at this)");
+		const position = standing.read().find(row => row.boxes.split(/[ ,]+/).includes(String(c.walkbox)));
+		preview.textContent = [form.elements.name.value, form.elements.description.value, ...sentences, position?.text, "Things: " + (things.join(", ") || "nothing"),
+			people.length && "People: " + people.join(", "), places.length && "Places: " + places.join(", ")].filter(Boolean).join("\n\n");
+		if (!c.stayed) missing.push("The game left this room during this capture.");
+		gaps.textContent = missing.join(" ");
+	}
+	refresh();
 	main.replaceChildren(el("h1", {}, `Room ${r.room}${ini.name ? ": " + ini.name : ""}`),
-		el("div", { class: "sub" }, `${r.objects.filter(o => o.name && !o.untouchable).length} usable objects · ${r.actors.length} actors${roomExtras(ini.keys).map(t => " · " + t).join("")}${r.stayed ? "" : " · the game left this room while it was captured"}`), form);
+		el("div", { class: "sub" }, roomExtras(ini.keys).join(" · ")), form);
 }
 async function saveRoom(form, parts) {
 	const r = roomById.get(current), ini = r.ini, set = {}, blank = [];
@@ -510,6 +632,15 @@ async function saveRoom(form, parts) {
 	for (const v of parts.voices.read()) if (v.color && v.name) set[v.actor ? `voice.${v.actor}.${v.color}` : `voice.${v.color}`] = v.name;
 	for (const s of parts.spots.read()) if (s.name && s.x && s.y) set[`spot.${s.name}`] = `${s.x},${s.y}` + (s.twice.trim() ? " twice" : "") + (s.text ? ` | ${s.text}` : "");
 	for (const s of parts.standing.read()) if (s.name && s.boxes) set[`standing.${s.name}`] = `${s.boxes} | ${s.text}`;
+	for (const rule of ini.scenery) set[`scenery.${rule.object}.${rule.state}`] = null;
+	const seen = new Set();
+	for (const rule of parts.scenery.read()) {
+		const key = `scenery.${rule.object}.${rule.state}`;
+		if (!rule.object || !/^\d+$/.test(rule.state) || Number(rule.state) > 255 || !rule.text || seen.has(key)) {
+			alert("Each scenery row needs an object, a unique state (0–255) for that object, and a sentence."); return;
+		}
+		seen.add(key); set[key] = rule.text;
+	}
 	const more = { blank };
 	if (parts.comment.value.trim() !== ini.comment) more.comment = parts.comment.value;
 	if (!await saveSection(`room${r.room}`, set, more)) return;

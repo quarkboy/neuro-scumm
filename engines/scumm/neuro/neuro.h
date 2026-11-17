@@ -186,6 +186,7 @@ struct NeuroWorld {
 
 	/** Which part of the room the player's character is in, where the description file tells them apart. */
 	Common::String standing;
+	Common::StringArray scenery;
 
 	/** The verb area shows lines to say instead of verbs. */
 	bool inDialogue = false;
@@ -459,6 +460,7 @@ private:
 	// --- What is in the room, and what changed (world.cpp)
 
 	void collectWorld(NeuroWorld &world);
+	bool usableRoomObject(int index) const;
 	void collectObjects(NeuroWorld &world, Common::Array<bool> &usable);
 	void collectActors(NeuroWorld &world);
 	void collectInventory(NeuroWorld &world);
@@ -637,6 +639,8 @@ private:
 	bool extractNextRoom();
 	void extractCopyScreen();
 	void extractWriteRoom();
+	bool writeRoomSnapshot(const Common::String &base, int room, int width, int height, int origin);
+	bool captureRoom(const Common::String &label);
 };
 
 } // End of namespace Scumm

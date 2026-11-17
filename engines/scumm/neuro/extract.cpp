@@ -41,6 +41,8 @@
 #include "common/file.h"
 #include "common/system.h"
 #include "common/tokenizer.h"
+#include "graphics/surface.h"
+#include "image/png.h"
 
 #include "scumm/actor.h"
 #include "scumm/gfx.h"
@@ -53,18 +55,19 @@ namespace Scumm {
 static const int kSettleFrames = 8;
 static const int kPanFrames = 3;
 
-static void writeFile(const Common::String &path, const byte *data, uint32 size) {
+static bool writeFile(const Common::String &path, const byte *data, uint32 size) {
 	Common::DumpFile file;
 	if (!file.open(Common::Path(path, Common::Path::kNativeSeparator))) {
 		warning("Neuro: Could not write %s", path.c_str());
-		return;
+		return false;
 	}
-	file.write(data, size);
+	const bool ok = file.write(data, size) == size && file.flush() && !file.err();
 	file.close();
+	return ok;
 }
 
-static void writeText(const Common::String &path, const Common::String &text) {
-	writeFile(path, (const byte *)text.c_str(), text.size());
+static bool writeText(const Common::String &path, const Common::String &text) {
+	return writeFile(path, (const byte *)text.c_str(), text.size());
 }
 
 void NeuroBridge::dumpScripts(const Common::String &dir) {
@@ -144,6 +147,10 @@ void NeuroBridge::extractWriteRoom() {
 	memcpy(image.data(), header.c_str(), header.size());
 	memcpy(image.data() + header.size(), _extract.pixels.data(), _extract.pixels.size());
 	writeFile(base + ".ppm", image.data(), image.size());
+	writeRoomSnapshot(base, room, _extract.width, _extract.height, 0);
+}
+
+bool NeuroBridge::writeRoomSnapshot(const Common::String &base, int room, int width, int height, int origin) {
 
 	Common::JSONArray objects;
 	for (int i = 1; i < _vm->_numLocalObjects; i++) {
@@ -159,6 +166,7 @@ void NeuroBridge::extractWriteRoom() {
 		object.setVal("h", new Common::JSONValue((long long int)od.height));
 		object.setVal("state", new Common::JSONValue((long long int)od.state));
 		object.setVal("untouchable", new Common::JSONValue(_vm->getClass(od.obj_nr, kObjectClassUntouchable)));
+		object.setVal("usable", new Common::JSONValue(usableRoomObject(i)));
 		object.setVal("parent", new Common::JSONValue((long long int)od.parent));
 		objects.push_back(new Common::JSONValue(object));
 	}
@@ -174,6 +182,7 @@ void NeuroBridge::extractWriteRoom() {
 		entry.setVal("x", new Common::JSONValue((long long int)actor->getPos().x));
 		entry.setVal("y", new Common::JSONValue((long long int)actor->getPos().y));
 		entry.setVal("costume", new Common::JSONValue((long long int)actor->_costume));
+		entry.setVal("untouchable", new Common::JSONValue(untouchable(i)));
 		entry.setVal("visible", new Common::JSONValue((bool)actor->_visible));
 		actors.push_back(new Common::JSONValue(entry));
 	}
@@ -181,8 +190,15 @@ void NeuroBridge::extractWriteRoom() {
 	Common::JSONObject root;
 	root.setVal("room", new Common::JSONValue((long long int)room));
 	root.setVal("game", new Common::JSONValue(_vm->_game.gameid));
-	root.setVal("width", new Common::JSONValue((long long int)_extract.width));
-	root.setVal("height", new Common::JSONValue((long long int)_extract.height));
+	root.setVal("origin", new Common::JSONValue((long long int)origin));
+	root.setVal("room_width", new Common::JSONValue((long long int)_vm->_roomWidth));
+	// The cold survey hides the player and pans the camera through an artificial scene.
+	if (_extract.phase == kExtractOff && ego()->isInCurrentRoom()) {
+		root.setVal("walkbox", new Common::JSONValue((long long int)ego()->_walkbox));
+		root.setVal("ego_x", new Common::JSONValue((long long int)ego()->getPos().x));
+	}
+	root.setVal("width", new Common::JSONValue((long long int)width));
+	root.setVal("height", new Common::JSONValue((long long int)height));
 	// The room's own scripts may have moved the game elsewhere while it was being drawn
 	root.setVal("stayed", new Common::JSONValue(_vm->_currentRoom == room));
 	// A room with its own mouse handler (a script numbered past the global
@@ -192,7 +208,30 @@ void NeuroBridge::extractWriteRoom() {
 	root.setVal("own_mouse_handler", new Common::JSONValue(verbScript >= _vm->_numGlobalScripts));
 	root.setVal("objects", new Common::JSONValue(objects));
 	root.setVal("actors", new Common::JSONValue(actors));
-	writeText(base + ".json", Common::JSONValue(root).stringify(true));
+	return writeText(base + ".json", Common::JSONValue(root).stringify(true));
+}
+
+bool NeuroBridge::captureRoom(const Common::String &label) {
+	const Common::String dir = neuroSetting("NEURO_CAPTURE_DIR");
+	if (dir.empty() || label.empty() || label.size() > 64)
+		return false;
+	for (char c : label) {
+		if (!Common::isAlnum(c) && c != '-' && c != '_')
+			return false;
+	}
+	const int room = _vm->_currentRoom;
+	const Common::String base = Common::String::format("%s/room%03d--%s", dir.c_str(), room, label.c_str());
+	VirtScreen &vs = _vm->_virtscr[kMainVirtScreen];
+	if (vs.format.bytesPerPixel != 1)
+		return false;
+	Graphics::Surface surface;
+	surface.init(_vm->_screenWidth, vs.h, vs.pitch, vs.getPixels(0, 0), vs.format);
+	Common::DumpFile image;
+	if (!image.open(Common::Path(base + ".png", Common::Path::kNativeSeparator)) ||
+			!Image::writePNG(image, surface, _vm->_currentPalette) || !image.flush() || image.err())
+		return false;
+	image.close();
+	return writeRoomSnapshot(base, room, surface.w, surface.h, vs.xstart);
 }
 
 bool NeuroBridge::extractNextRoom() {
