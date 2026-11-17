@@ -14,13 +14,13 @@ Built so far:
 - The overhead maps, the forest, following the storekeeper, the catacombs and the ghost ship are playable from what she is told.
 - Insult sword fighting: the lines to choose from come with a note of which insults she has not yet heard the comeback to, and which ones only the Sword Master uses.
 - Developer tools: a dump of every room and every line of dialogue from the game's scripts, a review page for the description file, and scripts that drive the game headless.
+- Packages for Windows and Linux, built and published for each release.
 
 ## Next
 
 1. **Operator web console.** A first version exists in [`console/`](console/README.md): settings, starting and stopping the game, saving and loading, messages to her, taking her controls away, a live view, and a 16:9 game window with a column beside the game. Still to come: pausing the game itself, acting on her behalf (answering a question, picking a line), and restarting the game if it crashes.
-2. **Windows build.**
-3. **Review Parts Two, Three and Four.** Their descriptions and clues have not been checked against the game by a person.
-4. **An unaided full run.**
+2. **Review Parts Two, Three and Four.** Their descriptions and clues have not been checked against the game by a person.
+3. **An unaided full run.**
 
 ## Known gaps
 

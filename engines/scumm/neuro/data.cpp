@@ -212,48 +212,48 @@ bool NeuroData::actorName(int room, int actor, Common::String &name) const {
 	return false;
 }
 
-Common::Array<NeuroData::Spot> NeuroData::spots(int room) const {
-	Common::Array<Spot> result;
+const NeuroData::Places &NeuroData::places(int room) const {
 	if (!_ini.hasSection(roomSection(room)))
 		room = _roomResources.getValOrDefault(room, 0);
+	if (_places.room == room)
+		return _places;
+
+	_places = Places();
+	_places.room = room;
 	if (!_ini.hasSection(roomSection(room)))
-		return result;
+		return _places;
 
 	for (const auto &kv : _ini.getKeys(roomSection(room))) {
-		if (!kv.key.hasPrefix("spot."))
-			continue;
-		Spot spot;
-		spot.name = kv.key.substr(5);
-		if (sscanf(kv.value.c_str(), "%d,%d", &spot.x, &spot.y) != 2)
-			continue;
 		const size_t bar = kv.value.findFirstOf('|');
+		Common::String text;
 		if (bar != Common::String::npos) {
-			spot.effect = kv.value.substr(bar + 1);
-			spot.effect.trim();
+			text = kv.value.substr(bar + 1);
+			text.trim();
 		}
-		result.push_back(spot);
+		if (kv.key.hasPrefix("spot.")) {
+			Spot spot;
+			spot.name = kv.key.substr(5);
+			if (sscanf(kv.value.c_str(), "%d,%d", &spot.x, &spot.y) != 2)
+				continue;
+			spot.effect = text;
+			_places.spots.push_back(spot);
+		} else if (kv.key.hasPrefix("standing.") && bar != Common::String::npos) {
+			Common::StringTokenizer boxes(kv.value.substr(0, bar), " ,");
+			while (!boxes.empty())
+				_places.standing.push_back({atoi(boxes.nextToken().c_str()), text});
+		}
 	}
-	return result;
+	return _places;
+}
+
+const Common::Array<NeuroData::Spot> &NeuroData::spots(int room) const {
+	return places(room).spots;
 }
 
 Common::String NeuroData::standing(int room, int box) const {
-	if (!_ini.hasSection(roomSection(room)))
-		room = _roomResources.getValOrDefault(room, 0);
-	if (!_ini.hasSection(roomSection(room)))
-		return "";
-
-	for (const auto &kv : _ini.getKeys(roomSection(room))) {
-		const size_t bar = kv.value.findFirstOf('|');
-		if (!kv.key.hasPrefix("standing.") || bar == Common::String::npos)
-			continue;
-		Common::StringTokenizer boxes(kv.value.substr(0, bar), " ,");
-		while (!boxes.empty()) {
-			if (atoi(boxes.nextToken().c_str()) == box) {
-				Common::String text = kv.value.substr(bar + 1);
-				text.trim();
-				return text;
-			}
-		}
+	for (const auto &place : places(room).standing) {
+		if (place.box == box)
+			return place.text;
 	}
 	return "";
 }

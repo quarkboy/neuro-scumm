@@ -349,6 +349,8 @@ class Console:
             args += ["-x", str(int(s["start_slot"]))]
 
         env = dict(os.environ)
+        # The game only takes this console's own commands (save, load, status, settings) when told to
+        env.setdefault("NEURO_DEBUG_ACTIONS", "operator")
         env.update({
             "NEURO_SDK_WS_URL": f"ws://127.0.0.1:{self.port}/game?t={self.token}",
             "NEURO_DESCRIPTIONS": str(REPO / "neuro" / "data" / "monkey1.ini"),
@@ -576,6 +578,11 @@ class Console:
             return
         if command == "action":
             name = data.get("name", "")
+            if name.strip().lower().replace("-", "_").replace(" ", "_").startswith("debug_"):
+                # Those are this console's and the developer's; the server has no business sending one
+                self.to_upstream({"command": "action/result", "game": self.game_name,
+                                  "data": {"id": data.get("id", ""), "success": False, "message": "Unknown action."}})
+                return
             said = describe_action(name, data.get("data"), self.view["lines"])
             self.event("from_neuro", "action", said, message)
             if self.hold:

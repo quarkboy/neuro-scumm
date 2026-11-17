@@ -143,7 +143,7 @@ public:
 		/** What stepping there looks like. */
 		Common::String effect;
 	};
-	Common::Array<Spot> spots(int room) const;
+	const Common::Array<Spot> &spots(int room) const;
 
 	/** Where in the room Guybrush is when he stands in that walk box; empty if the file does not say. */
 	Common::String standing(int room, int box) const;
@@ -196,6 +196,19 @@ private:
 	Common::String roomGet(int room, const Common::String &key) const;
 
 	Common::HashMap<int, int> _roomResources;
+
+	// The places of the room last asked about, kept so the file's text is not parsed on every look
+	struct Standing {
+		int box;
+		Common::String text;
+	};
+	struct Places {
+		int room = -1;
+		Common::Array<Spot> spots;
+		Common::Array<Standing> standing;
+	};
+	mutable Places _places;
+	const Places &places(int room) const;
 
 	Common::INIFile _ini;
 	Common::Array<Alert> _alerts;

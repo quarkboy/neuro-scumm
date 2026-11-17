@@ -67,6 +67,8 @@ static Common::String simplifyName(const Common::String &name) {
 
 const NeuroThing *NeuroBridge::findThing(const NeuroThingList &things, const Common::String &name) const {
 	const Common::String needle = simplifyName(name);
+	if (needle.empty())
+		return nullptr;
 	for (const auto &thing : things) {
 		if (simplifyName(thing.name) == needle)
 			return &thing;
@@ -278,17 +280,24 @@ void NeuroBridge::actionChooseDialogue(const Common::String &id, const NeuroArgs
 
 	// A number, possibly dressed up ("option 3", "3."), or the line itself
 	const Common::String choice = args.get("option|choice|line|number|index|id|text", true);
-	int option = 0;
-	for (uint i = 0; i < choice.size() && !option; i++) {
-		if (Common::isDigit(choice[i]))
-			option = atoi(choice.c_str() + i);
+	// A line that has a number in it ("I have 2 questions") is still a line
+	Common::String words;
+	for (uint i = 0; i < choice.size(); i++) {
+		if (Common::isAlpha(choice[i]))
+			words += tolower(choice[i]);
 	}
-	if (!option && !choice.empty()) {
+	const bool plainNumber = words.empty() || words == "option" || words == "choice" || words == "line" || words == "number" || words == "no";
+	int option = 0;
+	if (!plainNumber) {
 		const NeuroThing *line = findThing(world.verbs, choice);
 		for (uint i = 0; line && i < world.verbs.size(); i++) {
 			if (&world.verbs[i] == line)
 				option = i + 1;
 		}
+	}
+	for (uint i = 0; i < choice.size() && !option; i++) {
+		if (Common::isDigit(choice[i]))
+			option = atoi(choice.c_str() + i);
 	}
 	if (option < 1 || option > (int)world.verbs.size()) {
 		sendActionResult(id, false, "Pick a line by number:\n" + listDialogue(world.verbs));

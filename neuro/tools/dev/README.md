@@ -9,7 +9,8 @@ and set `NEURO_RUN` to the path of `neuro/run.sh`.
 - `t.sh load N` starts from savegame slot N.
 - `t.sh act NAME 'JSON'` sends an action as the user; `t.sh dbg NAME [DATA]`
   sends an unregistered `debug_*` action (screenshot, dump, save, load, room,
-  click, speed).
+  click, speed). The game only carries those out when started with
+  `NEURO_DEBUG_ACTIONS=all`, which `t.sh start` sets.
 - `t.sh shot [NAME]` saves a screenshot as PNG; `t.sh log` prints new bridge
   traffic; `tr.sh` prints a condensed transcript of the whole run.
 - `goto.sh` has shell functions for walking somewhere and choosing dialogue.

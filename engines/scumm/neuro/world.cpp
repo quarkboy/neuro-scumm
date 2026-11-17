@@ -264,7 +264,7 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 		return a.x < b.x;
 	});
 
-	const Common::Array<NeuroData::Spot> spots = _data.spots(world.room);
+	const Common::Array<NeuroData::Spot> &spots = _data.spots(world.room);
 	for (uint i = 0; i < spots.size(); i++) {
 		NeuroThing thing;
 		thing.id = -(int)(i + 1);
@@ -318,8 +318,8 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 			const int slot = line.id - lineNote.firstVerb;
 			if (slot < 0 || slot > 16)
 				continue;
-			const int entry = _vm->readVar(lineNote.slotVar + slot);
-			if (entry >= lineNote.min && entry <= lineNote.max && (!lineNote.unlessBit || !_vm->readVar(0x8000 | (lineNote.unlessBit + entry))))
+			const int entry = readDataVar(lineNote.slotVar + slot);
+			if (entry >= lineNote.min && entry <= lineNote.max && (!lineNote.unlessBit || !readDataVar(0x8000 | (lineNote.unlessBit + entry))))
 				line.note = lineNote.note;
 		}
 	}
@@ -675,7 +675,7 @@ void NeuroBridge::fireAlert(const NeuroData::Alert &original, const NeuroWorld &
 			_questionAskedAt = g_system->getMillis();
 			_questionHoldVar = alert.holdVar;
 			if (_questionHoldVar)
-				_questionHoldValue = _vm->readVar(_questionHoldVar);
+				_questionHoldValue = readDataVar(_questionHoldVar);
 		}
 		sendForce(alert.say, alert.ask, question ? "answer" : "interact", alert.priority);
 		_lastActivity = g_system->getMillis();
@@ -906,7 +906,7 @@ Common::String NeuroBridge::expandText(const Common::String &text) const {
 			int from = 0, to = 0, count = 0;
 			sscanf(result.c_str() + bits + 5, "%d-%d", &from, &to);
 			for (int bit = from; bit <= to && bit - from < 256; bit++)
-				count += _vm->readVar(0x8000 | bit) ? 1 : 0;
+				count += readDataVar(0x8000 | bit) ? 1 : 0;
 			result.replace(bits, end - bits + 1, Common::String::format("%d", count));
 			continue;
 		}
@@ -917,7 +917,7 @@ Common::String NeuroBridge::expandText(const Common::String &text) const {
 		const size_t close = open == Common::String::npos ? open : result.find('}', open);
 		if (close == Common::String::npos)
 			return result;
-		const int value = _vm->readVar(atoi(result.c_str() + open + (pick ? 5 : 4)));
+		const int value = readDataVar(atoi(result.c_str() + open + (pick ? 5 : 4)));
 		Common::String replacement = Common::String::format("%d", value);
 		if (pick) {
 			replacement.clear();
@@ -939,7 +939,7 @@ Common::String NeuroBridge::expandText(const Common::String &text) const {
 void NeuroBridge::checkWatches() {
 	Common::String text;
 	for (const auto &watch : _data.watches()) {
-		const int value = _vm->readVar(watch.var);
+		const int value = readDataVar(watch.var);
 		// The first look only sets the starting point
 		const bool changed = _watched.contains(watch.var) && (watch.anyChange ? value != _watched[watch.var] : value > _watched[watch.var]);
 		if (changed) {
@@ -1096,6 +1096,8 @@ void NeuroBridge::onTalkStarted(int actor, const byte *text) {
 	else if (now - _lastActionAt > 10000)
 		return;
 
+	if (_speechEndDueAt)
+		sendSpeechEnded();
 	_speechOpen = true;
 	if (_dialogueAsContext) {
 		// Text that is typed out a bit at a time ("Ps", "Pss", "Psssst.") is one line
@@ -1117,11 +1119,105 @@ void NeuroBridge::onTalkStarted(int actor, const byte *text) {
 	// Lines she is only watching may get a reaction. Replies to her own action
 	// must not prompt her one by one: she is prompted once, when it is her
 	// turn, with the choice of lines or a cue.
-	if (_awaitingOutcome)
+	if (_awaitingOutcome || anotherLineFollows())
 		data.setVal("reply", new Common::JSONValue("never"));
 	// Only a safety net in case the end message is lost: generous reading time
 	data.setVal("expected_duration_ms", new Common::JSONValue((long long int)(3000 + line.size() * 150)));
 	send("speech/started", &data);
+}
+
+int NeuroBridge::readDataVar(uint var) const {
+	const bool isBit = var & 0x8000;
+	const uint number = var & 0x7FFF;
+	// The engine stops the game on a number out of range, and reads other kinds of
+	// variable from the running script
+	if (number >= (uint)(isBit ? _vm->_numBitVariables : _vm->_numVariables)) {
+		if (!_missingVars.contains(var))
+			warning("Neuro: The description file names %s %u, which this game does not have", isBit ? "bit variable" : "variable", number);
+		_missingVars[var] = true;
+		return 0;
+	}
+	return _vm->readVar(var);
+}
+
+/**
+ * Whether the script that is printing a line goes straight on to print another:
+ * the line's text, then "wait for message", then a print that is spoken. Called
+ * while the print instruction runs, when the script pointer is at its text.
+ * An actor changing pose in between is allowed; anything else (a jump, a walk,
+ * a pause) counts as no.
+ */
+bool NeuroBridge::anotherLineFollows() const {
+	// The layout read here is that of the version 4 and 5 scripts
+	if (_vm->_game.version < 4 || _vm->_game.version > 5 || _vm->_currentScript == 0xFF || !_vm->_scriptPointer)
+		return false;
+
+	const byte *p = _vm->_scriptPointer;
+	p += _vm->resStrLen(p) + 1;
+	if (p[0] != 0xAE || (p[1] & 0x1F) != 2)	// wait for message
+		return false;
+	p += 2;
+
+	// A parameter is a variable (two bytes) when its bit in the opcode is set.
+	// An actor may be given a pose first, which takes no time
+	for (int i = 0; i < 4 && (*p & 0x3F) == 0x11; i++) {
+		const byte pose = *p++;
+		for (int n = 0; n < 2; n++) {
+			const bool isVar = pose & (0x80 >> n);
+			if (isVar && (p[1] & 0x20))
+				return false;
+			p += isVar ? 2 : 1;
+		}
+	}
+	const byte op = *p++;
+	if (op == 0x14) {	// print, for an actor given by number
+		if (*p >= 252 && *p <= 254)	// text that nobody speaks
+			return false;
+		p++;
+	} else if (op == 0x94) {	// print, for an actor held in a variable
+		if (p[1] & 0x20)	// an indexed variable takes more bytes
+			return false;
+		p += 2;
+	} else if (op != 0xD8) {	// print for the player's character
+		return false;
+	}
+
+	// Skip the settings in front of the text
+	for (int i = 0; i < 8; i++) {
+		const byte sub = *p++;
+		if (sub == 0xFF)
+			return false;
+		int words = 0, bytes = 0;
+		switch (sub & 0x0F) {
+		case 0:	// position
+			words = 2;
+			break;
+		case 1:	// colour
+			bytes = 1;
+			break;
+		case 2:	// right edge
+			words = 1;
+			break;
+		case 4:	// centred
+		case 6:	// left
+		case 7:	// overhead
+			break;
+		case 15:	// the text
+			while (*p == ' ')
+				p++;
+			return *p != 0;
+		default:
+			return false;
+		}
+		// Variables are two bytes whatever the size of the value
+		for (int n = 0; n < words + bytes; n++) {
+			const bool isVar = sub & (0x80 >> n);
+			if (isVar && (p[1] & 0x20))
+				return false;
+			p += (isVar || n < words) ? 2 : 1;
+		}
+	}
+	return false;
 }
 
 void NeuroBridge::onTextDrawn(const byte *text, int color) {
@@ -1155,6 +1251,18 @@ void NeuroBridge::onTalkStopped() {
 	if (_dialogueAsContext)
 		return;
 
+	// Lines of one scene follow each other with short pauses. Reporting each
+	// end at once would leave her those pauses to start talking in, so the
+	// end is held back: the next line reports it, or update() once the pause
+	// has lasted or the player is back in control.
+	if (playerHasControl())
+		sendSpeechEnded();
+	else
+		_speechEndDueAt = _lastTalkTime + kSpeechGapMs;
+}
+
+void NeuroBridge::sendSpeechEnded() {
+	_speechEndDueAt = 0;
 	Common::JSONObject data;
 	data.setVal("id", new Common::JSONValue(Common::String::format("%s-%u", _speechIdPrefix.c_str(), _speechCounter)));
 	send("speech/ended", &data);

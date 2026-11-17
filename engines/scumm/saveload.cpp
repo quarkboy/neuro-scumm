@@ -2102,7 +2102,7 @@ void ScummEngine::saveLoadWithSerializer(Common::Serializer &s) {
 			info = _system->getAudioCDManager()->getStatus();
 		syncWithSerializer(s, info);
 
-		if (s.isLoading() && (info.playing || _sound->hasFileBasedCDSound())) {
+		if (s.isLoading() && (info.playing || ((_game.features & GF_DOUBLEFINE_PAK) && _sound->hasFileBasedCDSound()))) {
 			_sound->restoreCDAudioAfterLoad(info);
 		}
 	}

@@ -985,7 +985,8 @@ HeaderlessWMAStream::HeaderlessWMAStream(
 					_stream(stream), _entry(entry), _disposeAfterUse(disposeAfterUse) {
 	// A wave bank stores no WMA header. Its format word holds two indices
 	// instead: the low five bits pick the packet size and the rest pick the
-	// bit rate. Tables as used by Microsoft's XACT tools.
+	// bit rate. Tables taken from
+	// https://github.com/bgbennyboy/Monkey-Island-Explorer/blob/master/uMIExplorer_XWBManager.pas
 	static const uint16 blockAlignArray[] = {
 		929, 1487, 1280, 2230, 8917,
 		8192, 4459, 5945, 2304, 1536,

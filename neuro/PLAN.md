@@ -7,7 +7,7 @@ How the integration is put together and why. For what is left to do, see [ROADMA
 | Topic | Decision |
 |---|---|
 | Architecture | A Neuro module inside a ScummVM fork (C++, in the SCUMM engine), speaking the Neuro API directly over WebSocket |
-| Platforms | Linux (including WSL) is where it is developed; a Windows build is planned |
+| Platforms | Linux (including WSL) is where it is developed; Windows and Linux packages are built for each release |
 | Game data | The Steam Special Edition's `Monkey1.pak`, read in place; never copied into the repository |
 | Testing | A stand-in language model behind a Neuro API test server, driven headless by scripts or watched in a window |
 | Upstream | A standalone repository, not a GitHub fork. The `upstream` remote tracks scummvm/scummvm and work happens on the `neuro` branch |

@@ -37,7 +37,7 @@
 #include "scumm/scumm.h"
 
 #ifndef USE_BASIC_NET
-#error "The Neuro-sama integration needs libcurl. Install it or configure with --disable-engine=neuro"
+#error "The Neuro-sama integration needs libcurl. Install it, or configure without --enable-engine=neuro"
 #endif
 
 namespace Scumm {
@@ -92,7 +92,7 @@ NeuroBridge::NeuroBridge(ScummEngine *vm, const Common::String &url) : _vm(vm), 
 		_data.load(ConfMan.get("neuro_descriptions"));
 
 	_journal.loadGoals(_data.ini());
-	_journal.setVarReader([](void *vm, int var) { return ((ScummEngine *)vm)->readVar(var); }, _vm);
+	_journal.setVarReader([](void *bridge, int var) { return ((NeuroBridge *)bridge)->readDataVar(var); }, this);
 	// Starting straight from a savegame (-x) loads it before the first frame
 	if (ConfMan.hasKey("save_slot") && ConfMan.getInt("save_slot") >= 0)
 		loadJournal(ConfMan.getInt("save_slot"));
@@ -107,6 +107,19 @@ NeuroBridge::NeuroBridge(ScummEngine *vm, const Common::String &url) : _vm(vm), 
 		_fastMode = kFastAlways;
 	else if (fastMode.equalsIgnoreCase("scenes"))
 		_fastMode = kFastScenes;
+
+	// Actions that are never registered: "operator" allows the ones the
+	// console needs (save, load, status, settings), "all" the developer's too
+	const char *debugActions = getenv("NEURO_DEBUG_ACTIONS");
+	Common::String allowed;
+	if (debugActions && *debugActions)
+		allowed = debugActions;
+	else if (ConfMan.hasKey("neuro_debug_actions"))
+		allowed = ConfMan.get("neuro_debug_actions");
+	if (allowed.equalsIgnoreCase("all"))
+		_debugActions = kDebugAll;
+	else if (allowed.equalsIgnoreCase("operator"))
+		_debugActions = kDebugOperator;
 
 	// NEURO_POINTER=off makes clicks land at once, without the pointer travelling
 	const char *pointer = getenv("NEURO_POINTER");
@@ -185,26 +198,14 @@ void NeuroBridge::update() {
 			_vm->writeVar(_questionHoldVar, _questionHoldValue);
 	}
 
+	if (_speechEndDueAt && (g_system->getMillis() >= _speechEndDueAt || playerHasControl()))
+		sendSpeechEnded();
+
 	flushDrawnText();
 	updateSpeed();
 	updateClick();
 	updatePager();
 	updateQueuedCommand();
-
-	// Saving and loading happen between frames. The journal travels with
-	// each savegame in a file of its own.
-	if (_vm->_saveLoadFlag != 0) {
-		_saveLoadSlot = _vm->_saveLoadSlot;
-		_loadPending = _vm->_saveLoadFlag == 2;
-		_savePending = !_loadPending;
-	} else if (_loadPending) {
-		_loadPending = false;
-		resetAfterLoad();
-		loadJournal(_saveLoadSlot);
-	} else if (_savePending) {
-		_savePending = false;
-		saveJournal(_saveLoadSlot);
-	}
 
 	if (!_pendingDialogue.empty()) {
 		const uint32 now = g_system->getMillis();
@@ -248,10 +249,23 @@ void NeuroBridge::updateSpeed() {
 	// Bit 0 is the engine's "fast mode" (Ctrl-F). Keep real speed while
 	// she is deciding, so timing stays what it would be on stream.
 	const bool fast = _fastMode == kFastAlways || !playerHasControl();
-	if (fast)
+	if (fast && !(_vm->_fastMode & 1)) {
 		_vm->_fastMode |= 1;
-	else
+		_speedSet = true;
+	} else if (!fast && _speedSet) {
 		_vm->_fastMode &= ~1;
+		_speedSet = false;
+	}
+}
+
+void NeuroBridge::onSaveLoad(bool saved, int slot) {
+	// The journal travels with each savegame in a file of its own
+	if (saved) {
+		saveJournal(slot);
+	} else {
+		resetAfterLoad();
+		loadJournal(slot);
+	}
 }
 
 void NeuroBridge::resetAfterLoad() {
@@ -262,6 +276,8 @@ void NeuroBridge::resetAfterLoad() {
 	_shownSentence = false;
 	_pendingDialogue.clear();
 	_speechOpen = false;
+	if (_speechEndDueAt)
+		sendSpeechEnded();
 	_namedCostume.clear();
 	_recentLines.clear();
 	_lastActivity = g_system->getMillis();
@@ -301,6 +317,7 @@ void NeuroBridge::onConnected() {
 	// Describe the current room again from scratch
 	_described = NeuroWorld();
 	_speechOpen = false;
+	_speechEndDueAt = 0;
 	_forceActive = false;
 	_forcedDialogue.clear();
 	_lastActivity = g_system->getMillis();
@@ -718,8 +735,10 @@ void NeuroBridge::handleDebugAction(const Common::String &id, const Common::Stri
 			_pointerGlide = !text.equalsIgnoreCase("off");
 		} else if (setting == "fast_mode") {
 			_fastMode = text.equalsIgnoreCase("always") ? kFastAlways : text.equalsIgnoreCase("scenes") ? kFastScenes : kFastOff;
-			if (_fastMode == kFastOff)
-				_vm->_fastMode = 0;
+			if (_fastMode == kFastOff && _speedSet) {
+				_vm->_fastMode &= ~1;
+				_speedSet = false;
+			}
 		} else if (setting == "music_volume" || setting == "sfx_volume" || setting == "speech_volume") {
 			ConfMan.setInt(setting, CLIP(number, 0, 255));
 			_vm->syncSoundSettings();
@@ -740,7 +759,15 @@ void NeuroBridge::handleAction(const Common::String &id, const Common::String &r
 			name.setChar('_', i);
 	}
 
-	// Development aids are not her actions
+	// Development aids are not her actions, and only work where they were asked for
+	if (name.hasPrefix("debug_")) {
+		const bool forOperator = name == "debug_save" || name == "debug_load" || name == "debug_status" || name == "debug_set";
+		if (_debugActions != kDebugAll && !(forOperator && _debugActions == kDebugOperator)) {
+			if (id != "dbg")
+				sendActionResult(id, false, "Unknown action.");
+			return;
+		}
+	}
 	if (name.hasPrefix("debug_") && name != "debug_click") {
 		handleDebugAction(id, name, data);
 		return;

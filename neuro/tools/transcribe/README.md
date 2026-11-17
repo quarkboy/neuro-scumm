@@ -15,6 +15,11 @@ It uses the extraction mode built into the Neuro module (`engines/scumm/neuro/ex
 so it works for any game the SCUMM engine runs. Set `GAME_DIR` for games other than
 Monkey Island 1.
 
+The script drives the game with four environment variables, described at the top of
+`engines/scumm/neuro/extract.cpp`: `NEURO_EXTRACT_DIR` (where to write; this turns the
+mode on), `NEURO_EXTRACT_FROM` (the first room), `NEURO_EXTRACT_SKIP` (rooms to leave
+out) and, for step 2, `NEURO_DUMP_SCRIPTS` (write the raw rooms and scripts instead).
+
 Some rooms crash or hang when entered out of order, because their scripts expect
 something the story sets up first. Those are skipped and listed in `skipped`; capture
 them by playing to them.

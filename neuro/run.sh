@@ -5,7 +5,11 @@
 here=$(cd "$(dirname "$0")" && pwd)
 : "${NEURO_SDK_WS_URL:=ws://127.0.0.1:8000}"
 : "${MONKEY1_DIR:=/mnt/c/Program Files (x86)/Steam/steamapps/common/The Secret of Monkey Island Special Edition}"
-: "${BUILD_DIR:=$here/../../build-linux}"
+# The build: a "build" folder at the top of the repository, or "build-linux" beside it
+if [ -z "${BUILD_DIR:-}" ]; then
+	BUILD_DIR=$here/../build
+	[ -x "$BUILD_DIR/scummvm" ] || BUILD_DIR=$here/../../build-linux
+fi
 # Dialogue is reported with speech/started and speech/ended, as the SDK specifies.
 # For a server that does not know those commands yet, use NEURO_DIALOGUE_MODE=context.
 : "${NEURO_DIALOGUE_MODE:=speech}"

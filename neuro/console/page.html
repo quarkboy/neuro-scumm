@@ -126,6 +126,10 @@ code { background: #12161b; padding: 1px 5px; border-radius: 4px; font-size: 13p
     <label class="field"><span>Size</span>
       <select id="stream_size"><option>1280x720</option><option>1600x900</option><option>1920x1080</option><option>2560x1440</option></select></label>
     <label class="check"><input type="checkbox" id="panel"> A column beside the game (without it the window is 4:3)</label>
+    <label class="check"><input type="checkbox" id="fullscreen"> Full screen</label>
+    <label class="check"><input type="checkbox" id="filtering"> Smooth the picture where it is not enlarged by a whole number</label>
+    <label class="field"><span>Dialogue sent as</span>
+      <select id="dialogue_mode"><option value="speech">Speech messages</option><option value="context">Plain context</option></select></label>
     <h3>The column (changes at once)</h3>
     <label class="field"><span>Side</span>
       <select id="panel_side"><option value="right">Right</option><option value="left">Left</option></select></label>
@@ -140,10 +144,6 @@ code { background: #12161b; padding: 1px 5px; border-radius: 4px; font-size: 13p
       <label class="check"><input type="checkbox" data-part="inventory"> Carrying</label>
       <label class="check"><input type="checkbox" data-part="recent"> Lately</label>
     </div>
-    <label class="check"><input type="checkbox" id="fullscreen"> Full screen</label>
-    <label class="check"><input type="checkbox" id="filtering"> Smooth the picture where it is not enlarged by a whole number</label>
-    <label class="field"><span>Dialogue sent as</span>
-      <select id="dialogue_mode"><option value="speech">Speech messages</option><option value="context">Plain context</option></select></label>
     <h3>Where things are (next start)</h3>
     <label class="field"><span>Game folder</span><input id="game_dir"></label>
     <label class="field"><span>ScummVM</span><input id="scummvm" placeholder="found automatically"></label>

@@ -75,12 +75,11 @@ Without the console, [`neuro/run.sh`](neuro/run.sh) starts the game with the set
 
 ```sh
 MONKEY1_DIR="/path/to/The Secret of Monkey Island Special Edition" \
-BUILD_DIR=build \
 NEURO_SDK_WS_URL=ws://127.0.0.1:8000 \
 neuro/run.sh
 ```
 
-Add `-x N` to start from savegame slot N. Savegames go to the folder in `NEURO_SAVE_DIR` (by default a `saves` folder beside the repository).
+It looks for the build in the `build` folder made above; set `BUILD_DIR` if yours is elsewhere. Add `-x N` to start from savegame slot N. Savegames go to the folder in `NEURO_SAVE_DIR` (by default a `saves` folder beside the repository).
 
 The console works from a source checkout too: `python3 neuro/console/console.py`. It finds the build in a `build` folder at the top of the repository, or takes its path in the settings.
 
@@ -97,6 +96,7 @@ The console works from a source checkout too: `python3 neuro/console/console.py`
 | `NEURO_FAST_MODE` | off | `always`, or `scenes` to run fast only while she cannot act. For testing. |
 | `NEURO_STREAM_SIZE` | unset | A window size such as `1920x1080`. The game stays 4:3 and whatever is wider becomes a column showing where she is and what she is doing. Only ScummVM's SDL software renderer (`--gfx-mode=surfacesdl`) does this. |
 | `NEURO_PANEL_SIDE`, `NEURO_PANEL_TITLE`, `NEURO_PANEL_CHAT` | `right`, a default title, `30` | The column's side, its title (a vertical bar in it starts a new line), and the height in percent of the empty box for chat. |
+| `NEURO_DEBUG_ACTIONS` | off | `operator` lets the server side save, load, read the status and change settings with unregistered `debug_` actions (the console sets this for itself and passes none on from the server). `all` adds the developer's ones, which can change the game's state. |
 | `NEURO_PANEL_HIDE` | unset | Parts of the column to leave out, separated by commas: `title`, `chat`, `location`, `now`, `goals`, `inventory`, `recent`. |
 
 Each setting can also be given as a ScummVM config key of the same name in lower case, for example `neuro_idle_force_seconds`. The one exception is the server URL, whose key is `neuro_ws_url`. An environment variable wins over the config key.

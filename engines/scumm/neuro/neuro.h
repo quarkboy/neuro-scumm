@@ -40,6 +40,8 @@ class ScummEngine;
 
 /** How long a yes/no question about a passing moment can still be answered. */
 static const uint32 kQuestionOpenMs = 20000;
+/** While the game keeps control, a line's end is only reported once this long has passed without another line. */
+static const uint32 kSpeechGapMs = 2000;
 
 struct NeuroThing {
 	int id = 0;
@@ -136,6 +138,8 @@ public:
 	/** A character (or the narrator, for actor 0xFF) started saying a line. */
 	void onTalkStarted(int actor, const byte *text);
 	void onTalkStopped();
+	/** The engine has just written or read a savegame. */
+	void onSaveLoad(bool saved, int slot);
 
 	/** Text was drawn on the screen that nobody says (a sign in close-up, a title). */
 	void onTextDrawn(const byte *text, int color);
@@ -319,10 +323,11 @@ private:
 	void checkWatches();
 	/** Fills in {varN} and {pickN: a | b | c} from the game's variables. */
 	Common::String expandText(const Common::String &text) const;
+	/** Reads a variable (or, with 0x8000 set, a bit variable) named in the data file; 0 if the game has none by that number. */
+	int readDataVar(uint var) const;
+	mutable Common::HashMap<uint, bool> _missingVars;
 	void saveJournal(int slot);
 	void loadJournal(int slot);
-	int _saveLoadSlot = -1;
-	bool _savePending = false;
 
 	// The costume each actor wore when it was named. Scripts reuse actors
 	// for other characters without renaming them, which leaves a wrong name.
@@ -387,10 +392,14 @@ private:
 		kFastScenes
 	};
 	FastMode _fastMode = kFastOff;
+	/** Whether the engine's fast mode is on because of us, not the player's Ctrl-F. */
+	bool _speedSet = false;
+
+	enum DebugActions { kDebugNone, kDebugOperator, kDebugAll };
+	DebugActions _debugActions = kDebugNone;
 	void updateSpeed();
 
 	// A loaded savegame can change everything at once
-	bool _loadPending = false;
 	void resetAfterLoad();
 
 	// The game's normal verbs, learned the first time they are on screen
@@ -460,6 +469,10 @@ private:
 	Common::String _speechIdPrefix;
 	uint32 _speechCounter = 0;
 	bool _speechOpen = false;
+	/** When the end of the last line is due to be reported; 0 if it has been. */
+	uint32 _speechEndDueAt = 0;
+	void sendSpeechEnded();
+	bool anotherLineFollows() const;
 };
 
 } // End of namespace Scumm

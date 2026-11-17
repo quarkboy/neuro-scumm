@@ -3524,6 +3524,11 @@ void ScummEngine::scummLoop_handleSaveLoad() {
 		if (success && _saveLoadFlag != 1)
 			clearClickedStatus();
 
+#ifdef ENABLE_NEURO
+		if (success && _neuro)
+			_neuro->onSaveLoad(_saveLoadFlag == 1, _saveLoadSlot);
+#endif
+
 		_saveLoadFlag = 0;
 	}
 }

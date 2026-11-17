@@ -162,11 +162,8 @@ void SoundCD::playCDTrackInternal(int track, int numLoops, int startFrame, int d
 			stream = _soundSE->getAudioStreamFromIndex(track, kSoundSETypeCDAudio);
 		}
 
-		if (!stream) {
-			warning("Music track %d was requested but could not be played", track);
+		if (!stream)
 			return;
-		}
-		debug(1, "Music: playing track %d (loops %d, from frame %d)", track, numLoops, startFrame);
 
 		Audio::Timestamp start = Audio::Timestamp(0, startFrame, 75);
 		Audio::Timestamp end = Audio::Timestamp(0, startFrame + duration, 75);
