@@ -181,6 +181,7 @@ void NeuroBridge::update() {
 		if (_wasConnected) {
 			warning("Neuro: Connection to %s lost", _url.c_str());
 			_wasConnected = false;
+			resetInteraction();
 		}
 
 		const uint32 now = g_system->getMillis();
@@ -195,15 +196,16 @@ void NeuroBridge::update() {
 	}
 
 	Common::String message;
-	while (_ws.receive(message))
+	while (_ws.receive(message)) {
+		updateInteraction();
 		handleMessage(message);
-
-	if (_questionHoldVar) {
-		if (_questionCommand.empty() || g_system->getMillis() - _questionAskedAt > kQuestionOpenMs)
-			_questionHoldVar = 0;
-		else
-			_vm->writeVar(_questionHoldVar, _questionHoldValue);
 	}
+	if (!_ws.isConnected())
+		return;
+	updateInteraction();
+
+	if (_interaction.prompt.question().holdVar)
+		_vm->writeVar(_interaction.prompt.question().holdVar, _interaction.prompt.question().holdValue);
 
 	if (_heldSpeech.waiting && g_system->getMillis() >= _heldSpeech.dueAt)
 		sendHeldSpeech();
@@ -239,8 +241,6 @@ void NeuroBridge::onConnected() {
 	_speechOpen = false;
 	_speechEndDueAt = 0;
 	_heldSpeech.waiting = false;
-	_forceActive = false;
-	_forcedDialogue.clear();
 	_lastActivity = g_system->getMillis();
 }
 
@@ -264,25 +264,57 @@ void NeuroBridge::onSaveLoad(bool saved, int slot) {
 	}
 }
 
-void NeuroBridge::resetAfterLoad() {
-	if (_forceActive && _ws.isConnected()) {
-		unregisterAction(_forceAction.c_str());
-		registerActions();
+void NeuroBridge::updateInteraction() {
+	const int room = _vm->_currentRoom;
+	if (_interaction.prompt.expired(room, g_system->getMillis()))
+		endPrompt();
+
+	if (_interaction.outcome.leftRoom(room)) {
+		// Coordinates and in-flight clicks belonged to the old room. A named
+		// follow-up is resolved against the new room when control returns.
+		cancelClicks();
+		resetPager();
+		if (!_interaction.queue.empty() && _interaction.queue[0].preset.empty()) {
+			_interaction.queue.clear();
+			sendContext("The room changed before the follow-up movement could start.", false);
+			_interaction.outcome.report();
+		}
+		_interaction.outcome.enteredRoom(room);
 	}
-	_forceActive = false;
+}
+
+void NeuroBridge::endPrompt(bool notify) {
+	if (!_interaction.prompt.active())
+		return;
+	const Common::String action = _interaction.prompt.action();
+	_interaction.prompt = NeuroInteraction::Prompt();
+	if (notify && _ws.isConnected())
+		registerActions(action.c_str());
+}
+
+void NeuroBridge::cancelQueuedInput() {
+	cancelClicks();
+	_interaction.queue.clear();
+}
+
+void NeuroBridge::resetInteraction() {
+	endPrompt();
+	_interaction = NeuroInteraction();
 	_forcedDialogue.clear();
-	_questionCommand.clear();
-	_questionThen.clear();
-	_questionHoldVar = 0;
 	_pendingAlert = -1;
 	_openedDoor.clear();
-	_awaitingOutcome = false;
+	cancelClicks();
+	resetPager();
 	_walkTarget = 0;
 	_lastTargets[0] = _lastTargets[1] = 0;
+	_lastHeard.clear();
+}
+
+void NeuroBridge::resetAfterLoad() {
+	resetInteraction();
 	_controlSince = _speechBlockSince = 0;
 	_actorSeen.clear();
 	_leftAt.clear();
-	_lastHeard.clear();
 	_lastLine.clear();
 	_lastLineText.clear();
 	_drawnText.clear();
@@ -290,10 +322,6 @@ void NeuroBridge::resetAfterLoad() {
 	_strangers.clear();
 	_voiceColors.clear();
 	_described = NeuroWorld();
-	_queue.clear();
-	_clickPhase = kClickIdle;
-	_clickQueue.clear();
-	_shownSentence = false;
 	_pendingDialogue.clear();
 	if (_speechEndDueAt || (_speechOpen && !_heldSpeech.waiting && !_dialogueAsContext))
 		sendSpeechEnded();
@@ -304,8 +332,6 @@ void NeuroBridge::resetAfterLoad() {
 	_lastActivity = g_system->getMillis();
 	_seenRooms.clear();
 	_watched.clear();
-	_pagerState = kPagerIdle;
-	_pagerLines.clear();
 	sendContext("A saved game was loaded. Forget where you were; your situation is described again below.", true);
 }
 
@@ -371,7 +397,8 @@ void NeuroBridge::sendContext(const Common::String &message, bool silent) {
 	send("context", &data);
 }
 
-void NeuroBridge::sendForce(const Common::String &state, const Common::String &query, const char *actionName, const Common::String &priority) {
+void NeuroBridge::sendForce(const Common::String &state, const Common::String &query, const char *actionName, const Common::String &priority,
+		const NeuroInteraction::Question &question) {
 	Common::JSONArray names;
 	names.push_back(new Common::JSONValue(actionName));
 
@@ -384,28 +411,21 @@ void NeuroBridge::sendForce(const Common::String &state, const Common::String &q
 	data.setVal("action_names", new Common::JSONValue(names));
 	send("actions/force", &data);
 
-	_forceActive = true;
-	_forceAction = actionName;
-	_forceSentAt = g_system->getMillis();
+	_interaction.prompt.open(actionName, _vm->_currentRoom, g_system->getMillis(), question);
 }
 
 void NeuroBridge::sendActionResult(const Common::String &id, bool success, const Common::String &message) {
 	// Keep what she is told in the order it happened
 	flushDialogue();
 
-	// A force is over once the forced action succeeds; the server retries a
-	// failed one itself. She may answer with a different action than the one
-	// named, and anything that did something settles it. Reading, noting and
-	// waiting do nothing, and may have been sent before the prompt arrived.
-	const bool passive = _currentAction == "read_journal" || _currentAction == "add_note" || _currentAction == "wait";
-	if (success && _forceActive && !_currentAction.empty() && (_currentAction == _forceAction || !passive))
-		_forceActive = false;
 	Common::JSONObject data;
 	data.setVal("id", new Common::JSONValue(id));
 	data.setVal("success", new Common::JSONValue(success));
 	if (!message.empty())
 		data.setVal("message", new Common::JSONValue(message));
 	send("action/result", &data);
+	if (success && _interaction.prompt.answeredBy(_currentAction))
+		endPrompt();
 }
 
 void NeuroBridge::handleMessage(const Common::String &text) {

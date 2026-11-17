@@ -85,45 +85,53 @@ void NeuroBridge::unregisterAction(const char *name) {
 	send("actions/unregister", &data);
 }
 
-void NeuroBridge::registerActions(bool interactOnly) {
-	_registeredAt = g_system->getMillis();
+void NeuroBridge::registerActions(const char *replace) {
+	if (!replace)
+		_registeredAt = g_system->getMillis();
 
 	// Older servers keep the first definition of an action instead of
 	// replacing it, so drop the old one before sending a new one.
-	if (interactOnly)
-		unregisterAction("interact");
-
-	// Once the game's verbs are known they are offered as an enum
-	Common::JSONObject verb;
-	verb.setVal("type", new Common::JSONValue("string"));
-	if (!_offeredVerbs.empty()) {
-		Common::JSONArray names;
-		for (const auto &offered : _offeredVerbs)
-			names.push_back(new Common::JSONValue(offered.name));
-		names.push_back(new Common::JSONValue(_walkVerb));
-		verb.setVal("enum", new Common::JSONValue(names));
+	if (replace) {
+		if (_interaction.prompt.action() == replace)
+			endPrompt(false);
+		unregisterAction(replace);
 	}
-	Common::JSONObject interact;
-	interact.setVal("verb", new Common::JSONValue(verb));
-	interact.setVal("target", typeSchema("string"));
-	interact.setVal("second_target", typeSchema("string"));
-	interact.setVal("then_verb", typeSchema("string"));
-	interact.setVal("then_target", typeSchema("string"));
 
 	Common::JSONArray actions;
-	const Common::String interactHelp = "Use a verb on something here or in your inventory. \"" + _walkVerb + "\" moves you. "
-		"second_target: what an item is used on or given to. "
-		"then_verb and then_target: an optional second step, done the instant the first ends.";
-	actions.push_back(actionDefinition("interact", interactHelp.c_str(), objectSchema(interact, "verb", "target")));
+	const Common::String only = replace ? replace : "";
+	// Once the game's verbs are known they are offered as an enum
+	if (only.empty() || only == "interact") {
+		Common::JSONObject verb;
+		verb.setVal("type", new Common::JSONValue("string"));
+		if (!_offeredVerbs.empty()) {
+			Common::JSONArray names;
+			for (const auto &offered : _offeredVerbs)
+				names.push_back(new Common::JSONValue(offered.name));
+			names.push_back(new Common::JSONValue(_walkVerb));
+			verb.setVal("enum", new Common::JSONValue(names));
+		}
+		Common::JSONObject interact;
+		interact.setVal("verb", new Common::JSONValue(verb));
+		interact.setVal("target", typeSchema("string"));
+		interact.setVal("second_target", typeSchema("string"));
+		interact.setVal("then_verb", typeSchema("string"));
+		interact.setVal("then_target", typeSchema("string"));
 
-	if (!interactOnly) {
+		const Common::String interactHelp = "Use a verb on something here or in your inventory. \"" + _walkVerb + "\" moves you. "
+			"second_target: what an item is used on or given to. "
+			"then_verb and then_target: an optional second step, done the instant the first ends.";
+		actions.push_back(actionDefinition("interact", interactHelp.c_str(), objectSchema(interact, "verb", "target")));
+	}
+
+	if (only.empty() || only == "choose_dialogue") {
 		Common::JSONObject option;
 		option.setVal("type", new Common::JSONValue("integer"));
 		option.setVal("minimum", new Common::JSONValue((long long int)1));
 		Common::JSONObject choose;
 		choose.setVal("option", new Common::JSONValue(option));
 		actions.push_back(actionDefinition("choose_dialogue", "In a conversation, say the line with this number.", objectSchema(choose, "option")));
-
+	}
+	if (only.empty()) {
 		actions.push_back(actionDefinition("wait", "Let the game continue for a moment."));
 		if (_allowSkip)
 			actions.push_back(actionDefinition("skip_cutscene", "Skip the current cutscene."));
@@ -138,7 +146,8 @@ void NeuroBridge::registerActions(bool interactOnly) {
 		Common::JSONObject note;
 		note.setVal("text", typeSchema("string"));
 		actions.push_back(actionDefinition("add_note", "Add a short note to your journal.", objectSchema(note, "text")));
-
+	}
+	if (only.empty() || only == "answer") {
 		Common::JSONArray yesNo;
 		yesNo.push_back(new Common::JSONValue("yes"));
 		yesNo.push_back(new Common::JSONValue("no"));
@@ -233,12 +242,10 @@ void NeuroBridge::actionAnswer(const Common::String &id, const NeuroArgs &args) 
 		return;
 	}
 
-	const Common::String command = _questionCommand;
-	const Common::String thenCommand = _questionThen;
-	_questionCommand.clear();
-	_questionThen.clear();
+	const Common::String command = _interaction.prompt.question().command;
+	const Common::String thenCommand = _interaction.prompt.question().thenCommand;
 	// These questions are about a passing moment
-	if (command.empty() || g_system->getMillis() - _questionAskedAt > kQuestionOpenMs) {
+	if (command.empty() || _interaction.prompt.expired(_vm->_currentRoom, g_system->getMillis())) {
 		sendActionResult(id, true, "No question is waiting.");
 		return;
 	}
@@ -256,12 +263,12 @@ void NeuroBridge::actionAnswer(const Common::String &id, const NeuroArgs &args) 
 		return;
 	}
 	sendActionResult(id, true);
-	_queue.clear();
+	cancelQueuedInput();
 	// The second step is checked when it runs: what it needs may only appear after the first
 	if (!thenCommand.empty()) {
 		NeuroCommand next;
 		next.preset = thenCommand;
-		_queue.push_back(next);
+		_interaction.queue.push_back(next);
 	}
 	runCommand(resolved);
 }
@@ -354,10 +361,7 @@ bool NeuroBridge::resolveCommand(const NeuroWorld &world, const Common::String &
 void NeuroBridge::beginAction() {
 	_walkTarget = 0;
 	_lastTargets[0] = _lastTargets[1] = 0;
-	_commandStartedAt = g_system->getMillis();
-	_awaitingOutcome = true;
-	_outcomeTold = false;
-	_outcomeSpoken = false;
+	_interaction.outcome.begin(_vm->_currentRoom, g_system->getMillis());
 }
 
 void NeuroBridge::runCommand(const NeuroCommand &command) {
@@ -397,20 +401,20 @@ void NeuroBridge::runCommand(const NeuroCommand &command) {
 }
 
 void NeuroBridge::updateQueuedCommand() {
-	if (_queue.empty())
+	if (_interaction.queue.empty())
 		return;
 
 	// A simulated click has not started anything yet
 	if (_clickPhase != kClickIdle)
 		return;
 
-	const uint32 elapsed = g_system->getMillis() - _commandStartedAt;
-	if (elapsed > (_queue[0].afterPassage ? kPassageTimeoutMs : kStepTimeoutMs)) {
-		const Common::String step = _queue[0].preset;
-		_queue.clear();
+	const uint32 elapsed = _interaction.outcome.age(g_system->getMillis());
+	if (elapsed > (_interaction.queue[0].afterPassage ? kPassageTimeoutMs : kStepTimeoutMs)) {
+		const Common::String step = _interaction.queue[0].preset;
+		_interaction.queue.clear();
 		sendContext((step.empty() ? Common::String("The follow-up movement") : "The follow-up (" + step + ")") +
 			" did not start before time ran out.", false);
-		_outcomeTold = true;
+		_interaction.outcome.report();
 		return;
 	}
 
@@ -427,18 +431,18 @@ void NeuroBridge::updateQueuedCommand() {
 	}
 	if (!_queueIdleSince)
 		_queueIdleSince = now;
-	if (now - _queueIdleSince < _queue[0].settleMs)
+	if (now - _queueIdleSince < _interaction.queue[0].settleMs)
 		return;
 
-	NeuroCommand next = _queue.remove_at(0);
+	NeuroCommand next = _interaction.queue.remove_at(0);
 	if (!next.preset.empty()) {
 		NeuroWorld world;
 		collectWorld(world);
 		const Common::String step = next.preset;
 		if (!resolvePreset(world, step, next)) {
-			_queue.clear();
+			_interaction.queue.clear();
 			sendContext("Could not carry out the follow-up (" + step + ") with what is available now.", false);
-			_outcomeTold = true;
+			_interaction.outcome.report();
 			return;
 		}
 	}
@@ -448,27 +452,27 @@ void NeuroBridge::updateQueuedCommand() {
 }
 
 void NeuroBridge::finishAction(const NeuroWorld &world) {
-	if (!_awaitingOutcome)
+	if (!_interaction.outcome.pending())
 		return;
 
 	// Still going: a click not yet made, steps queued, walking, the game's own script
 	// (what a click sets off takes a moment to show)
-	const bool busy = _clickPhase != kClickIdle || !_queue.empty() || !_clickQueue.empty() || _pagerState != kPagerIdle
+	const bool busy = _clickPhase != kClickIdle || !_interaction.queue.empty() || !_clickQueue.empty() || _pagerState != kPagerIdle
 		|| g_system->getMillis() - _lastClickAt < kClickTakesMs
 		|| ego()->_moving || sentenceRunning();
-	if (busy || g_system->getMillis() - _commandStartedAt < kCommandStartsMs)
+	if (busy || _interaction.outcome.age(g_system->getMillis()) < kCommandStartsMs)
 		return;
 	// After someone has spoken, lines to choose from may be about to appear;
 	// they bring their own prompt, so give them a moment first.
-	if (_outcomeSpoken && !world.inDialogue && g_system->getMillis() - _controlSince < kLinesFollowMs)
+	if (_interaction.outcome.spoken() && !world.inDialogue && g_system->getMillis() - _controlSince < kLinesFollowMs)
 		return;
 
-	_awaitingOutcome = false;
+	_interaction.outcome.finish();
 	// A conversation prompts her with the lines to choose from. Otherwise she
 	// needs a cue that is hers: the replies to her action were not sent as one.
-	if (!_outcomeTold && !world.inDialogue) {
-		Common::String cue = _outcomeSpoken ? "Your move." : "No further visible response.";
-		if (!_outcomeSpoken && !_walkTarget) {
+	if (!_interaction.outcome.reported() && !world.inDialogue) {
+		Common::String cue = _interaction.outcome.spoken() ? "Your move." : "No further visible response.";
+		if (!_interaction.outcome.spoken() && !_walkTarget) {
 			for (const auto &item : world.inventory) {
 				if (item.id == _lastTargets[0])
 					cue += " You are carrying " + item.name + ".";
@@ -579,11 +583,11 @@ void NeuroBridge::actionInteract(const Common::String &id, const NeuroArgs &args
 
 	// For a place, say what stepping there looks like
 	sendActionResult(id, true, first.note);
-	_queue.clear();
+	cancelQueuedInput();
 	NeuroCommand passage;
 	if (!first.isSpot && passageTo(world.room, first.objects[0], passage)) {
 		first.afterPassage = true;
-		_queue.push_back(first);
+		_interaction.queue.push_back(first);
 		first = passage;
 	}
 	// A place may only react to a step taken from a standstill right next
@@ -591,13 +595,13 @@ void NeuroBridge::actionInteract(const Common::String &id, const NeuroArgs &args
 	if (first.stepTwice) {
 		NeuroCommand again = first;
 		again.settleMs = kSpotSettleMs;
-		_queue.push_back(again);
+		_interaction.queue.push_back(again);
 	}
 	if (!thenVerb.empty()) {
 		second.preset = thenVerb + " | " + thenTarget;
 		if (!thenSecond.empty())
 			second.preset += " | " + thenSecond;
-		_queue.push_back(second);
+		_interaction.queue.push_back(second);
 	}
 	runCommand(first);
 }

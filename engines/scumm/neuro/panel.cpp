@@ -311,7 +311,7 @@ void NeuroBridge::updatePanel() {
 		content.state = "Taking a short break";
 	} else if (!_ws.isConnected()) {
 		content.state = "Waiting for Neuro";
-	} else if (_forceActive) {
+	} else if (_interaction.prompt.active()) {
 		content.thinking = true;
 		content.state = "Thinking";
 		for (uint i = 0; i < (now / 400) % 4; i++)

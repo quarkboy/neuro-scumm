@@ -671,7 +671,7 @@ void NeuroBridge::reportRoom(const NeuroWorld &world) {
 			text += "Lost: " + neuroListNames(lost) + "\n";
 	}
 	sendContext(text, false);
-	_outcomeTold = true;
+	_interaction.outcome.report();
 }
 
 void NeuroBridge::reportChanges(const NeuroWorld &world) {
@@ -685,8 +685,8 @@ void NeuroBridge::reportChanges(const NeuroWorld &world) {
 	if (changes.empty())
 		return;
 	// Her cue to act: someone coming or going, or the result of what she just did
-	sendContext(changes, !(_awaitingOutcome || comings));
-	_outcomeTold |= _awaitingOutcome;
+	sendContext(changes, !(_interaction.outcome.pending() || comings));
+	_interaction.outcome.report();
 }
 
 /** Opening a door is nearly always the first half of walking through it. */
@@ -695,7 +695,7 @@ void NeuroBridge::askAboutDoor(const NeuroWorld &world, uint32 now) {
 		return;
 	// Not when the opening was itself the first half of an answer
 	const NeuroData::Game &game = _data.game();
-	if (game.doorQuestion && !game.openVerb.empty() && _queue.empty() && now - _lastQueuedStepAt > kDoorQuestionQuietMs && !_forceActive && !world.inDialogue && world.room == _described.room)
+	if (game.doorQuestion && !game.openVerb.empty() && _interaction.queue.empty() && now - _lastQueuedStepAt > kDoorQuestionQuietMs && !_interaction.prompt.active() && !world.inDialogue && world.room == _described.room)
 		ask("You opened: " + _openedDoor + ".", "Go through it?", game.openVerb + " | " + _openedDoor, _walkVerb + " | " + _openedDoor);
 	_openedDoor.clear();
 }
@@ -706,14 +706,14 @@ void NeuroBridge::learnVerbs(const NeuroWorld &world) {
 	if (_standardVerbs.empty() && inRows(world.verbs) && !world.customVerbs) {
 		_standardVerbs = world.verbs;
 		_offeredVerbs = _standardVerbs;
-		registerActions(true);
+		registerActions("interact");
 	}
 	// A scene can swap in verbs of its own
 	if (!_standardVerbs.empty() && !world.inDialogue && !world.verbs.empty()) {
 		const NeuroThingList &wanted = world.customVerbs ? world.verbs : _standardVerbs;
 		if (neuroListNames(wanted) != neuroListNames(_offeredVerbs)) {
 			_offeredVerbs = wanted;
-			registerActions(true);
+			registerActions("interact");
 			if (world.customVerbs)
 				sendContext("The verbs on screen have been replaced. They are now: " + neuroListNames(wanted) + ". Use them with interact, like any verb.", false);
 			else

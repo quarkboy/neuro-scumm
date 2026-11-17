@@ -85,7 +85,7 @@ void NeuroBridge::fireAlert(const NeuroData::Alert &original, const NeuroWorld &
 		return;
 	}
 	// Only one force may be outstanding; otherwise say it as plainly as context allows
-	if (_forceActive || world.inDialogue) {
+	if (_interaction.prompt.active() || world.inDialogue) {
 		sendContext(alert.say + " " + alert.ask, false);
 	} else if (!alert.command.empty()) {
 		ask(alert.say, alert.ask, alert.command, alert.then, alert.holdVar, alert.priority);
@@ -98,14 +98,14 @@ void NeuroBridge::fireAlert(const NeuroData::Alert &original, const NeuroWorld &
 /** Asks a yes/no question; answering yes carries out the command, and then the second one. */
 void NeuroBridge::ask(const Common::String &state, const Common::String &query, const Common::String &command,
 		const Common::String &then, int holdVar, const Common::String &priority) {
-	_questionCommand = command;
-	_questionThen = then;
-	_questionAskedAt = g_system->getMillis();
-	_questionHoldVar = holdVar;
+	NeuroInteraction::Question question;
+	question.command = command;
+	question.thenCommand = then;
+	question.holdVar = holdVar;
 	if (holdVar)
-		_questionHoldValue = readDataVar(holdVar);
-	sendForce(state, query, "answer", priority);
-	_lastActivity = _questionAskedAt;
+		question.holdValue = readDataVar(holdVar);
+	sendForce(state, query, "answer", priority, question);
+	_lastActivity = g_system->getMillis();
 }
 
 void NeuroBridge::checkAlerts(const NeuroWorld &before, const NeuroWorld &after) {

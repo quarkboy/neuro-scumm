@@ -39,8 +39,6 @@ namespace Scumm {
 class Actor;
 class ScummEngine;
 
-/** How long a yes/no question about a passing moment can still be answered. */
-static const uint32 kQuestionOpenMs = 20000;
 /** While the game keeps control, a line's end is only reported once this long has passed without another line. */
 static const uint32 kSpeechGapMs = 2000;
 
@@ -107,6 +105,70 @@ struct NeuroCommand {
 
 	/** When set, the command is carried out as these clicks, as a player would. */
 	Common::Array<NeuroClick> clicks;
+};
+
+/** A prompt can arrive while the previous action's outcome is still settling. */
+struct NeuroInteraction {
+	struct Question {
+		Common::String command, thenCommand;
+		int holdVar = 0, holdValue = 0;
+	};
+
+	class Prompt {
+	public:
+		void open(const char *action, int room, uint32 now, const Question &question) {
+			_action = action;
+			_room = room;
+			_startedAt = now;
+			_question = question;
+		}
+		bool active() const { return !_action.empty(); }
+		const Common::String &action() const { return _action; }
+		const Question &question() const { return _question; }
+		uint32 age(uint32 now) const { return now - _startedAt; }
+		bool expired(int room, uint32 now) const {
+			const uint32 lifetime = _action == "answer" ? 20000 : 90000;
+			return active() && (room != _room || age(now) > lifetime);
+		}
+		bool answeredBy(const Common::String &name) const {
+			if (!active() || name.empty())
+				return false;
+			return name == _action || name == "interact" || name == "choose_dialogue" || name == "skip_cutscene";
+		}
+
+	private:
+		Common::String _action;
+		int _room = 0;
+		uint32 _startedAt = 0;
+		Question _question;
+	} prompt;
+
+	class Outcome {
+	public:
+		void begin(int room, uint32 now) {
+			_room = room;
+			_startedAt = now;
+			_pending = true;
+			_reported = _spoken = false;
+		}
+		bool pending() const { return _pending; }
+		bool reported() const { return _reported; }
+		bool spoken() const { return _spoken; }
+		void report() { _reported = _pending; }
+		void hearSpeech() { _spoken = _pending; }
+		void finish() { _pending = false; }
+		void dispatchedAt(uint32 now) { _startedAt = now; }
+		uint32 age(uint32 now) const { return now - _startedAt; }
+		bool leftRoom(int room) const { return _pending && _room != room; }
+		void enteredRoom(int room) { _room = room; }
+
+	private:
+		int _room = 0;
+		uint32 _startedAt = 0;
+		bool _pending = false, _reported = false, _spoken = false;
+	} outcome;
+
+	Common::Array<NeuroCommand> queue;
 };
 
 /** Everything the player could see or use at one moment. */
@@ -215,13 +277,16 @@ private:
 	/** Takes ownership of the values in data. */
 	void send(const char *command, const Common::JSONObject *data = nullptr);
 	void sendActionResult(const Common::String &id, bool success, const Common::String &message = Common::String());
-	void sendForce(const Common::String &state, const Common::String &query, const char *actionName, const Common::String &priority = Common::String());
+	void sendForce(const Common::String &state, const Common::String &query, const char *actionName, const Common::String &priority = Common::String(),
+		const NeuroInteraction::Question &question = NeuroInteraction::Question());
 	void sendIntro();
 
-	// Only one force may be outstanding at a time
-	bool _forceActive = false;
-	Common::String _forceAction;
-	uint32 _forceSentAt = 0;
+	NeuroInteraction _interaction;
+	void endPrompt(bool notify = true);
+	void updateInteraction();
+	void resetInteraction();
+	void cancelClicks();
+	void cancelQueuedInput();
 	/** The action being handled, and when she last did anything or anything happened. */
 	Common::String _currentAction;
 	uint32 _lastActionAt = 0;
@@ -249,7 +314,7 @@ private:
 
 	// --- Her actions (actions.cpp)
 
-	void registerActions(bool interactOnly = false);
+	void registerActions(const char *replace = nullptr);
 	void unregisterAction(const char *name);
 	uint32 _registeredAt = 0;
 	/** Whether she is offered skip_cutscene at all. */
@@ -272,7 +337,6 @@ private:
 	void runCommand(const NeuroCommand &command);
 
 	// Follow-up steps, each run as soon as the one before has played out
-	Common::Array<NeuroCommand> _queue;
 	bool _queueSawBusy = false;
 	uint32 _queueIdleSince = 0;
 	uint32 _lastQueuedStepAt = 0;
@@ -280,10 +344,6 @@ private:
 
 	// After each of her actions she is told how it turned out, so that
 	// she can carry on at once instead of waiting to be prompted.
-	bool _awaitingOutcome = false;
-	bool _outcomeTold = false;   ///< she has been prompted with the result
-	bool _outcomeSpoken = false; ///< someone said something in reply
-	uint32 _commandStartedAt = 0;
 	/** The thing the last command walked to, if it was a walk. */
 	int _walkTarget = 0;
 	// What her last action was aimed at; only these are worth a note when their look changes
@@ -336,12 +396,6 @@ private:
 	uint32 _reactionMs = 300;
 
 	// A yes/no question, and what saying yes does
-	Common::String _questionCommand;
-	Common::String _questionThen;
-	uint32 _questionAskedAt = 0;
-	// A game timer that stands still while the question is open
-	int _questionHoldVar = 0;
-	int _questionHoldValue = 0;
 	void ask(const Common::String &state, const Common::String &query, const Common::String &command,
 		const Common::String &then, int holdVar = 0, const Common::String &priority = Common::String());
 

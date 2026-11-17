@@ -98,7 +98,7 @@ Common::String NeuroBridge::cleanText(const byte *text, bool resolveCodes) {
 }
 
 void NeuroBridge::onTalkStarted(int actor, const byte *text) {
-	_outcomeSpoken = true;
+	_interaction.outcome.hearSpeech();
 
 	onTalkStopped();
 
@@ -155,7 +155,7 @@ void NeuroBridge::onTalkStarted(int actor, const byte *text) {
 	// Lines she is only watching may get a reaction. Replies to her own action
 	// must not prompt her one by one: she is prompted once, when it is her
 	// turn, with the choice of lines or a cue.
-	const bool noReply = _awaitingOutcome || anotherLineFollows();
+	const bool noReply = _interaction.outcome.pending() || anotherLineFollows();
 	const bool spokenByActor = actor > 0 && actor < 0x80;
 	if (!spokenByActor && line.size() <= kTypedOutMaxLength) {
 		_heldSpeech.waiting = true;
@@ -403,7 +403,8 @@ void NeuroBridge::flushDialogue() {
 		cue = !world.inDialogue;
 	}
 	sendContext(text, !cue);
-	_outcomeTold |= cue;
+	if (cue)
+		_interaction.outcome.report();
 }
 
 void NeuroBridge::onTextDrawn(const byte *text, int color) {

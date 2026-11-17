@@ -32,8 +32,6 @@
 
 namespace Scumm {
 
-/** A force that was never answered stops blocking the next one after this long. */
-static const uint32 kForceTimeoutMs = 90000;
 /** The list moves within this long of an arrow being pressed. */
 static const uint32 kScrollTakesMs = 1000;
 /** The line she picked can stay on screen for this long. */
@@ -169,7 +167,7 @@ void NeuroBridge::updatePager() {
 	for (const auto &verb : world.verbs) {
 		if (verb.name == _pagerTarget) {
 			resetPager();
-			_commandStartedAt = g_system->getMillis();
+			_interaction.outcome.dispatchedAt(g_system->getMillis());
 			pickLine(verb.id);
 			return;
 		}
@@ -232,6 +230,7 @@ void NeuroBridge::actionChooseDialogue(const Common::String &id, const NeuroArgs
 
 	sendActionResult(id, true);
 	// What is said next is the reply to her line, not something to react to separately
+	cancelQueuedInput();
 	beginAction();
 	// Answered; it is not what her next choice is about
 	_lastHeard.clear();
@@ -258,9 +257,6 @@ void NeuroBridge::pickLine(int verb) {
 void NeuroBridge::updateForces(const NeuroWorld &world) {
 	const uint32 now = g_system->getMillis();
 
-	if (_forceActive && now - _forceSentAt > kForceTimeoutMs)
-		_forceActive = false;
-
 	if (world.inDialogue) {
 		if (_pagerState != kPagerIdle)
 			return;
@@ -269,7 +265,7 @@ void NeuroBridge::updateForces(const NeuroWorld &world) {
 		const bool covered = (up || down) && pagerCovers(world);
 		if ((up || down) && !covered) {
 			// Not while her last choice is still on screen, or the pointer is on its way to it
-			if (!_forceActive && now - _lastActionAt > kChoiceLingersMs && _clickPhase == kClickIdle && now - _lastClickAt > kChoiceLingersMs) {
+			if (!_interaction.prompt.active() && now - _lastActionAt > kChoiceLingersMs && _clickPhase == kClickIdle && now - _lastClickAt > kChoiceLingersMs) {
 				_pagerPressedAt = 0;
 				_pagerState = kPagerToTop;
 			}
@@ -280,8 +276,10 @@ void NeuroBridge::updateForces(const NeuroWorld &world) {
 		const Common::String lines = listDialogue(covered ? _pagerLines : world.verbs);
 		// Not a second force while one is outstanding, and not the same lines
 		// again while the one she picked is still on screen
+		if (_interaction.prompt.action() == "choose_dialogue" && lines != _forcedDialogue)
+			endPrompt();
 		const bool fresh = lines != _forcedDialogue || now - _lastActionAt > kSameLinesAgainMs;
-		if (!_forceActive && fresh) {
+		if (!_interaction.prompt.active() && fresh) {
 			_forcedDialogue = lines;
 			// The line she is answering goes with the choice, so it cannot be missed
 			Common::String state = lines;
@@ -294,10 +292,12 @@ void NeuroBridge::updateForces(const NeuroWorld &world) {
 		}
 		return;
 	}
+	if (_interaction.prompt.action() == "choose_dialogue")
+		endPrompt();
 	_forcedDialogue.clear();
 	_pagerLines.clear();
 
-	if (_idleForceMs && !_forceActive && now - _lastActivity > _idleForceMs) {
+	if (_idleForceMs && !_interaction.prompt.active() && now - _lastActivity > _idleForceMs) {
 		_lastActivity = now;
 		sendForce(describeRoom(world, kRoomStatus), "Your move.", "interact");
 	}

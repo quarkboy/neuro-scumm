@@ -267,8 +267,7 @@ class Console:
         self.game_name = ""
         self.startup = None         # the game's startup message, replayed on every server connection
         self.actions = {}           # her registered actions, by name
-        self.force = None           # the last actions/force not yet answered
-        self.pending_actions = {}   # forwarded action id -> normalized name
+        self.force = None           # kept until the game withdraws its prompted action
         self.backlog = []           # context sent while no server was connected
         self.hold = False
 
@@ -496,14 +495,13 @@ class Console:
         if self.game is not None:
             self.game.close()
         self.game = ws
-        self.pending_actions.clear()
         self.actions, self.force, self.backlog, self.startup = {}, None, [], None
         self.view = self.empty_view()
         self.event("console", "link", "The game connected")
         poll = asyncio.ensure_future(self.poll_status(ws))
         while True:
             text = await ws.recv()
-            if text is None:
+            if text is None or self.game is not ws:
                 break
             try:
                 self.from_game(text)
@@ -542,10 +540,10 @@ class Console:
             return
 
         if command == "startup":
-            self.pending_actions.clear()
             self.game_name = message.get("game", "")
             self.startup = message
             self.actions, self.force = {}, None
+            view["state"], view["question"], view["lines"] = "idle", "", {}
         elif command == "actions/register":
             for action in data.get("actions", []):
                 self.actions[action.get("name", "")] = action
@@ -574,12 +572,6 @@ class Console:
             view["speech"] = None
         elif command == "action/result":
             ok = bool(data.get("success"))
-            name = self.pending_actions.pop(data.get("id"), None)
-            passive = name in ("read_journal", "add_note", "wait")
-            if ok and name and self.force and (not passive or name in self.force["data"]["action_names"]):
-                self.force = None
-                view["state"] = "acting"
-                view["question"], view["lines"] = "", {}
             self.event("to_neuro", "result", ("OK" if ok else "Refused") +
                        (": " + data["message"] if data.get("message") else ""), message)
 
@@ -660,8 +652,6 @@ class Console:
             self.view["now"] = said
             if self.force is None:
                 self.view["state"] = "acting"
-            if self.game is not None:
-                self.pending_actions[data.get("id")] = normalized
         if self.game is not None:
             self.game.send(text)
 

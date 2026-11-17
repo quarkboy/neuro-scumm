@@ -122,7 +122,9 @@ Neuro reacts in a fraction of a second; a stand-in language model takes a few se
 ### Pacing
 - With remastered speech on, a line lasts as long as its audio.
 - She can act whenever the player has control. A force goes out at once for a dialogue choice, and after `NEURO_IDLE_FORCE_SECONDS` when nothing is happening.
-- Only one force is outstanding at a time.
+- The bridge owns one outstanding prompt and tracks the outcome of the action in progress. Reading the journal, adding a note, waiting, or sending an invalid answer leaves the prompt open. An accepted gameplay action settles it. Changing rooms or reaching the deadline withdraws it and releases any held timer.
+- The bridge withdraws the prompted action and registers it again when the prompt ends. The console uses that signal to clear the displayed question and its replay cache. Reconnecting the console to the upstream server replays the current prompt. Loading a save or losing the game's connection discards pending input.
+- A room change cancels clicks and follow-up movements tied to the old room. A named follow-up is resolved again when control returns in the new room.
 
 ## Risks
 - **No vision.** Clues that are purely visual have to be in the descriptions without giving solutions away.

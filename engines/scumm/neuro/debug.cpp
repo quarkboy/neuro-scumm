@@ -226,10 +226,10 @@ void NeuroBridge::debugDump() {
 	NeuroWorld world;
 	collectWorld(world);
 	debug("NEURODUMP state: inDialogue %d verbs %u standard %u forceAge %u pending %u controlSince %u", world.inDialogue, world.verbs.size(),
-		_standardVerbs.size(), g_system->getMillis() - _forceSentAt, _pendingDialogue.size(), _controlSince);
+		_standardVerbs.size(), _interaction.prompt.age(g_system->getMillis()), _pendingDialogue.size(), _controlSince);
 	debug("NEURODUMP state: control %d userPut %d cursor %d sentences %d speechOpen %d moving %d forceActive %d idle %u ms click %d queue %u",
 		playerHasControl(), _vm->_userPut, _vm->_cursor.state, _vm->_sentenceNum, _speechOpen,
-		ego()->_moving, _forceActive, g_system->getMillis() - _lastActivity, (int)_clickPhase, _queue.size());
+		ego()->_moving, _interaction.prompt.active(), g_system->getMillis() - _lastActivity, (int)_clickPhase, _interaction.queue.size());
 	debug("NEURODUMP verb script %d", _vm->VAR_VERB_SCRIPT == 0xFF ? -1 : _vm->VAR(_vm->VAR_VERB_SCRIPT));
 	for (int slot = 1; slot < _vm->_numVerbs; slot++) {
 		const VerbSlot &vs = _vm->_verbs[slot];
