@@ -1,3 +1,7 @@
+# Shell functions for use with t.sh: source this file (". goto.sh") from the folder it is in.
+#   goto NAME [SECONDS] [WIDTH]   walk to something and wait for the next room
+#   choose N                      pick a line and wait for the next choice
+S=${S:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}
 goto () 
 { 
     n=$(wc -l < $S/game.out);

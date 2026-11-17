@@ -27,13 +27,9 @@
 #include "common/debug.h"
 #include "common/random.h"
 #include "common/system.h"
-#include "common/util.h"
 #include "common/textconsole.h"
 
-#include "graphics/streampanel.h"
-
 #include "scumm/actor.h"
-#include "scumm/object.h"
 #include "scumm/scumm.h"
 
 #ifndef USE_BASIC_NET
@@ -43,14 +39,30 @@
 namespace Scumm {
 
 static const uint32 kReconnectDelayMs = 5000;
+static const int kIdleForceSeconds = 45;
+/** Dialogue sent as context goes out after a pause this long, or once it has waited this long. */
+static const uint32 kBatchPauseMs = 1000;
+static const uint32 kBatchMaxMs = 5000;
+/** A request to register everything again this soon after doing so is not acted on. */
+static const uint32 kJustRegisteredMs = 3000;
+
+Common::String neuroSetting(const char *env, const char *key) {
+	const char *value = getenv(env);
+	if (value && *value)
+		return value;
+	Common::String configKey(key ? key : env);
+	if (!key)
+		configKey.toLowercase();
+	return ConfMan.hasKey(configKey) ? ConfMan.get(configKey) : Common::String();
+}
+
+static int numberSetting(const char *env, int fallback) {
+	const Common::String value = neuroSetting(env);
+	return value.empty() ? fallback : atoi(value.c_str());
+}
 
 NeuroBridge *NeuroBridge::create(ScummEngine *vm) {
-	Common::String url;
-	const char *env = getenv("NEURO_SDK_WS_URL");
-	if (env && *env)
-		url = env;
-	else if (ConfMan.hasKey("neuro_ws_url"))
-		url = ConfMan.get("neuro_ws_url");
+	const Common::String url = neuroSetting("NEURO_SDK_WS_URL", "neuro_ws_url");
 
 	// The room extraction tool runs without a server
 	const char *extract = getenv("NEURO_EXTRACT_DIR");
@@ -77,89 +89,53 @@ NeuroBridge::NeuroBridge(ScummEngine *vm, const Common::String &url) : _vm(vm), 
 		break;
 	}
 
-	const char *mode = getenv("NEURO_DIALOGUE_MODE");
-	Common::String dialogueMode;
-	if (mode && *mode)
-		dialogueMode = mode;
-	else if (ConfMan.hasKey("neuro_dialogue_mode"))
-		dialogueMode = ConfMan.get("neuro_dialogue_mode");
-	_dialogueAsContext = dialogueMode.equalsIgnoreCase("context");
+	_dialogueAsContext = neuroSetting("NEURO_DIALOGUE_MODE").equalsIgnoreCase("context");
 
-	const char *descriptions = getenv("NEURO_DESCRIPTIONS");
-	if (descriptions && *descriptions)
+	const Common::String descriptions = neuroSetting("NEURO_DESCRIPTIONS");
+	if (!descriptions.empty())
 		_data.load(descriptions);
-	else if (ConfMan.hasKey("neuro_descriptions"))
-		_data.load(ConfMan.get("neuro_descriptions"));
 
 	_journal.loadGoals(_data.ini());
-	_journal.setVarReader([](void *bridge, int var) { return ((NeuroBridge *)bridge)->readDataVar(var); }, this);
+	_journal.setExpander([](void *bridge, const Common::String &text) { return ((NeuroBridge *)bridge)->expandText(text); }, this);
 	// Starting straight from a savegame (-x) loads it before the first frame
 	if (ConfMan.hasKey("save_slot") && ConfMan.getInt("save_slot") >= 0)
 		loadJournal(ConfMan.getInt("save_slot"));
 
-	const char *fast = getenv("NEURO_FAST_MODE");
-	Common::String fastMode;
-	if (fast && *fast)
-		fastMode = fast;
-	else if (ConfMan.hasKey("neuro_fast_mode"))
-		fastMode = ConfMan.get("neuro_fast_mode");
+	const Common::String fastMode = neuroSetting("NEURO_FAST_MODE");
 	if (fastMode.equalsIgnoreCase("always"))
 		_fastMode = kFastAlways;
 	else if (fastMode.equalsIgnoreCase("scenes"))
 		_fastMode = kFastScenes;
 
-	// Actions that are never registered: "operator" allows the ones the
-	// console needs (save, load, status, settings), "all" the developer's too
-	const char *debugActions = getenv("NEURO_DEBUG_ACTIONS");
-	Common::String allowed;
-	if (debugActions && *debugActions)
-		allowed = debugActions;
-	else if (ConfMan.hasKey("neuro_debug_actions"))
-		allowed = ConfMan.get("neuro_debug_actions");
-	if (allowed.equalsIgnoreCase("all"))
+	const Common::String debugActions = neuroSetting("NEURO_DEBUG_ACTIONS");
+	if (debugActions.equalsIgnoreCase("all"))
 		_debugActions = kDebugAll;
-	else if (allowed.equalsIgnoreCase("operator"))
+	else if (debugActions.equalsIgnoreCase("operator"))
 		_debugActions = kDebugOperator;
 
-	// NEURO_POINTER=off makes clicks land at once, without the pointer travelling
-	const char *pointer = getenv("NEURO_POINTER");
-	if (pointer && *pointer)
-		_pointerGlide = !Common::String(pointer).equalsIgnoreCase("off");
-	else if (ConfMan.hasKey("neuro_pointer"))
-		_pointerGlide = !ConfMan.get("neuro_pointer").equalsIgnoreCase("off");
-
-	// NEURO_SKIP_CUTSCENES=off takes the skip_cutscene action away from her
-	const char *skipScenes = getenv("NEURO_SKIP_CUTSCENES");
-	if (skipScenes && *skipScenes)
-		_allowSkip = !Common::String(skipScenes).equalsIgnoreCase("off");
-	else if (ConfMan.hasKey("neuro_skip_cutscenes"))
-		_allowSkip = !ConfMan.get("neuro_skip_cutscenes").equalsIgnoreCase("off");
-
-	const char *contextTokens = getenv("NEURO_CONTEXT_TOKENS");
-	if (contextTokens && *contextTokens)
-		_contextTokens = atoi(contextTokens);
-	else if (ConfMan.hasKey("neuro_context_tokens"))
-		_contextTokens = ConfMan.getInt("neuro_context_tokens");
-
-	const char *reaction = getenv("NEURO_REACTION_MS");
-	if (reaction && *reaction)
-		_reactionMs = atoi(reaction);
-	else if (ConfMan.hasKey("neuro_reaction_ms"))
-		_reactionMs = ConfMan.getInt("neuro_reaction_ms");
-
-	const char *idle = getenv("NEURO_IDLE_FORCE_SECONDS");
-	int idleSeconds = 45;
-	if (idle && *idle)
-		idleSeconds = atoi(idle);
-	else if (ConfMan.hasKey("neuro_idle_force_seconds"))
-		idleSeconds = ConfMan.getInt("neuro_idle_force_seconds");
-	_idleForceMs = MAX(0, idleSeconds) * 1000;
+	_pointerGlide = !neuroSetting("NEURO_POINTER").equalsIgnoreCase("off");
+	_allowSkip = !neuroSetting("NEURO_SKIP_CUTSCENES").equalsIgnoreCase("off");
+	_contextTokens = numberSetting("NEURO_CONTEXT_TOKENS", _contextTokens);
+	_reactionMs = numberSetting("NEURO_REACTION_MS", _reactionMs);
+	_idleForceMs = MAX(0, numberSetting("NEURO_IDLE_FORCE_SECONDS", kIdleForceSeconds)) * 1000;
 
 	startExtraction();
 
 	// Line ids must stay unique across restarts of the game
 	Common::RandomSource rnd("neuro_speech");
 	_speechIdPrefix = Common::String::format("%08x", rnd.getRandomNumber(0x7FFFFFFF));
+}
+
+Actor *NeuroBridge::ego() const {
+	return _vm->_actors[_vm->VAR(_vm->VAR_EGO)];
+}
+
+bool NeuroBridge::playerHasControl() const {
+	return _vm->_userPut > 0 && _vm->_cursor.state > 0;
+}
+
+bool NeuroBridge::sentenceRunning() const {
+	return _vm->isScriptRunning(_vm->VAR(_vm->VAR_SENTENCE_SCRIPT));
 }
 
 void NeuroBridge::update() {
@@ -210,11 +186,68 @@ void NeuroBridge::update() {
 	if (!_pendingDialogue.empty()) {
 		const uint32 now = g_system->getMillis();
 		// Normally wait for a pause, but do not let endless chatter hold lines back
-		if ((!_speechOpen && now - _lastTalkTime > 1000) || now - _pendingSince > 5000)
+		if ((!_speechOpen && now - _lastTalkTime > kBatchPauseMs) || now - _pendingSince > kBatchMaxMs)
 			flushDialogue();
 	}
 
 	pollWorld();
+}
+
+void NeuroBridge::onConnected() {
+	debug(1, "Neuro: Connected to %s as '%s'", _url.c_str(), _gameName.c_str());
+	send("startup");
+	registerActions();
+
+	sendIntro();
+
+	// Describe the current room again from scratch
+	_described = NeuroWorld();
+	_speechOpen = false;
+	_speechEndDueAt = 0;
+	_forceActive = false;
+	_forcedDialogue.clear();
+	_lastActivity = g_system->getMillis();
+}
+
+void NeuroBridge::sendIntro() {
+	sendContext(Common::String::format(
+		"You are playing %s, a classic point-and-click adventure game. "
+		"You control Guybrush Threepwood, who wants to become a pirate. "
+		"You cannot see the screen, so each location and what is in it will be described to you. "
+		"Things that share a name are numbered from left to right. "
+		"Your goals are kept in a journal that you can read at any time with read_journal.",
+		_gameName.c_str()), true);
+	_introSentAt = _tokensSent;
+}
+
+void NeuroBridge::onSaveLoad(bool saved, int slot) {
+	// The journal travels with each savegame in a file of its own
+	if (saved) {
+		saveJournal(slot);
+	} else {
+		resetAfterLoad();
+		loadJournal(slot);
+	}
+}
+
+void NeuroBridge::resetAfterLoad() {
+	_described = NeuroWorld();
+	_queue.clear();
+	_clickPhase = kClickIdle;
+	_clickQueue.clear();
+	_shownSentence = false;
+	_pendingDialogue.clear();
+	_speechOpen = false;
+	if (_speechEndDueAt)
+		sendSpeechEnded();
+	_namedCostume.clear();
+	_recentLines.clear();
+	_lastActivity = g_system->getMillis();
+	_seenRooms.clear();
+	_watched.clear();
+	_pagerState = kPagerIdle;
+	_pagerLines.clear();
+	sendContext("A saved game was loaded. Forget where you were; your situation is described again below.", true);
 }
 
 Common::String NeuroBridge::journalFileName(int slot) const {
@@ -256,228 +289,6 @@ void NeuroBridge::updateSpeed() {
 		_vm->_fastMode &= ~1;
 		_speedSet = false;
 	}
-}
-
-void NeuroBridge::onSaveLoad(bool saved, int slot) {
-	// The journal travels with each savegame in a file of its own
-	if (saved) {
-		saveJournal(slot);
-	} else {
-		resetAfterLoad();
-		loadJournal(slot);
-	}
-}
-
-void NeuroBridge::resetAfterLoad() {
-	_described = NeuroWorld();
-	_queue.clear();
-	_clickPhase = kClickIdle;
-	_clickQueue.clear();
-	_shownSentence = false;
-	_pendingDialogue.clear();
-	_speechOpen = false;
-	if (_speechEndDueAt)
-		sendSpeechEnded();
-	_namedCostume.clear();
-	_recentLines.clear();
-	_lastActivity = g_system->getMillis();
-	_seenRooms.clear();
-	_watched.clear();
-	_pagerState = kPagerIdle;
-	_pagerLines.clear();
-	sendContext("A saved game was loaded. Forget where you were; your situation is described again below.", true);
-}
-
-void NeuroBridge::flushDialogue() {
-	if (_pendingDialogue.empty())
-		return;
-	Common::String text = _pendingDialogue;
-	_pendingDialogue.clear();
-	_lastLineText.clear();
-	_lastLineOffset = 0;
-	// Mid-scene she is only listening; once she can act again a line may
-	// be her cue. In a conversation the choice of lines prompts her instead.
-	bool cue = playerHasControl();
-	if (cue) {
-		NeuroWorld world;
-		collectWorld(world);
-		cue = !world.inDialogue;
-	}
-	sendContext(text, !cue);
-	_outcomeTold |= cue;
-}
-
-void NeuroBridge::onConnected() {
-	debug(1, "Neuro: Connected to %s as '%s'", _url.c_str(), _gameName.c_str());
-	send("startup");
-	registerActions();
-
-	sendIntro();
-
-	// Describe the current room again from scratch
-	_described = NeuroWorld();
-	_speechOpen = false;
-	_speechEndDueAt = 0;
-	_forceActive = false;
-	_forcedDialogue.clear();
-	_lastActivity = g_system->getMillis();
-}
-
-// JSON values own their children, so every use needs a fresh copy
-static Common::JSONValue *stringSchema() {
-	Common::JSONObject schema;
-	schema.setVal("type", new Common::JSONValue("string"));
-	return new Common::JSONValue(schema);
-}
-
-void NeuroBridge::sendIntro() {
-	sendContext(Common::String::format(
-		"You are playing %s, a classic point-and-click adventure game. "
-		"You control Guybrush Threepwood, who wants to become a pirate. "
-		"You cannot see the screen, so each location and what is in it will be described to you. "
-		"Things that share a name are numbered from left to right. "
-		"Your goals are kept in a journal that you can read at any time with read_journal.",
-		_gameName.c_str()), true);
-	_introSentAt = _tokensSent;
-}
-
-void NeuroBridge::registerActions(bool interactOnly) {
-	_registeredAt = g_system->getMillis();
-
-	// Older servers keep the first definition of an action instead of
-	// replacing it, so drop the old one before sending a new one.
-	if (interactOnly) {
-		Common::JSONArray names;
-		names.push_back(new Common::JSONValue("interact"));
-		Common::JSONObject data;
-		data.setVal("action_names", new Common::JSONValue(names));
-		send("actions/unregister", &data);
-	}
-
-	Common::JSONObject wait;
-	wait.setVal("name", new Common::JSONValue("wait"));
-	wait.setVal("description", new Common::JSONValue("Let the game continue for a moment."));
-
-	Common::JSONObject skip;
-	skip.setVal("name", new Common::JSONValue("skip_cutscene"));
-	skip.setVal("description", new Common::JSONValue("Skip the current cutscene."));
-
-	// Once the game's verbs are known they are offered as an enum
-	Common::JSONValue *verbSchema = stringSchema();
-	if (!_offeredVerbs.empty()) {
-		Common::JSONArray names;
-		for (const auto &verb : _offeredVerbs)
-			names.push_back(new Common::JSONValue(verb.name));
-		names.push_back(new Common::JSONValue("Walk to"));
-		Common::JSONObject withEnum;
-		withEnum.setVal("type", new Common::JSONValue("string"));
-		withEnum.setVal("enum", new Common::JSONValue(names));
-		delete verbSchema;
-		verbSchema = new Common::JSONValue(withEnum);
-	}
-
-	Common::JSONObject properties;
-	properties.setVal("verb", verbSchema);
-	properties.setVal("target", stringSchema());
-	properties.setVal("second_target", stringSchema());
-	properties.setVal("then_verb", stringSchema());
-	properties.setVal("then_target", stringSchema());
-	Common::JSONArray required;
-	required.push_back(new Common::JSONValue("verb"));
-	required.push_back(new Common::JSONValue("target"));
-	Common::JSONObject schema;
-	schema.setVal("type", new Common::JSONValue("object"));
-	schema.setVal("properties", new Common::JSONValue(properties));
-	schema.setVal("required", new Common::JSONValue(required));
-
-	Common::JSONObject interact;
-	interact.setVal("name", new Common::JSONValue("interact"));
-	interact.setVal("description", new Common::JSONValue(
-		"Use a verb on something here or in your inventory. \"Walk to\" moves you. "
-		"second_target: what an item is used on or given to. "
-		"then_verb and then_target: an optional second step, done the instant the first ends."));
-	interact.setVal("schema", new Common::JSONValue(schema));
-
-	Common::JSONObject optionType;
-	optionType.setVal("type", new Common::JSONValue("integer"));
-	optionType.setVal("minimum", new Common::JSONValue((long long int)1));
-	Common::JSONObject optionProperties;
-	optionProperties.setVal("option", new Common::JSONValue(optionType));
-	Common::JSONArray optionRequired;
-	optionRequired.push_back(new Common::JSONValue("option"));
-	Common::JSONObject optionSchema;
-	optionSchema.setVal("type", new Common::JSONValue("object"));
-	optionSchema.setVal("properties", new Common::JSONValue(optionProperties));
-	optionSchema.setVal("required", new Common::JSONValue(optionRequired));
-
-	Common::JSONObject choose;
-	choose.setVal("name", new Common::JSONValue("choose_dialogue"));
-	choose.setVal("description", new Common::JSONValue(
-		"In a conversation, say the line with this number."));
-	choose.setVal("schema", new Common::JSONValue(optionSchema));
-
-	Common::JSONArray actions;
-	actions.push_back(new Common::JSONValue(interact));
-	Common::JSONObject readJournal;
-	readJournal.setVal("name", new Common::JSONValue("read_journal"));
-	readJournal.setVal("description", new Common::JSONValue(
-		"Read your goals and notes. clues_for: name a goal to read its clues instead. show_completed adds finished goals."));
-	Common::JSONObject completedType;
-	completedType.setVal("type", new Common::JSONValue("boolean"));
-	Common::JSONObject journalProperties;
-	journalProperties.setVal("show_completed", new Common::JSONValue(completedType));
-	journalProperties.setVal("clues_for", stringSchema());
-	Common::JSONObject journalSchema;
-	journalSchema.setVal("type", new Common::JSONValue("object"));
-	journalSchema.setVal("properties", new Common::JSONValue(journalProperties));
-	readJournal.setVal("schema", new Common::JSONValue(journalSchema));
-
-	Common::JSONObject noteProperties;
-	noteProperties.setVal("text", stringSchema());
-	Common::JSONArray noteRequired;
-	noteRequired.push_back(new Common::JSONValue("text"));
-	Common::JSONObject noteSchema;
-	noteSchema.setVal("type", new Common::JSONValue("object"));
-	noteSchema.setVal("properties", new Common::JSONValue(noteProperties));
-	noteSchema.setVal("required", new Common::JSONValue(noteRequired));
-	Common::JSONObject addNote;
-	addNote.setVal("name", new Common::JSONValue("add_note"));
-	addNote.setVal("description", new Common::JSONValue(
-		"Add a short note to your journal."));
-	addNote.setVal("schema", new Common::JSONValue(noteSchema));
-
-	Common::JSONArray yesNo;
-	yesNo.push_back(new Common::JSONValue("yes"));
-	yesNo.push_back(new Common::JSONValue("no"));
-	Common::JSONObject answerType;
-	answerType.setVal("type", new Common::JSONValue("string"));
-	answerType.setVal("enum", new Common::JSONValue(yesNo));
-	Common::JSONObject answerProperties;
-	answerProperties.setVal("answer", new Common::JSONValue(answerType));
-	Common::JSONArray answerRequired;
-	answerRequired.push_back(new Common::JSONValue("answer"));
-	Common::JSONObject answerSchema;
-	answerSchema.setVal("type", new Common::JSONValue("object"));
-	answerSchema.setVal("properties", new Common::JSONValue(answerProperties));
-	answerSchema.setVal("required", new Common::JSONValue(answerRequired));
-	Common::JSONObject answer;
-	answer.setVal("name", new Common::JSONValue("answer"));
-	answer.setVal("description", new Common::JSONValue(
-		"Answer a yes/no question from the game. Yes does what it offered, at once."));
-	answer.setVal("schema", new Common::JSONValue(answerSchema));
-
-	Common::JSONValue *others[] = {new Common::JSONValue(choose), new Common::JSONValue(wait), new Common::JSONValue(skip),
-		new Common::JSONValue(readJournal), new Common::JSONValue(addNote), new Common::JSONValue(answer)};
-	for (Common::JSONValue *other : others) {
-		if (interactOnly || (other == others[2] && !_allowSkip))
-			delete other;
-		else
-			actions.push_back(other);
-	}
-
-	Common::JSONObject data;
-	data.setVal("actions", new Common::JSONValue(actions));
-	send("actions/register", &data);
 }
 
 void NeuroBridge::send(const char *command, const Common::JSONObject *data) {
@@ -523,10 +334,10 @@ void NeuroBridge::sendActionResult(const Common::String &id, bool success, const
 	// Keep what she is told in the order it happened
 	flushDialogue();
 
-	// A force is over once the forced action succeeds; the server retries a failed one itself
-	// She may answer a prompt with a different action than the one it named
-	// (leaving a close-up by skipping it); anything that did something settles it
-	// Waiting changes nothing either, and may have been sent before the prompt arrived
+	// A force is over once the forced action succeeds; the server retries a
+	// failed one itself. She may answer with a different action than the one
+	// named, and anything that did something settles it. Reading, noting and
+	// waiting do nothing, and may have been sent before the prompt arrived.
 	const bool passive = _currentAction == "read_journal" || _currentAction == "add_note" || _currentAction == "wait";
 	if (success && _forceActive && (_currentAction == _forceAction || !passive))
 		_forceActive = false;
@@ -561,192 +372,12 @@ void NeuroBridge::handleMessage(const Common::String &text) {
 				handleAction(id, name, args);
 		} else if (command == "actions/reregister_all") {
 			// Some servers ask for this on connect, when everything has just been sent
-			if (g_system->getMillis() - _registeredAt > 3000)
+			if (g_system->getMillis() - _registeredAt > kJustRegisteredMs)
 				registerActions();
 		}
 	}
 
 	delete root;
-}
-
-void NeuroBridge::handleDebugAction(const Common::String &id, const Common::String &name, const Common::String &data) {
-	// The dev driver sends these with the id "dbg", straight to the game: the
-	// server never issued them and would only warn about an unexpected result
-	const bool quiet = id == "dbg";
-	// Development aid, deliberately not registered: saves a screenshot
-	// to ScummVM's screenshot directory.
-	if (name == "debug_screenshot") {
-		g_system->saveScreenshot();
-		if (!quiet) sendActionResult(id, true);
-		return;
-	}
-
-	if (name == "debug_dump") {
-		debugDump();
-		if (!quiet) sendActionResult(id, true);
-		return;
-	}
-	if (name == "debug_save" || name == "debug_load") {
-		int slot = 0;
-		char label[64] = "";
-		sscanf(data.c_str(), "%d %63[^\n]", &slot, label);
-		if (!quiet) sendActionResult(id, true);
-		if (name == "debug_save")
-			_vm->requestSave(slot, label[0] ? label : "neuro");
-		else
-			_vm->requestLoad(slot);
-		return;
-	}
-	if (name == "debug_speed") {
-		_fastMode = kFastOff;
-		_vm->_fastMode = atoi(data.c_str());
-		if (!quiet) sendActionResult(id, true);
-		return;
-	}
-	if (name == "debug_sentence") {
-		int verb = 0, a = 0, b = 0;
-		sscanf(data.c_str(), "%d %d %d", &verb, &a, &b);
-		if (!quiet) sendActionResult(id, true);
-		_vm->doSentence(verb, a, b);
-		return;
-	}
-	if (name == "debug_entry") {
-		// "OBJ" or "OBJ VERB": where an object is, who owns it, which verbs it handles
-		int obj = 0, verb = -1;
-		sscanf(data.c_str(), "%d %d", &obj, &verb);
-		Common::String text = Common::String::format("object %d: where %d, owner %d, class bits %x; handles verbs:",
-			obj, _vm->whereIsObject(obj), _vm->objIsActor(obj) ? -1 : _vm->getOwner(obj), _vm->objIsActor(obj) ? 0 : _vm->_classData[obj]);
-		for (int v = 1; v < 256; v++) {
-			if ((verb < 0 || v == verb) && _vm->getVerbEntrypoint(obj, v))
-				text += Common::String::format(" %d", v);
-		}
-		debug("NEURODUMP %s", text.c_str());
-		if (!quiet) sendActionResult(id, true, text);
-		return;
-	}
-	if (name == "debug_give") {
-		// "OBJECT ROOM": put an object from that room into the inventory, as picking it up does
-		int object = 0, room = 0;
-		if (sscanf(data.c_str(), "%d %d", &object, &room) == 2) {
-			_vm->addObjectToInventory(object, room);
-			_vm->putOwner(object, _vm->VAR(_vm->VAR_EGO));
-			_vm->putClass(object, kObjectClassUntouchable, 1);
-			_vm->putState(object, 1);
-			_vm->runInventoryScript(1);
-		}
-		if (!quiet) sendActionResult(id, true);
-		return;
-	}
-	if (name == "debug_var" || name == "debug_bit") {
-		// "N" reads a game variable (or bit variable), "N VALUE" writes it
-		int number = 0, value = 0;
-		const int given = sscanf(data.c_str(), "%d %d", &number, &value);
-		const uint var = name == "debug_bit" ? (0x8000 | number) : number;
-		if (given == 2)
-			_vm->writeVar(var, value);
-		const Common::String text = Common::String::format("%s %d = %d", name.c_str() + 6, number, _vm->readVar(var));
-		debug("NEURODUMP %s", text.c_str());
-		if (!quiet) sendActionResult(id, true, text);
-		return;
-	}
-	if (name == "debug_room") {
-		const int room = atoi(data.c_str());
-		if (!quiet) sendActionResult(id, true);
-		_vm->_actors[_vm->VAR(_vm->VAR_EGO)]->_room = room;
-		_vm->startScene(room, nullptr, 0);
-		_vm->_fullRedraw = true;
-		return;
-	}
-
-	// The operator's console asks for these. The answers are built here and
-	// not with sendActionResult(), which would count them as her doing something.
-	if (name == "debug_status") {
-		NeuroWorld world;
-		collectWorld(world);
-
-		Common::JSONObject status;
-		Common::String location = _data.roomName(world.room);
-		if (location.empty())
-			location = Common::String::format("room %d", world.room);
-		status.setVal("location", new Common::JSONValue(location));
-		Common::JSONArray inventory;
-		for (const auto &item : world.inventory)
-			inventory.push_back(new Common::JSONValue(item.name));
-		status.setVal("inventory", new Common::JSONValue(inventory));
-		status.setVal("journal", new Common::JSONValue(_journal.describe(false)));
-		status.setVal("idle_force_seconds", new Common::JSONValue((long long int)(_idleForceMs / 1000)));
-		status.setVal("reaction_ms", new Common::JSONValue((long long int)_reactionMs));
-		status.setVal("context_tokens", new Common::JSONValue((long long int)_contextTokens));
-		status.setVal("pointer", new Common::JSONValue(_pointerGlide));
-		status.setVal("skip_cutscenes", new Common::JSONValue(_allowSkip));
-		status.setVal("fast_mode", new Common::JSONValue(Common::String(_fastMode == kFastAlways ? "always" : _fastMode == kFastScenes ? "scenes" : "off")));
-		Common::JSONValue root(status);
-
-		Common::JSONObject result;
-		result.setVal("id", new Common::JSONValue(id));
-		result.setVal("success", new Common::JSONValue(true));
-		result.setVal("message", new Common::JSONValue(root.stringify()));
-		send("action/result", &result);
-		return;
-	}
-
-	// Settings that can change while the game runs: "debug_set NAME VALUE"
-	if (name == "debug_set") {
-		char key[40] = "", value[120] = "";
-		sscanf(data.c_str(), "%39s %119s", key, value);
-		const Common::String setting(key), text(value);
-		// Everything after the name, for values with spaces in them
-		Common::String rest = data.substr(MIN<size_t>(data.size(), setting.size()));
-		rest.trim();
-		const int number = atoi(value);
-		if (setting == "idle_force_seconds") {
-			_idleForceMs = MAX(0, number) * 1000;
-		} else if (setting == "reaction_ms") {
-			_reactionMs = MAX(0, number);
-		} else if (setting == "context_tokens") {
-			_contextTokens = MAX(0, number);
-		} else if (setting == "panel_title") {
-			_panelTitle = rest.empty() ? Common::String(" ") : rest;
-		} else if (setting == "panel_chat") {
-			_panelChat = CLIP(number, 0, 80);
-			_panelKey.clear();
-		} else if (setting == "panel_side") {
-			Graphics::streamPanel().onLeft = text.equalsIgnoreCase("left");
-		} else if (setting == "panel_hide") {
-			// A comma-separated list of the column's parts, or "none"
-			_panelHide = text == "none" ? Common::String(",,") : "," + text + ",";
-		} else if (setting == "hold") {
-			_panelHeld = text.equalsIgnoreCase("on");
-		} else if (setting == "skip_cutscenes") {
-			const bool allow = !text.equalsIgnoreCase("off");
-			if (allow != _allowSkip) {
-				_allowSkip = allow;
-				if (allow) {
-					registerActions();
-				} else {
-					Common::JSONArray names;
-					names.push_back(new Common::JSONValue("skip_cutscene"));
-					Common::JSONObject gone;
-					gone.setVal("action_names", new Common::JSONValue(names));
-					send("actions/unregister", &gone);
-				}
-			}
-		} else if (setting == "pointer") {
-			_pointerGlide = !text.equalsIgnoreCase("off");
-		} else if (setting == "fast_mode") {
-			_fastMode = text.equalsIgnoreCase("always") ? kFastAlways : text.equalsIgnoreCase("scenes") ? kFastScenes : kFastOff;
-			if (_fastMode == kFastOff && _speedSet) {
-				_vm->_fastMode &= ~1;
-				_speedSet = false;
-			}
-		} else if (setting == "music_volume" || setting == "sfx_volume" || setting == "speech_volume") {
-			ConfMan.setInt(setting, CLIP(number, 0, 255));
-			_vm->syncSoundSettings();
-		}
-		return;
-	}
-
-	if (!quiet) sendActionResult(id, false, "Unknown debug action.");
 }
 
 void NeuroBridge::handleAction(const Common::String &id, const Common::String &rawName, const Common::String &data) {
@@ -759,16 +390,8 @@ void NeuroBridge::handleAction(const Common::String &id, const Common::String &r
 			name.setChar('_', i);
 	}
 
-	// Development aids are not her actions, and only work where they were asked for
+	// The operator's and the developer's aids are not her actions, and only work where they were asked for
 	if (name.hasPrefix("debug_")) {
-		const bool forOperator = name == "debug_save" || name == "debug_load" || name == "debug_status" || name == "debug_set";
-		if (_debugActions != kDebugAll && !(forOperator && _debugActions == kDebugOperator)) {
-			if (id != "dbg")
-				sendActionResult(id, false, "Unknown action.");
-			return;
-		}
-	}
-	if (name.hasPrefix("debug_") && name != "debug_click") {
 		handleDebugAction(id, name, data);
 		return;
 	}
@@ -785,13 +408,6 @@ void NeuroBridge::handleAction(const Common::String &id, const Common::String &r
 		return;
 	}
 
-	if (name == "debug_click") {
-		int x = 0, y = 0;
-		sscanf(data.c_str(), "%d,%d", &x, &y);
-		sendActionResult(id, true);
-		clickInRoom(x, y);
-		return;
-	}
 	if (name == "answer") {
 		actionAnswer(id, args);
 		return;

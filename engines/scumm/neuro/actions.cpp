@@ -19,6 +19,8 @@
  *
  */
 
+// Her actions: what she is offered, and carrying out a verb sentence or a walk.
+
 #include "scumm/neuro/neuro.h"
 
 #include "common/debug.h"
@@ -27,30 +29,133 @@
 
 #include "scumm/actor.h"
 #include "scumm/object.h"
-#include "scumm/resource.h"
 #include "scumm/scumm.h"
-#include "scumm/verbs.h"
 
 namespace Scumm {
 
 static const char *const kWalkVerbName = "Walk to";
 
-// Mirrors the button state flags private to input.cpp
-enum {
-	kMouseDown = 1,
-	kMouseClicked = 2
-};
+/** What a click sets off takes this long to show. */
+static const uint32 kClickTakesMs = 1000;
+/** A command is not judged finished before it has had this long to start. */
+static const uint32 kCommandStartsMs = 600;
+/** After someone has spoken, lines to choose from may still appear for this long. */
+static const uint32 kLinesFollowMs = 2500;
+/** A follow-up step is dropped if the step before it has not played out by then. */
+static const uint32 kStepTimeoutMs = 15000;
+static const uint32 kPassageTimeoutMs = 40000;
+/** A step that has not been seen running by then evidently did nothing. */
+static const uint32 kStepStartsMs = 1500;
+/** The pause before stepping onto a place a second time. */
+static const uint32 kSpotSettleMs = 1000;
 
-static Common::String listNames(const NeuroThingList &a, const NeuroThingList &b = NeuroThingList()) {
-	Common::String result;
-	for (const NeuroThingList *list : {&a, &b}) {
-		for (const auto &thing : *list) {
-			if (!result.empty())
-				result += ", ";
-			result += thing.name;
-		}
+// JSON values own their children, so every use needs a fresh copy
+static Common::JSONValue *typeSchema(const char *type) {
+	Common::JSONObject schema;
+	schema.setVal("type", new Common::JSONValue(type));
+	return new Common::JSONValue(schema);
+}
+
+static Common::JSONValue *objectSchema(const Common::JSONObject &properties, const char *required = nullptr, const char *alsoRequired = nullptr) {
+	Common::JSONObject schema;
+	schema.setVal("type", new Common::JSONValue("object"));
+	schema.setVal("properties", new Common::JSONValue(properties));
+	if (required) {
+		Common::JSONArray names;
+		names.push_back(new Common::JSONValue(required));
+		if (alsoRequired)
+			names.push_back(new Common::JSONValue(alsoRequired));
+		schema.setVal("required", new Common::JSONValue(names));
 	}
-	return result.empty() ? Common::String("nothing") : result;
+	return new Common::JSONValue(schema);
+}
+
+static Common::JSONValue *actionDefinition(const char *name, const char *description, Common::JSONValue *schema = nullptr) {
+	Common::JSONObject action;
+	action.setVal("name", new Common::JSONValue(name));
+	action.setVal("description", new Common::JSONValue(description));
+	if (schema)
+		action.setVal("schema", schema);
+	return new Common::JSONValue(action);
+}
+
+void NeuroBridge::unregisterAction(const char *name) {
+	Common::JSONArray names;
+	names.push_back(new Common::JSONValue(name));
+	Common::JSONObject data;
+	data.setVal("action_names", new Common::JSONValue(names));
+	send("actions/unregister", &data);
+}
+
+void NeuroBridge::registerActions(bool interactOnly) {
+	_registeredAt = g_system->getMillis();
+
+	// Older servers keep the first definition of an action instead of
+	// replacing it, so drop the old one before sending a new one.
+	if (interactOnly)
+		unregisterAction("interact");
+
+	// Once the game's verbs are known they are offered as an enum
+	Common::JSONObject verb;
+	verb.setVal("type", new Common::JSONValue("string"));
+	if (!_offeredVerbs.empty()) {
+		Common::JSONArray names;
+		for (const auto &offered : _offeredVerbs)
+			names.push_back(new Common::JSONValue(offered.name));
+		names.push_back(new Common::JSONValue(kWalkVerbName));
+		verb.setVal("enum", new Common::JSONValue(names));
+	}
+	Common::JSONObject interact;
+	interact.setVal("verb", new Common::JSONValue(verb));
+	interact.setVal("target", typeSchema("string"));
+	interact.setVal("second_target", typeSchema("string"));
+	interact.setVal("then_verb", typeSchema("string"));
+	interact.setVal("then_target", typeSchema("string"));
+
+	Common::JSONArray actions;
+	actions.push_back(actionDefinition("interact",
+		"Use a verb on something here or in your inventory. \"Walk to\" moves you. "
+		"second_target: what an item is used on or given to. "
+		"then_verb and then_target: an optional second step, done the instant the first ends.",
+		objectSchema(interact, "verb", "target")));
+
+	if (!interactOnly) {
+		Common::JSONObject option;
+		option.setVal("type", new Common::JSONValue("integer"));
+		option.setVal("minimum", new Common::JSONValue((long long int)1));
+		Common::JSONObject choose;
+		choose.setVal("option", new Common::JSONValue(option));
+		actions.push_back(actionDefinition("choose_dialogue", "In a conversation, say the line with this number.", objectSchema(choose, "option")));
+
+		actions.push_back(actionDefinition("wait", "Let the game continue for a moment."));
+		if (_allowSkip)
+			actions.push_back(actionDefinition("skip_cutscene", "Skip the current cutscene."));
+
+		Common::JSONObject journal;
+		journal.setVal("show_completed", typeSchema("boolean"));
+		journal.setVal("clues_for", typeSchema("string"));
+		actions.push_back(actionDefinition("read_journal",
+			"Read your goals and notes. clues_for: name a goal to read its clues instead. show_completed adds finished goals.",
+			objectSchema(journal)));
+
+		Common::JSONObject note;
+		note.setVal("text", typeSchema("string"));
+		actions.push_back(actionDefinition("add_note", "Add a short note to your journal.", objectSchema(note, "text")));
+
+		Common::JSONArray yesNo;
+		yesNo.push_back(new Common::JSONValue("yes"));
+		yesNo.push_back(new Common::JSONValue("no"));
+		Common::JSONObject yesOrNo;
+		yesOrNo.setVal("type", new Common::JSONValue("string"));
+		yesOrNo.setVal("enum", new Common::JSONValue(yesNo));
+		Common::JSONObject answer;
+		answer.setVal("answer", new Common::JSONValue(yesOrNo));
+		actions.push_back(actionDefinition("answer", "Answer a yes/no question from the game. Yes does what it offered, at once.", objectSchema(answer, "answer")));
+	}
+
+	Common::JSONObject data;
+	data.setVal("actions", new Common::JSONValue(actions));
+	send("actions/register", &data);
 }
 
 /** Lower case, with punctuation dropped: "pot o' stew" and "Pot o stew" are the same name. */
@@ -118,232 +223,6 @@ void NeuroBridge::actionSkipCutscene(const Common::String &id) {
 	_vm->abortCutscene();
 }
 
-static Common::String listDialogue(const NeuroThingList &lines) {
-	// What is noted about lines comes first, once per note, with the numbers
-	// it goes for ("4, 5, 8, 10-14"): shorter than repeating it on every line
-	Common::String text;
-	Common::StringArray notes;
-	for (const auto &line : lines) {
-		if (!line.note.empty() && Common::find(notes.begin(), notes.end(), line.note) == notes.end())
-			notes.push_back(line.note);
-	}
-	for (const auto &note : notes) {
-		Common::String numbers;
-		for (uint i = 0; i < lines.size(); i++) {
-			if (lines[i].note != note)
-				continue;
-			uint last = i;
-			while (last + 1 < lines.size() && lines[last + 1].note == note)
-				last++;
-			if (!numbers.empty())
-				numbers += ", ";
-			numbers += last > i + 1 ? Common::String::format("%u-%u", i + 1, last + 1) : Common::String::format("%u", i + 1);
-			if (last == i + 1)
-				numbers += Common::String::format(", %u", last + 1);
-			i = last;
-		}
-		text += note + ": " + numbers + "\n";
-	}
-	if (!notes.empty())
-		text += "\n";
-	for (uint i = 0; i < lines.size(); i++)
-		text += Common::String::format("%u. %s\n", i + 1, lines[i].name.c_str());
-	return text;
-}
-
-void NeuroBridge::scrollArrows(const NeuroWorld &world, int &up, int &down) {
-	up = down = 0;
-	if (!world.inDialogue || world.verbs.empty())
-		return;
-	int firstLine = 0x7FFF;
-	for (int slot = 1; slot < _vm->_numVerbs; slot++) {
-		const VerbSlot &vs = _vm->_verbs[slot];
-		if (vs.verbid == world.verbs[0].id)
-			firstLine = vs.curRect.top;
-	}
-	for (int slot = 1; slot < _vm->_numVerbs; slot++) {
-		const VerbSlot &vs = _vm->_verbs[slot];
-		if (!vs.verbid || vs.saveid != 0 || vs.curmode != 1 || vs.type != kTextVerbType)
-			continue;
-		if (!cleanText(_vm->getResourceAddress(rtVerb, slot), true).empty())
-			continue;
-		// An arrow has no text; the one level with the first line scrolls up
-		if (vs.curRect.top <= firstLine + 4)
-			up = vs.verbid;
-		else
-			down = vs.verbid;
-	}
-}
-
-bool NeuroBridge::pagerCovers(const NeuroWorld &world) const {
-	if (_pagerLines.empty() || world.verbs.empty())
-		return false;
-	for (const auto &verb : world.verbs) {
-		bool listed = false;
-		for (const auto &line : _pagerLines)
-			listed |= line.name == verb.name;
-		if (!listed)
-			return false;
-	}
-	return true;
-}
-
-void NeuroBridge::pressArrow(int verb, const NeuroWorld &world) {
-	_pagerSaw = world.verbs[0].name;
-	_pagerPressedAt = g_system->getMillis();
-	_vm->runInputScript(kVerbClickArea, verb, 1);
-}
-
-void NeuroBridge::updatePager() {
-	if (_pagerState == kPagerIdle)
-		return;
-
-	NeuroWorld world;
-	collectWorld(world);
-	if (!playerHasControl() || !world.inDialogue || world.verbs.empty()) {
-		_pagerState = kPagerIdle;
-		_pagerLines.clear();
-		return;
-	}
-	// The list moves a frame or so after an arrow is pressed
-	const uint32 sincePress = g_system->getMillis() - _pagerPressedAt;
-	if (_pagerPressedAt && world.verbs[0].name == _pagerSaw && sincePress < 1000)
-		return;
-	_pagerPressedAt = 0;
-
-	int up, down;
-	scrollArrows(world, up, down);
-
-	if (_pagerState == kPagerToTop) {
-		if (up) {
-			pressArrow(up, world);
-			return;
-		}
-		_pagerLines.clear();
-		_pagerState = kPagerDown;
-	}
-	if (_pagerState == kPagerDown) {
-		for (const auto &verb : world.verbs) {
-			bool listed = false;
-			for (const auto &line : _pagerLines)
-				listed |= line.name == verb.name;
-			if (!listed)
-				_pagerLines.push_back(verb);
-		}
-		if (down)
-			pressArrow(down, world);
-		else
-			_pagerState = kPagerIdle;
-		return;
-	}
-
-	// Seeking the line she chose
-	for (const auto &verb : world.verbs) {
-		if (verb.name == _pagerTarget) {
-			_pagerState = kPagerIdle;
-			_pagerLines.clear();
-			_commandStartedAt = g_system->getMillis();
-			pickLine(verb.id);
-			return;
-		}
-	}
-	uint target = 0, first = 0;
-	for (uint i = 0; i < _pagerLines.size(); i++) {
-		if (_pagerLines[i].name == _pagerTarget)
-			target = i;
-		if (_pagerLines[i].name == world.verbs[0].name)
-			first = i;
-	}
-	const int arrow = target < first ? up : down;
-	if (!arrow) {
-		warning("Neuro: Could not scroll to the line '%s'", _pagerTarget.c_str());
-		_pagerState = kPagerIdle;
-		_pagerLines.clear();
-		return;
-	}
-	pressArrow(arrow, world);
-}
-
-void NeuroBridge::actionChooseDialogue(const Common::String &id, const NeuroArgs &args) {
-	NeuroWorld world;
-	collectWorld(world);
-	if (!playerHasControl() || !world.inDialogue || _pagerState != kPagerIdle) {
-		sendActionResult(id, false, "Nothing to choose now.");
-		return;
-	}
-	// The whole list, where only part of it is on screen
-	int up, down;
-	scrollArrows(world, up, down);
-	const bool paged = (up || down) && pagerCovers(world);
-	if (paged)
-		world.verbs = _pagerLines;
-
-	// A number, possibly dressed up ("option 3", "3."), or the line itself
-	const Common::String choice = args.get("option|choice|line|number|index|id|text", true);
-	// A line that has a number in it ("I have 2 questions") is still a line
-	Common::String words;
-	for (uint i = 0; i < choice.size(); i++) {
-		if (Common::isAlpha(choice[i]))
-			words += tolower(choice[i]);
-	}
-	const bool plainNumber = words.empty() || words == "option" || words == "choice" || words == "line" || words == "number" || words == "no";
-	int option = 0;
-	if (!plainNumber) {
-		const NeuroThing *line = findThing(world.verbs, choice);
-		for (uint i = 0; line && i < world.verbs.size(); i++) {
-			if (&world.verbs[i] == line)
-				option = i + 1;
-		}
-	}
-	for (uint i = 0; i < choice.size() && !option; i++) {
-		if (Common::isDigit(choice[i]))
-			option = atoi(choice.c_str() + i);
-	}
-	if (option < 1 || option > (int)world.verbs.size()) {
-		sendActionResult(id, false, "Pick a line by number:\n" + listDialogue(world.verbs));
-		return;
-	}
-
-	sendActionResult(id, true);
-	// What is said next is the reply to her line, not something to react to separately
-	_commandStartedAt = g_system->getMillis();
-	_awaitingOutcome = true;
-	_outcomeTold = false;
-	_outcomeSpoken = false;
-	// Answered; it is not what her next choice is about
-	_lastHeard.clear();
-	if (paged) {
-		_pagerTarget = world.verbs[option - 1].name;
-		_pagerState = kPagerSeek;
-		return;
-	}
-	_pagerLines.clear();
-	pickLine(world.verbs[option - 1].id);
-}
-
-void NeuroBridge::pickLine(int verb) {
-	// A close-up can work out the chosen line from where the pointer is
-	// (the navigator's head, the last scene with Elaine), so a real click on
-	// the line, as a player makes, is the way that always works
-	NeuroClick click;
-	if (verbButton(verb, click)) {
-		clickAt(click);
-		return;
-	}
-	_vm->runInputScript(kVerbClickArea, verb, 1);
-}
-
-bool NeuroBridge::resolvePreset(const NeuroWorld &world, const Common::String &preset, NeuroCommand &command) {
-	Common::StringTokenizer parts(preset, "|");
-	Common::StringArray fields = parts.split();
-	for (auto &field : fields)
-		field.trim();
-	while (fields.size() < 3)
-		fields.push_back(Common::String());
-	Common::String error;
-	return resolveCommand(world, fields[0], fields[1], fields[2], command, error);
-}
-
 void NeuroBridge::actionAnswer(const Common::String &id, const NeuroArgs &args) {
 	Common::String answer = args.get("answer|response|reply|value|choice", true);
 	answer.toLowercase();
@@ -389,54 +268,15 @@ void NeuroBridge::actionAnswer(const Common::String &id, const NeuroArgs &args) 
 	runCommand(resolved);
 }
 
-void NeuroBridge::updateForces(const NeuroWorld &world) {
-	const uint32 now = g_system->getMillis();
-
-	// A force that was never answered must not block the game forever
-	if (_forceActive && now - _forceSentAt > 90000)
-		_forceActive = false;
-
-	if (world.inDialogue) {
-		if (_pagerState != kPagerIdle)
-			return;
-		int up, down;
-		scrollArrows(world, up, down);
-		const bool covered = (up || down) && pagerCovers(world);
-		if ((up || down) && !covered) {
-			// Wait out the moment in which her last choice is still on screen
-			// and never while the pointer is on its way to the line she chose
-			if (!_forceActive && now - _lastActionAt > 1000 && _clickPhase == kClickIdle && now - _lastClickAt > 1000) {
-				_pagerPressedAt = 0;
-				_pagerState = kPagerToTop;
-			}
-			return;
-		}
-		if (!covered)
-			_pagerLines.clear();
-		const Common::String lines = listDialogue(covered ? _pagerLines : world.verbs);
-		// A second force while one is outstanding confuses the server, even if the lines have changed
-		// The chosen line can stay on screen for a moment after she picks it
-		const bool fresh = lines != _forcedDialogue || now - _lastActionAt > 3000;
-		if (!_forceActive && fresh) {
-			_forcedDialogue = lines;
-			// The line she is answering goes with the choice, so it cannot be missed
-			Common::String state = lines;
-			if (!_lastHeard.empty() && now - _lastHeardAt < 30000)
-				state = "Last said to you: " + _lastHeard + "\n\n" + lines;
-			Common::String query = expandText(_data.roomPrompt(world.room));
-			if (query.empty())
-				query = "Pick a line to say.";
-			sendForce(state, query, "choose_dialogue");
-		}
-		return;
-	}
-	_forcedDialogue.clear();
-	_pagerLines.clear();
-
-	if (_idleForceMs && !_forceActive && now - _lastActivity > _idleForceMs) {
-		_lastActivity = now;
-		sendForce(describeRoom(world, kRoomStatus), "Your move.", "interact");
-	}
+bool NeuroBridge::resolvePreset(const NeuroWorld &world, const Common::String &preset, NeuroCommand &command) {
+	Common::StringTokenizer parts(preset, "|");
+	Common::StringArray fields = parts.split();
+	for (auto &field : fields)
+		field.trim();
+	while (fields.size() < 3)
+		fields.push_back(Common::String());
+	Common::String error;
+	return resolveCommand(world, fields[0], fields[1], fields[2], command, error);
 }
 
 bool NeuroBridge::resolveCommand(const NeuroWorld &world, const Common::String &verbName, const Common::String &targetName,
@@ -462,7 +302,7 @@ bool NeuroBridge::resolveCommand(const NeuroWorld &world, const Common::String &
 		}
 		if (!verb) {
 			error = Common::String::format("No verb '%s'. Verbs: %s, %s.",
-				verbName.c_str(), listNames(world.verbs).c_str(), kWalkVerbName);
+				verbName.c_str(), neuroListNames(world.verbs).c_str(), kWalkVerbName);
 			return false;
 		}
 		command.verb = verb->id;
@@ -482,7 +322,7 @@ bool NeuroBridge::resolveCommand(const NeuroWorld &world, const Common::String &
 		const NeuroThing *thing = findThing(everything, *names[i]);
 		if (!thing) {
 			error = Common::String::format("No '%s' here. Room: %s. Inventory: %s.",
-				names[i]->c_str(), listNames(room, world.spots).c_str(), listNames(world.inventory).c_str());
+				names[i]->c_str(), neuroListNames(room, world.spots).c_str(), neuroListNames(world.inventory).c_str());
 			// It may be in sight but out of reach, across the water
 			if (!world.standing.empty())
 				error += " " + world.standing;
@@ -505,24 +345,29 @@ bool NeuroBridge::resolveCommand(const NeuroWorld &world, const Common::String &
 	}
 
 	if (command.walk && (!findThing(room, targetName) || !findClickPoint(command.objects[0], command.x, command.y))) {
-		error = Common::String::format("Walk to something in the room: %s.", listNames(room, world.spots).c_str());
+		error = Common::String::format("Walk to something in the room: %s.", neuroListNames(room, world.spots).c_str());
 		return false;
 	}
 	// Normally the thing acted on has its own script for the verb, and running
 	// the sentence directly reaches it. Where it has none, and the room has
-	// swapped in its own mouse handler for a scene (giving the circus brothers
-	// a helmet), only that handler knows what to do, and it only sees clicks.
+	// swapped in its own mouse handler for a scene, only that handler knows
+	// what to do, and it only sees clicks.
 	const bool handled = !_vm->objIsActor(command.objects[0]) && _vm->getVerbEntrypoint(command.objects[0], command.verb) != 0;
 	if (!command.walk && !handled && needsClicks() && !planClicks(world, command))
 		debug(1, "Neuro: Room %d has its own mouse handler, but this command could not be made as clicks", world.room);
 	return true;
 }
 
-void NeuroBridge::runCommand(const NeuroCommand &command) {
+/** From here on, what happens is the outcome of her action, which she is told once it has played out. */
+void NeuroBridge::beginAction() {
 	_commandStartedAt = g_system->getMillis();
 	_awaitingOutcome = true;
 	_outcomeTold = false;
 	_outcomeSpoken = false;
+}
+
+void NeuroBridge::runCommand(const NeuroCommand &command) {
+	beginAction();
 	_queueSawBusy = false;
 	_queueIdleSince = 0;
 	_walkTarget = command.walk && command.objects[0] > 0 ? command.objects[0] : 0;
@@ -566,21 +411,19 @@ void NeuroBridge::updateQueuedCommand() {
 		return;
 
 	const uint32 elapsed = g_system->getMillis() - _commandStartedAt;
-	if (elapsed > (_queue[0].afterPassage ? 40000u : 15000u)) {
+	if (elapsed > (_queue[0].afterPassage ? kPassageTimeoutMs : kStepTimeoutMs)) {
 		_queue.clear();
 		return;
 	}
 
 	// Go as soon as the first command has played out
-	const bool busy = _vm->_sentenceNum > 0
-		|| _vm->isScriptRunning(_vm->VAR(_vm->VAR_SENTENCE_SCRIPT))
-		|| _vm->_actors[_vm->VAR(_vm->VAR_EGO)]->_moving;
+	const bool busy = _vm->_sentenceNum > 0 || sentenceRunning() || ego()->_moving;
 	// The first command takes a moment to get going, so wait until it has
 	// been seen running, or long enough that it evidently did nothing.
 	if (busy)
 		_queueSawBusy = true;
 	const uint32 now = g_system->getMillis();
-	if (busy || !playerHasControl() || (!_queueSawBusy && elapsed < 1500)) {
+	if (busy || !playerHasControl() || (!_queueSawBusy && elapsed < kStepStartsMs)) {
 		_queueIdleSince = 0;
 		return;
 	}
@@ -598,10 +441,41 @@ void NeuroBridge::updateQueuedCommand() {
 			return;
 		}
 	}
-	debug(1, "Neuro: Running queued step after %u ms, Guybrush at %d,%d", elapsed,
-		_vm->_actors[_vm->VAR(_vm->VAR_EGO)]->getPos().x, _vm->_actors[_vm->VAR(_vm->VAR_EGO)]->getPos().y);
+	debug(1, "Neuro: Running queued step after %u ms, at %d,%d", elapsed, ego()->getPos().x, ego()->getPos().y);
 	_lastQueuedStepAt = g_system->getMillis();
 	runCommand(next);
+}
+
+void NeuroBridge::finishAction(const NeuroWorld &world) {
+	if (!_awaitingOutcome)
+		return;
+
+	// Still going: a click not yet made, steps queued, walking, the game's own script
+	// (what a click sets off takes a moment to show)
+	const bool busy = _clickPhase != kClickIdle || !_queue.empty() || !_clickQueue.empty() || _pagerState != kPagerIdle
+		|| g_system->getMillis() - _lastClickAt < kClickTakesMs
+		|| ego()->_moving || sentenceRunning();
+	if (busy || g_system->getMillis() - _commandStartedAt < kCommandStartsMs)
+		return;
+	// After someone has spoken, lines to choose from may be about to appear;
+	// they bring their own prompt, so give them a moment first.
+	if (_outcomeSpoken && !world.inDialogue && g_system->getMillis() - _controlSince < kLinesFollowMs)
+		return;
+
+	_awaitingOutcome = false;
+	// A conversation prompts her with the lines to choose from. Otherwise she
+	// needs a cue that is hers: the replies to her action were not sent as one.
+	if (!_outcomeTold && !world.inDialogue) {
+		Common::String cue = _outcomeSpoken ? "Your move." : "Done.";
+		// Walking to a door goes through it only if it is open. A player sees
+		// the character stop in front of a shut one; she has to be told.
+		for (const auto &thing : world.objects) {
+			const Common::String state = thing.id == _walkTarget ? _data.stateName(thing.name, thing.state) : "";
+			if (!state.empty())
+				cue = Common::String::format("Guybrush is at the %s. It is %s.", thing.name.c_str(), state.c_str());
+		}
+		sendContext(cue, false);
+	}
 }
 
 /**
@@ -705,10 +579,10 @@ void NeuroBridge::actionInteract(const Common::String &id, const NeuroArgs &args
 		first = passage;
 	}
 	// A place may only react to a step taken from a standstill right next
-	// to it (a loose plank, say): walk there, pause, then step onto it again.
+	// to it: walk there, pause, then step onto it again.
 	if (first.isSpot) {
 		NeuroCommand again = first;
-		again.settleMs = 1000;
+		again.settleMs = kSpotSettleMs;
 		_queue.push_back(again);
 	}
 	if (!thenVerb.empty())
@@ -717,10 +591,10 @@ void NeuroBridge::actionInteract(const Common::String &id, const NeuroArgs &args
 }
 
 /**
- * Some wide rooms keep the picture on one part and only move it when
- * Guybrush goes through a particular spot (the archway half way along the
- * high street). Sent straight to something in the other part, he would walk
- * out of the picture. Finds the walk a player would make first.
+ * Some wide rooms keep the picture on one part and only move it when the
+ * player's character goes through a particular spot. Sent straight to
+ * something in the other part, the character would walk out of the picture.
+ * Finds the walk a player would make first.
  */
 bool NeuroBridge::passageTo(int room, int target, NeuroCommand &passage) const {
 	if (target <= 0 || _vm->objIsActor(target) || _vm->VAR_CAMERA_MIN_X == 0xFF || _vm->VAR_CAMERA_MAX_X == 0xFF)
@@ -758,258 +632,6 @@ bool NeuroBridge::passageTo(int room, int target, NeuroCommand &passage) const {
 		return false;
 	debug(1, "Neuro: Thing %d is out of view (%d to %d), going by way of %d", target, left, right, inView);
 	return true;
-}
-
-bool NeuroBridge::findClickPoint(int thing, int &x, int &y) const {
-	if (_vm->objIsActor(thing)) {
-		const Actor *actor = _vm->_actors[_vm->objToActor(thing)];
-		x = actor->getPos().x;
-		y = (actor->_top + actor->_bottom) / 2;
-		return true;
-	}
-
-	for (int i = 1; i < _vm->_numLocalObjects; i++) {
-		const ObjectData &od = _vm->_objs[i];
-		if (od.obj_nr != thing)
-			continue;
-		// Another object may overlap this one, so probe a few points
-		const int fractions[] = {2, 1, 3};
-		for (int row = 0; row < 3; row++) {
-			for (int col = 0; col < 3; col++) {
-				x = od.x_pos + (od.width - 1) * fractions[col] / 4;
-				y = od.y_pos + (od.height - 1) * fractions[row] / 4;
-				if (_vm->findObject(x, y) == thing)
-					return true;
-			}
-		}
-	}
-	return false;
-}
-
-void NeuroBridge::clickInRoom(int x, int y) {
-	NeuroClick click;
-	click.x = x;
-	click.y = y;
-	clickAt(click);
-}
-
-void NeuroBridge::clickAt(const NeuroClick &click) {
-	_clickX = click.x;
-	_clickY = click.y;
-	_clickScreen = click.screen;
-	_clickFollow = click.follow;
-	_clickPress = click.press;
-	_clickFrames = 0;
-	if (!_pointerGlide || _fastMode == kFastAlways) {
-		_clickPhase = kClickHover;
-		return;
-	}
-
-	if (!_pointerKnown) {
-		_pointerX = _vm->_mouse.x;
-		_pointerY = _vm->_mouse.y;
-		_pointerKnown = true;
-	}
-	_moveFromX = _pointerX;
-	_moveFromY = _pointerY;
-	int x, y;
-	clickTarget(x, y);
-	const int distance = (int)sqrt((double)((x - _moveFromX) * (x - _moveFromX) + (y - _moveFromY) * (y - _moveFromY)));
-	// A short hop is quick, a trip across the screen takes about half a second
-	_moveMs = MIN(140 + distance * 2, 600);
-	_moveStartedAt = g_system->getMillis();
-	_clickPhase = kClickMove;
-}
-
-/** Where on the screen the current click is aimed. */
-void NeuroBridge::clickTarget(int &x, int &y) const {
-	const VirtScreen &vs = _vm->_virtscr[kMainVirtScreen];
-	if (_clickScreen) {
-		x = _clickX;
-		y = _clickY;
-		return;
-	}
-	x = CLIP<int>(_clickX - vs.xstart, 0, _vm->_screenWidth - 1);
-	y = CLIP<int>(_clickY + vs.topline, vs.topline, vs.topline + vs.h - 1);
-}
-
-/** Where the travelling pointer is at this moment. */
-void NeuroBridge::pointerNow(int &x, int &y) const {
-	clickTarget(x, y);
-	if (_clickPhase != kClickMove || !_moveMs)
-		return;
-	const float t = MIN(1.0f, (float)(g_system->getMillis() - _moveStartedAt) / _moveMs);
-	// Starts and stops gently, as a hand does
-	const float eased = t * t * (3 - 2 * t);
-	x = _moveFromX + (int)((x - _moveFromX) * eased);
-	y = _moveFromY + (int)((y - _moveFromY) * eased);
-}
-
-void NeuroBridge::movePointer() {
-	if (_clickPhase == kClickIdle || !_pointerGlide)
-		return;
-	if (_clickFollow)
-		findClickPoint(_clickFollow, _clickX, _clickY);
-	int x, y;
-	pointerNow(x, y);
-	if (x != _pointerX || y != _pointerY || !_pointerKnown) {
-		_pointerX = x;
-		_pointerY = y;
-		_pointerKnown = true;
-		g_system->warpMouse(x, y);
-	}
-}
-
-bool NeuroBridge::needsClicks() const {
-	// Scripts numbered past the global ones belong to the current room
-	return _vm->VAR(_vm->VAR_VERB_SCRIPT) >= _vm->_numGlobalScripts;
-}
-
-bool NeuroBridge::verbButton(int verbId, NeuroClick &click) const {
-	for (int slot = 1; slot < _vm->_numVerbs; slot++) {
-		const VerbSlot &vs = _vm->_verbs[slot];
-		if (vs.verbid != verbId || vs.curmode != 1 || vs.saveid != 0 || vs.curRect.isEmpty())
-			continue;
-		click.x = (vs.curRect.left + vs.curRect.right) / 2;
-		click.y = (vs.curRect.top + vs.curRect.bottom) / 2;
-		click.screen = true;
-		return true;
-	}
-	return false;
-}
-
-/**
- * Turns a sentence into the clicks a player would make: the verb, then each
- * thing, in the inventory or in the room.
- */
-bool NeuroBridge::planClicks(const NeuroWorld &world, NeuroCommand &command) {
-	// Monkey Island's inventory: picture buttons 200 and up, filled in order
-	static const int kFirstInventoryButton = 200;
-
-	command.clicks.clear();
-	NeuroClick click;
-	if (!verbButton(command.verb, click))
-		return false;
-	command.clicks.push_back(click);
-
-	for (const int thing : command.objects) {
-		if (!thing)
-			break;
-		int index = -1;
-		for (uint i = 0; i < world.inventory.size(); i++) {
-			if (world.inventory[i].id == thing)
-				index = i;
-		}
-		if (index >= 0) {
-			// Eight things carried are shown at a time, the newest by default. The
-			// game keeps which object each button stands for in variables 133 to
-			// 140, and buttons 208 and 209 scroll a row up and down.
-			static const int kShownVar = 133, kShown = 8, kScrollUp = 208, kScrollDown = 209;
-			int button = -1;
-			for (int pass = 0; pass < 24 && button < 0; pass++) {
-				for (int i = 0; i < kShown; i++) {
-					if (_vm->readVar(kShownVar + i) == thing)
-						button = i;
-				}
-				// First all the way up, then down a row at a time
-				if (button < 0)
-					_vm->runInputScript(kVerbClickArea, pass < 8 ? kScrollUp : kScrollDown, 1);
-			}
-			if (button < 0 || !verbButton(kFirstInventoryButton + button, click))
-				return false;
-		} else {
-			int x, y;
-			if (!findClickPoint(thing, x, y))
-				return false;
-			// Only what is on screen can be clicked
-			const int screenX = x - _vm->_virtscr[kMainVirtScreen].xstart;
-			if (screenX < 0 || screenX >= _vm->_screenWidth)
-				return false;
-			click.x = x;
-			click.y = y;
-			click.screen = false;
-			click.follow = _vm->objIsActor(thing) ? thing : 0;
-		}
-		command.clicks.push_back(click);
-		click.follow = 0;
-	}
-	return true;
-}
-
-void NeuroBridge::updateClick() {
-	movePointer();
-	switch (_clickPhase) {
-	case kClickMove:
-		// A moment's rest on arrival, then the button, or on to the next word
-		if (g_system->getMillis() - _moveStartedAt < _moveMs + 100)
-			break;
-		if (_clickPress) {
-			_clickPhase = kClickHover;
-			break;
-		}
-		_clickPhase = kClickIdle;
-		if (!_clickQueue.empty()) {
-			clickAt(_clickQueue.remove_at(0));
-		} else if (_shownSentence) {
-			_shownSentence = false;
-			_commandStartedAt = g_system->getMillis();
-			_vm->doSentence(_shownVerb, _shownObjects[0], _shownObjects[1]);
-		}
-		break;
-	case kClickHover:
-		if (++_clickFrames >= 3)
-			_clickPhase = kClickPress;
-		break;
-	case kClickPress:
-		_vm->_leftBtnPressed |= kMouseClicked | kMouseDown;
-		_clickPhase = kClickRelease;
-		break;
-	case kClickRelease:
-		_vm->_leftBtnPressed &= ~kMouseDown;
-		_clickPhase = kClickIdle;
-		_lastClickAt = g_system->getMillis();
-		// The next click of the same command, once the game has taken this one in
-		if (!_clickQueue.empty()) {
-			clickAt(_clickQueue.remove_at(0));
-			_clickFrames = -3;
-		}
-		break;
-	default:
-		break;
-	}
-}
-
-void NeuroBridge::overridePointer() {
-	if (_clickPhase == kClickIdle)
-		return;
-
-	// The target may be scrolled out of view, so only the room position is
-	// exact; the screen position just has to be somewhere over the room.
-	const VirtScreen &vs = _vm->_virtscr[kMainVirtScreen];
-	if (_clickFollow)
-		findClickPoint(_clickFollow, _clickX, _clickY);
-	if (_clickPhase == kClickMove) {
-		// On its way: the game sees the pointer where it is drawn
-		int x, y;
-		pointerNow(x, y);
-		_vm->_mouse.x = x;
-		_vm->_mouse.y = y;
-		_vm->_virtualMouse.x = x + vs.xstart;
-		_vm->_virtualMouse.y = (y >= vs.topline && y < vs.topline + vs.h) ? y - vs.topline : -1;
-		return;
-	}
-	if (_clickScreen) {
-		// On the verbs or the inventory, below the room
-		_vm->_mouse.x = _clickX;
-		_vm->_mouse.y = _clickY;
-		_vm->_virtualMouse.x = _clickX + vs.xstart;
-		_vm->_virtualMouse.y = (_clickY >= vs.topline && _clickY < vs.topline + vs.h) ? _clickY - vs.topline : -1;
-		return;
-	}
-	_vm->_virtualMouse.x = _clickX;
-	_vm->_virtualMouse.y = _clickY;
-	_vm->_mouse.x = CLIP<int>(_clickX - vs.xstart, 0, _vm->_screenWidth - 1);
-	_vm->_mouse.y = CLIP<int>(_clickY + vs.topline, vs.topline, vs.topline + vs.h - 1);
 }
 
 } // End of namespace Scumm

@@ -134,15 +134,7 @@ static bool matchesOne(const Common::String &trigger, const Common::String &kind
 }
 
 Common::String NeuroJournal::expand(const Common::String &text) const {
-	Common::String result = text;
-	for (;;) {
-		const size_t open = result.find("{var");
-		const size_t close = open == Common::String::npos ? open : result.find('}', open);
-		if (close == Common::String::npos || !_readVar)
-			return result;
-		const int value = _readVar(_readVarContext, atoi(result.c_str() + open + 4));
-		result.replace(open, close - open + 1, Common::String::format("%d", value));
-	}
+	return _expand ? _expand(_expandContext, text) : text;
 }
 
 Common::String NeuroJournal::goalTitle(const Common::String &id) const {
@@ -167,45 +159,37 @@ Common::String NeuroJournal::goalTitle(const Common::String &id) const {
 	return id;
 }
 
-bool NeuroJournal::fire(const Common::String &kind, const Common::String &argument) {
-	bool changed = false;
+void NeuroJournal::fire(const Common::String &kind, const Common::String &argument) {
 	for (auto &clue : _clues) {
 		if (!clue.found && matches(clue.when, kind, argument)) {
 			clue.found = true;
-			changed = true;
 			_news += "Clue noted (" + goalTitle(clue.goal) + "): " + expand(clue.text) + "\n";
 		}
 	}
 	for (uint i = 0; i < _goals.size(); i++) {
 		Goal &goal = _goals[i];
-		if (goal.state == kHidden && matches(goal.start, kind, argument)) {
+		if (goal.state == kHidden && matches(goal.start, kind, argument))
 			setState(goal, kActive);
-			changed = true;
-		}
 		// A goal can be completed without ever having been announced
 		if (goal.state != kDone && matches(goal.done, kind, argument)) {
-			const bool announced = goal.state == kActive;
-			if (announced)
+			if (goal.state == kActive)
 				setState(goal, kDone);
 			else
 				goal.state = kDone;
-			changed = true;
 			// Goals waiting on this one; _goals is not resized, so recursion is safe
 			fire("goal", goal.id);
 		}
 	}
-	return changed;
 }
 
-bool NeuroJournal::heard(const Common::String &line) {
-	return fire("heard", line);
+void NeuroJournal::heard(const Common::String &line) {
+	fire("heard", line);
 }
 
-bool NeuroJournal::observed(int room, const Common::StringArray &inventory) {
-	bool changed = fire("room", Common::String::format("%d", room));
+void NeuroJournal::observed(int room, const Common::StringArray &inventory) {
+	fire("room", Common::String::format("%d", room));
 	for (const auto &item : inventory)
-		changed |= fire("have", item);
-	return changed;
+		fire("have", item);
 }
 
 Common::String NeuroJournal::takeNews() {
@@ -230,12 +214,13 @@ void NeuroJournal::addNote(const Common::String &text) {
 		_notes.remove_at(0);
 }
 
-bool NeuroJournal::isEmpty() const {
+Common::StringArray NeuroJournal::activeGoals() const {
+	Common::StringArray result;
 	for (const auto &goal : _goals) {
-		if (goal.state != kHidden && !goal.nudge)
-			return false;
+		if (goal.state == kActive && !goal.nudge)
+			result.push_back(goal.text);
 	}
-	return _notes.empty();
+	return result;
 }
 
 Common::String NeuroJournal::describeClues(const Common::String &which) const {

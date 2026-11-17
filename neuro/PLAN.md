@@ -57,13 +57,19 @@ Two gaps had to be filled:
 ### Layout
 ```
 engines/scumm/neuro/     the module
-  neuro.{h,cpp}          lifecycle, per-frame update, forces, speech events
+  neuro.{h,cpp}          settings, the connection, messages in and out, per-frame update
   websocket.{h,cpp}      minimal WebSocket client
+  actions.cpp            action definitions, validating and carrying out a command
+  dialogue.cpp           lines to say, long lists of them, and prompting her
+  pointer.cpp            simulated clicks and the travelling pointer
   world.cpp              snapshot of room, objects, people, inventory and verbs; what changed
-  actions.cpp            action definitions, validation, execution, clicks and the pointer
+  speech.cpp             what is said and shown as text, as speech events or context
+  alerts.cpp             alerts and watched variables from the description file
   data.{h,cpp}           the description file
   journal.{h,cpp}        goals, clues and notes, stored beside each savegame
+  args.{h,cpp}           reading the arguments of an action, however they are spelled
   panel.cpp              the column beside the game in a stream window
+  debug.cpp              the operator console's commands and developer aids
   extract.cpp            developer tool: dumps rooms and scripts for writing descriptions
 neuro/
   data/monkey1.ini       the description file for this game

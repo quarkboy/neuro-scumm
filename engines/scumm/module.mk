@@ -123,12 +123,17 @@ endif
 ifdef ENABLE_NEURO
 MODULE_OBJS += \
 	neuro/actions.o \
+	neuro/alerts.o \
 	neuro/args.o \
 	neuro/data.o \
+	neuro/debug.o \
+	neuro/dialogue.o \
 	neuro/extract.o \
 	neuro/journal.o \
 	neuro/neuro.o \
 	neuro/panel.o \
+	neuro/pointer.o \
+	neuro/speech.o \
 	neuro/websocket.o \
 	neuro/world.o
 endif

@@ -29,12 +29,12 @@
 
 namespace Scumm {
 
-bool NeuroData::load(const Common::String &path) {
+void NeuroData::load(const Common::String &path) {
 	Common::FSNode node(Common::Path(path, Common::Path::kNativeSeparator));
 	Common::SeekableReadStream *stream = node.createReadStream();
 	if (!stream) {
 		warning("Neuro: Could not open description file '%s'", path.c_str());
-		return false;
+		return;
 	}
 
 	_ini.allowNonEnglishCharacters();
@@ -42,74 +42,80 @@ bool NeuroData::load(const Common::String &path) {
 	delete stream;
 	if (!ok) {
 		warning("Neuro: Could not parse description file '%s'", path.c_str());
-		return false;
+		return;
 	}
 
 	for (const auto &section : _ini.getSections()) {
-		if (section.name.hasPrefix("line.")) {
-			const Common::String text = get(section.name, "text");
+		const Common::String &name = section.name;
+		if (name.hasPrefix("line.")) {
+			const Common::String text = get(name, "text");
 			if (!text.empty())
-				_lineSpeakers[text] = get(section.name, "speaker");
-			continue;
+				_lineSpeakers[text] = get(name, "speaker");
+		} else if (name.hasPrefix("linenote.")) {
+			addLineNote(name);
+		} else if (name.hasPrefix("watch.")) {
+			addWatch(name);
+		} else if (name.hasPrefix("alert.")) {
+			addAlert(name);
 		}
-		if (section.name.hasPrefix("linenote.")) {
-			LineNote note;
-			Common::String script = get(section.name, "while");
-			if (script.hasPrefixIgnoreCase("script"))
-				script = script.substr(6);
-			note.script = atoi(script.c_str());
-			note.firstVerb = atoi(get(section.name, "first_verb").c_str());
-			note.slotVar = atoi(get(section.name, "slot_var").c_str());
-			note.min = atoi(get(section.name, "min").c_str());
-			note.max = atoi(get(section.name, "max").c_str());
-			note.unlessBit = atoi(get(section.name, "unless_bit").c_str());
-			note.note = get(section.name, "note");
-			if (note.script && note.slotVar && !note.note.empty())
-				_lineNotes.push_back(note);
-			continue;
-		}
-		if (section.name.hasPrefix("watch.")) {
-			Watch watch;
-			watch.var = atoi(get(section.name, "var").c_str());
-			watch.say = get(section.name, "say");
-			watch.anyChange = get(section.name, "change").equalsIgnoreCase("any");
-			if (watch.var && !watch.say.empty())
-				_watches.push_back(watch);
-			continue;
-		}
-		if (!section.name.hasPrefix("alert."))
-			continue;
-		Alert alert;
-		alert.room = atoi(get(section.name, "room").c_str());
-		alert.leadMs = (uint32)(atof(get(section.name, "lead").c_str()) * 1000);
-		alert.priority = get(section.name, "priority");
-		alert.say = get(section.name, "say");
-		alert.ask = get(section.name, "ask");
-		alert.command = get(section.name, "do");
-		alert.then = get(section.name, "then");
-		alert.holdVar = atoi(get(section.name, "hold").c_str());
-		sscanf(get(section.name, "while").c_str(), "script %d", &alert.whileScript);
+	}
+}
 
-		const Common::String when = get(section.name, "when");
-		const size_t colon = when.findFirstOf(':');
-		if (when.equalsIgnoreCase("entered") && alert.room) {
-			alert.kind = "entered";
-			_alerts.push_back(alert);
-			continue;
-		}
-		if (colon == Common::String::npos) {
-			warning("Neuro: Alert '%s' has no usable 'when'", section.name.c_str());
-			continue;
-		}
+/** The N of "script N". */
+static int scriptNumber(const Common::String &value) {
+	return atoi(value.hasPrefixIgnoreCase("script") ? value.c_str() + 6 : value.c_str());
+}
+
+void NeuroData::addLineNote(const Common::String &section) {
+	LineNote note;
+	note.script = scriptNumber(get(section, "while"));
+	note.firstVerb = atoi(get(section, "first_verb").c_str());
+	note.slotVar = atoi(get(section, "slot_var").c_str());
+	note.min = atoi(get(section, "min").c_str());
+	note.max = atoi(get(section, "max").c_str());
+	note.unlessBit = atoi(get(section, "unless_bit").c_str());
+	note.note = get(section, "note");
+	if (note.script && note.slotVar && !note.note.empty())
+		_lineNotes.push_back(note);
+}
+
+void NeuroData::addWatch(const Common::String &section) {
+	Watch watch;
+	watch.var = atoi(get(section, "var").c_str());
+	watch.say = get(section, "say");
+	watch.anyChange = get(section, "change").equalsIgnoreCase("any");
+	if (watch.var && !watch.say.empty())
+		_watches.push_back(watch);
+}
+
+void NeuroData::addAlert(const Common::String &section) {
+	Alert alert;
+	alert.room = atoi(get(section, "room").c_str());
+	alert.leadMs = (uint32)(atof(get(section, "lead").c_str()) * 1000);
+	alert.priority = get(section, "priority");
+	alert.say = get(section, "say");
+	alert.ask = get(section, "ask");
+	alert.command = get(section, "do");
+	alert.then = get(section, "then");
+	alert.holdVar = atoi(get(section, "hold").c_str());
+	alert.whileScript = scriptNumber(get(section, "while"));
+
+	const Common::String when = get(section, "when");
+	const size_t colon = when.findFirstOf(':');
+	if (when.equalsIgnoreCase("entered") && alert.room) {
+		alert.kind = "entered";
+	} else if (colon == Common::String::npos) {
+		warning("Neuro: Alert '%s' has no usable 'when'", section.c_str());
+		return;
+	} else {
 		alert.kind = when.substr(0, colon);
 		alert.name = when.substr(colon + 1);
 		alert.kind.trim();
 		alert.name.trim();
 		alert.kind.toLowercase();
 		alert.name.toLowercase();
-		_alerts.push_back(alert);
 	}
-	return true;
+	_alerts.push_back(alert);
 }
 
 Common::String NeuroData::get(const Common::String &section, const Common::String &key) const {

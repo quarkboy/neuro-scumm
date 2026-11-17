@@ -36,6 +36,7 @@
 
 namespace Scumm {
 
+class Actor;
 class ScummEngine;
 
 /** How long a yes/no question about a passing moment can still be answered. */
@@ -43,9 +44,19 @@ static const uint32 kQuestionOpenMs = 20000;
 /** While the game keeps control, a line's end is only reported once this long has passed without another line. */
 static const uint32 kSpeechGapMs = 2000;
 
+/**
+ * A setting, from the environment variable or else the config key of the same
+ * name in lower case (or the key given). Empty if neither is set.
+ */
+Common::String neuroSetting(const char *env, const char *key = nullptr);
+
+/** Something with a name: an object, an actor, an inventory item, a verb or a place to walk to. */
 struct NeuroThing {
 	int id = 0;
-	int x = 0;
+
+	/** Its middle in the room; for a verb, the left edge and top of its text on screen. */
+	int x = 0, y = 0;
+
 	int state = 0;
 	Common::String name;
 
@@ -54,6 +65,9 @@ struct NeuroThing {
 };
 
 typedef Common::Array<NeuroThing> NeuroThingList;
+
+/** The names in both lists, separated by commas; "nothing" if there are none. */
+Common::String neuroListNames(const NeuroThingList &a, const NeuroThingList &b = NeuroThingList());
 
 /** A simulated mouse click, in room or screen coordinates. */
 struct NeuroClick {
@@ -77,7 +91,7 @@ struct NeuroCommand {
 	int x = 0, y = 0;
 	bool isSpot = false;
 
-	/** As a follow-up: how long Guybrush must have stood still before it starts. */
+	/** As a follow-up: how long the player's character must have stood still before it starts. */
 	uint32 settleMs = 0;
 
 	/** As a follow-up: it comes after a walk across the room, which may take a while. */
@@ -105,22 +119,30 @@ struct NeuroWorld {
 	NeuroThingList spots;
 	Common::Array<Common::Point> spotPositions;
 
-	/** Which part of the room Guybrush is in, where the description file tells them apart. */
+	/** Which part of the room the player's character is in, where the description file tells them apart. */
 	Common::String standing;
-
-	/** Some things share a name and were numbered to tell them apart. */
-	bool numbered = false;
 
 	/** The verb area shows lines to say instead of verbs. */
 	bool inDialogue = false;
 
-	/** The verb area shows other verbs than the usual ones (ways to touch a caged beast). */
+	/** The verb area shows other verbs than the usual ones. */
 	bool customVerbs = false;
 };
 
 /**
  * Lets Neuro-sama play the game through the Neuro API
  * (https://github.com/VedalAI/neuro-sdk).
+ *
+ * neuro.cpp     settings, the connection, messages in and out
+ * actions.cpp   her actions and carrying out a command
+ * dialogue.cpp  lines to say, and prompting her
+ * pointer.cpp   simulated clicks and the travelling pointer
+ * world.cpp     what is in the room, and what changed
+ * speech.cpp    what is said and shown as text
+ * alerts.cpp    alerts and watched variables from the description file
+ * panel.cpp     the column beside the game in a stream window
+ * debug.cpp     the operator's and the developer's unregistered actions
+ * extract.cpp   the developer's room and script dump
  */
 class NeuroBridge {
 public:
@@ -138,14 +160,15 @@ public:
 	/** A character (or the narrator, for actor 0xFF) started saying a line. */
 	void onTalkStarted(int actor, const byte *text);
 	void onTalkStopped();
-	/** The engine has just written or read a savegame. */
-	void onSaveLoad(bool saved, int slot);
 
 	/** Text was drawn on the screen that nobody says (a sign in close-up, a title). */
 	void onTextDrawn(const byte *text, int color);
 
 	/** A script gave an actor a name. */
 	void onActorNamed(int actor);
+
+	/** The engine has just written or read a savegame. */
+	void onSaveLoad(bool saved, int slot);
 
 	/** While a simulated click is in progress, points the mouse at its target. */
 	void overridePointer();
@@ -158,61 +181,109 @@ public:
 private:
 	NeuroBridge(ScummEngine *vm, const Common::String &url);
 
+	ScummEngine *_vm;
+	Common::String _url;
+	Common::String _gameName;
+	NeuroData _data;
+
+	Actor *ego() const;
+	bool playerHasControl() const;
+	/** The game's script that carries out a verb sentence is running. */
+	bool sentenceRunning() const;
+
+	// --- The connection, and messages in and out (neuro.cpp)
+
+	WebSocketClient _ws;
+	bool _wasConnected = false;
+	uint32 _nextConnectAttempt = 0;
 	void onConnected();
-	void registerActions(bool interactOnly = false);
-	uint32 _registeredAt = 0;
 	void handleMessage(const Common::String &text);
 	void handleAction(const Common::String &id, const Common::String &name, const Common::String &data);
-	void handleDebugAction(const Common::String &id, const Common::String &name, const Common::String &data);
+
+	/** Takes ownership of the values in data. */
+	void send(const char *command, const Common::JSONObject *data = nullptr);
+	void sendActionResult(const Common::String &id, bool success, const Common::String &message = Common::String());
+	void sendForce(const Common::String &state, const Common::String &query, const char *actionName, const Common::String &priority = Common::String());
+	void sendIntro();
+
+	// Only one force may be outstanding at a time
+	bool _forceActive = false;
+	Common::String _forceAction;
+	uint32 _forceSentAt = 0;
+	/** The action being handled, and when she last did anything or anything happened. */
+	Common::String _currentAction;
+	uint32 _lastActionAt = 0;
+	uint32 _lastActivity = 0;
+
+	// Things said once are forgotten as her context scrolls on, so they are
+	// said again after roughly this many tokens of traffic.
+	uint32 _contextTokens = 32000;
+	uint64 _tokensSent = 0;
+	uint64 _introSentAt = 0;
+
+	// A loaded savegame can change everything at once
+	void resetAfterLoad();
+
+	// Run the game at ScummVM's fast speed, always or only while she cannot act
+	enum FastMode {
+		kFastOff,
+		kFastAlways,
+		kFastScenes
+	};
+	FastMode _fastMode = kFastOff;
+	/** Whether the engine's fast mode is on because of us, not the player's Ctrl-F. */
+	bool _speedSet = false;
+	void updateSpeed();
+
+	// --- Her actions (actions.cpp)
+
+	void registerActions(bool interactOnly = false);
+	void unregisterAction(const char *name);
+	uint32 _registeredAt = 0;
+	/** Whether she is offered skip_cutscene at all. */
+	bool _allowSkip = true;
+	// The game's normal verbs, learned the first time they are on screen
+	NeuroThingList _standardVerbs;
+	// The verbs her interact action currently offers: the normal ones, or a scene's own
+	NeuroThingList _offeredVerbs;
 
 	void actionInteract(const Common::String &id, const NeuroArgs &args);
 	void actionSkipCutscene(const Common::String &id);
+	void actionAnswer(const Common::String &id, const NeuroArgs &args);
 
+	/** Finds a thing by the name she used for it; nullptr if there is no single match. */
+	const NeuroThing *findThing(const NeuroThingList &things, const Common::String &name) const;
 	bool resolveCommand(const NeuroWorld &world, const Common::String &verbName, const Common::String &targetName,
 		const Common::String &secondName, NeuroCommand &command, Common::String &error);
-	void runCommand(const NeuroCommand &command);
 	bool resolvePreset(const NeuroWorld &world, const Common::String &preset, NeuroCommand &command);
-	void updateQueuedCommand();
+	bool passageTo(int room, int target, NeuroCommand &passage) const;
+	void runCommand(const NeuroCommand &command);
 
-	// Development tool that dumps every room; see extract.cpp
-	enum ExtractPhase {
-		kExtractOff,
-		kExtractDumpScripts,
-		kExtractWaitForGame,
-		kExtractEnterRoom,
-		kExtractSettle,
-		kExtractPan
-	};
-	struct Extraction {
-		ExtractPhase phase = kExtractOff;
-		Common::String dir;
-		Common::Array<int> skip;
-		int room = 0;
-		int frames = 0;
-		int width = 0, height = 0, panX = 0;
-		Common::Array<byte> pixels;
-	};
-	Extraction _extract;
-	bool startExtraction();
-	void dumpScripts(const Common::String &dir);
-	void updateExtraction();
-	bool extractNextRoom();
-	void extractCopyScreen();
-	void extractWriteRoom();
+	// Follow-up steps, each run as soon as the one before has played out
+	Common::Array<NeuroCommand> _queue;
+	bool _queueSawBusy = false;
+	uint32 _queueIdleSince = 0;
+	uint32 _lastQueuedStepAt = 0;
+	void updateQueuedCommand();
 
 	// After each of her actions she is told how it turned out, so that
 	// she can carry on at once instead of waiting to be prompted.
 	bool _awaitingOutcome = false;
 	bool _outcomeTold = false;   ///< she has been prompted with the result
 	bool _outcomeSpoken = false; ///< someone said something in reply
+	uint32 _commandStartedAt = 0;
+	/** The thing the last command walked to, if it was a walk. */
+	int _walkTarget = 0;
+	// What her last action was aimed at; only these are worth a note when their look changes
+	int _lastTargets[2] = {0, 0};
+	void beginAction();
 	void finishAction(const NeuroWorld &world);
 
-	// Follow-up steps, each run as soon as the one before has played out
-	Common::Array<NeuroCommand> _queue;
-	bool _queueSawBusy = false;
-	uint32 _queueIdleSince = 0;
-	uint32 _commandStartedAt = 0;
+	// --- Conversations and prompts (dialogue.cpp)
+
 	void actionChooseDialogue(const Common::String &id, const NeuroArgs &args);
+	/** Picks a line on screen; with a real click where the room reads the pointer to see which. */
+	void pickLine(int verb);
 
 	// The game shows a long list of lines a few at a time, with arrows to
 	// scroll it. She is given the whole list, read by scrolling through it,
@@ -232,112 +303,46 @@ private:
 	void scrollArrows(const NeuroWorld &world, int &up, int &down);
 	bool pagerCovers(const NeuroWorld &world) const;
 	void pressArrow(int verb, const NeuroWorld &world);
+	void resetPager();
 	void updatePager();
-	/** Picks a line on screen; with a real click where the room reads the pointer to see which. */
-	void pickLine(int verb);
 
-	void sendForce(const Common::String &state, const Common::String &query, const char *actionName, const Common::String &priority = Common::String());
+	uint32 _idleForceMs = 0;
+	/** The lines she was last asked to choose from. */
+	Common::String _forcedDialogue;
+	// What she is answering when asked to pick a line
+	Common::String _lastHeard;
+	uint32 _lastHeardAt = 0;
+	void updateForces(const NeuroWorld &world);
+
+	// --- Alerts and watched variables (alerts.cpp)
+
 	void checkAlerts(const NeuroWorld &before, const NeuroWorld &after);
 	void fireAlert(const NeuroData::Alert &alert, const NeuroWorld &world);
-
+	int _pendingAlert = -1;
+	uint32 _pendingAlertDue = 0;
 	// How long she takes from prompt to action; alerts are sent that much early
 	uint32 _reactionMs = 300;
-	// A yes/no question from an alert, and what saying yes does
+
+	// A yes/no question, and what saying yes does
 	Common::String _questionCommand;
 	Common::String _questionThen;
 	uint32 _questionAskedAt = 0;
 	// A game timer that stands still while the question is open
 	int _questionHoldVar = 0;
 	int _questionHoldValue = 0;
-	void actionAnswer(const Common::String &id, const NeuroArgs &args);
+	void ask(const Common::String &state, const Common::String &query, const Common::String &command,
+		const Common::String &then, int holdVar = 0, const Common::String &priority = Common::String());
 
-	int _pendingAlert = -1;
-	uint32 _pendingAlertDue = 0;
-	void updateForces(const NeuroWorld &world);
-
-	/** Finds a point in room coordinates where a click lands on the given object or actor. */
-	bool findClickPoint(int thing, int &x, int &y) const;
-	bool passageTo(int room, int target, NeuroCommand &passage) const;
-	void clickInRoom(int x, int y);
-	void updateClick();
-
-	/** Finds a thing by the name Neuro used for it; returns nullptr and fills error if there is no single match. */
-	const NeuroThing *findThing(const NeuroThingList &things, const Common::String &name) const;
-
-	bool playerHasControl() const;
-	void pollWorld();
-	void collectWorld(NeuroWorld &world);
-	enum RoomDetail {
-		kRoomFirstVisit, ///< with the written description
-		kRoomRevisit,    ///< just what is there
-		kRoomStatus      ///< what is there and what she carries, for a reminder
-	};
-	Common::String describeRoom(const NeuroWorld &world, RoomDetail detail) const;
-
-	// Things said once are forgotten as her context scrolls on, so they are
-	// said again after roughly this many tokens of traffic.
-	uint32 _contextTokens = 32000;
-	uint64 _tokensSent = 0;
-	uint64 _introSentAt = 0;
-	/** Per room: the traffic count when its full description was last sent. */
-	Common::HashMap<int, uint64> _seenRooms;
-	void sendIntro();
-	Common::String describeChanges(const NeuroWorld &before, const NeuroWorld &after);
-
-	// Where each character in the room was last seen, and from that the thing
-	// each one who left was standing at (by lower-case name)
-	int _actorSeenRoom = 0;
-	struct SeenActor {
-		Common::Point pos;
-		Common::String name;
-	};
-	Common::HashMap<int, SeenActor> _actorSeen;
-	/**
-	 * Named characters seen in this room who are no longer in it; each is reported once.
-	 * With known, only those among them: who came and went during a scene is not news.
-	 */
-	NeuroThingList departed(const NeuroWorld &world, const NeuroThingList *known = nullptr);
-
-	// A door she has just opened, to ask whether she wants to go through
-	Common::String _openedDoor;
-	Common::HashMap<Common::String, Common::String> _leftAt;
-	Common::String lastSeenAt(int actor, const NeuroWorld &world) const;
-
-	/** Converts game text to UTF-8, dropping control codes and name padding. */
-	Common::String cleanText(const byte *text, bool resolveCodes);
-
-	/** Takes ownership of the values in data. */
-	void send(const char *command, const Common::JSONObject *data = nullptr);
-	void sendActionResult(const Common::String &id, bool success, const Common::String &message = Common::String());
-
-	ScummEngine *_vm;
-	Common::String _url;
-	Common::String _gameName;
-	WebSocketClient _ws;
-	NeuroData _data;
-	NeuroJournal _journal;
-	Common::String journalFileName(int slot) const;
-	void sendJournalNews();
 	// Game variables whose rise is worth a sentence, with the value last seen
 	Common::HashMap<int, int> _watched;
 	void checkWatches();
-	/** Fills in {varN} and {pickN: a | b | c} from the game's variables. */
+	/** Fills in {varN}, {bitsA-B} and {pickN: a | b | c} from the game's variables. */
 	Common::String expandText(const Common::String &text) const;
 	/** Reads a variable (or, with 0x8000 set, a bit variable) named in the data file; 0 if the game has none by that number. */
 	int readDataVar(uint var) const;
 	mutable Common::HashMap<uint, bool> _missingVars;
-	void saveJournal(int slot);
-	void loadJournal(int slot);
 
-	// The costume each actor wore when it was named. Scripts reuse actors
-	// for other characters without renaming them, which leaves a wrong name.
-	Common::HashMap<int, int> _namedCostume;
-
-	/** forList: for the list of characters in the room, as opposed to naming a speaker. */
-	Common::String actorName(int actor, bool forList = false);
-	void debugDump();
-	bool _wasConnected = false;
-	uint32 _nextConnectAttempt = 0;
+	// --- Simulated clicks and the pointer (pointer.cpp)
 
 	// A simulated click takes a few frames: the game's own hover script
 	// has to see the pointer over the target before the button goes down.
@@ -352,27 +357,27 @@ private:
 	int _clickFrames = 0;
 	int _clickX = 0, _clickY = 0;
 	bool _clickScreen = false;
+	bool _clickPress = true;
 	int _clickFollow = 0;
 	uint32 _lastClickAt = 0;
 	// Clicks still to make for the command being carried out, one after another
 	Common::Array<NeuroClick> _clickQueue;
 	void clickAt(const NeuroClick &click);
+	void clickInRoom(int x, int y);
+	void updateClick();
+	/** Finds a point in room coordinates where a click lands on the given object or actor. */
+	bool findClickPoint(int thing, int &x, int &y) const;
 
 	// The pointer travels to what she acts on, as a hand on the mouse would move
 	// it, so that viewers can follow what she is doing.
 	bool _pointerGlide = true;
-	/** Whether she is offered skip_cutscene at all. */
-	bool _allowSkip = true;
 	bool _pointerKnown = false;
 	int _pointerX = 0, _pointerY = 0;
 	int _moveFromX = 0, _moveFromY = 0;
 	uint32 _moveStartedAt = 0, _moveMs = 0;
-	bool _clickPress = true;
 	void clickTarget(int &x, int &y) const;
 	void pointerNow(int &x, int &y) const;
-	/** A sentence given directly once the pointer has been shown going over its words. */
-	/** The thing the last command walked to, if it was a walk. */
-	int _walkTarget = 0;
+	// A sentence given directly once the pointer has been shown going over its words
 	bool _shownSentence = false;
 	int _shownVerb = 0, _shownObjects[2] = {0, 0};
 
@@ -383,69 +388,86 @@ private:
 	bool planClicks(const NeuroWorld &world, NeuroCommand &command);
 	bool verbButton(int verbId, NeuroClick &click) const;
 
+	// --- What is in the room, and what changed (world.cpp)
+
+	void collectWorld(NeuroWorld &world);
+	void collectObjects(NeuroWorld &world, Common::Array<bool> &usable);
+	void collectActors(NeuroWorld &world);
+	void collectInventory(NeuroWorld &world);
+	void collectVerbs(NeuroWorld &world);
+	void collectSpots(NeuroWorld &world);
+	void noteLines(NeuroWorld &world);
+
+	/** The world as she was last told about it. */
 	NeuroWorld _described;
-
-	// Testing aid: run the game at ScummVM's fast speed, always or only while she cannot act
-	enum FastMode {
-		kFastOff,
-		kFastAlways,
-		kFastScenes
-	};
-	FastMode _fastMode = kFastOff;
-	/** Whether the engine's fast mode is on because of us, not the player's Ctrl-F. */
-	bool _speedSet = false;
-
-	enum DebugActions { kDebugNone, kDebugOperator, kDebugAll };
-	DebugActions _debugActions = kDebugNone;
-	void updateSpeed();
-
-	// A loaded savegame can change everything at once
-	void resetAfterLoad();
-
-	// The game's normal verbs, learned the first time they are on screen
-	NeuroThingList _standardVerbs;
-	// The verbs her interact action currently offers: the normal ones, or a scene's own
-	NeuroThingList _offeredVerbs;
-
-	// Only one force may be outstanding at a time
-	bool _forceActive = false;
-
-	// The column beside the game in a window made to be streamed (panel.cpp)
-	void updatePanel();
-	void notePanelAction(const Common::String &name, const NeuroArgs &args);
-	Common::String describeForPanel(const Common::String &name, const NeuroArgs &args);
-	Common::String _panelNow, _panelKey, _panelTitle, _panelHide;
-	Common::StringArray _panelRecent;
-	uint32 _panelCheckedAt = 0;
-	int _panelChat = 30;
-	bool _panelHeld = false;
-	Common::String _forceAction;
-	Common::String _currentAction;
-	uint32 _forceSentAt = 0;
-	uint32 _lastActivity = 0;
-	uint32 _idleForceMs = 0;
-	Common::String _forcedDialogue;
-	// What she is answering when asked to pick a line
-	Common::String _lastHeard;
-	// Text drawn on screen, gathered until the frame is over
-	Common::String _drawnText;
-	Common::String _lastDrawnText;
-	void flushDrawnText();
-	uint32 _lastQueuedStepAt = 0;
-	uint32 _lastHeardAt = 0;
-
-	// What her last action was aimed at; only these are worth a note when their look changes
-	int _lastTargets[2] = {0, 0};
+	uint32 _nextWorldPoll = 0;
 	uint32 _controlSince = 0;
 	uint32 _speechBlockSince = 0;
-	uint32 _nextWorldPoll = 0;
+	void pollWorld();
+	void trackActors();
+	bool worldSettled(uint32 now);
+	void reportRoom(const NeuroWorld &world);
+	void reportChanges(const NeuroWorld &world);
+	void askAboutDoor(const NeuroWorld &world, uint32 now);
+	void learnVerbs(const NeuroWorld &world);
 
-	// Servers that predate the speech commands get dialogue as batched context instead
-	bool _dialogueAsContext = false;
-	Common::String _pendingDialogue;
+	enum RoomDetail {
+		kRoomFirstVisit, ///< with the written description
+		kRoomRevisit,    ///< just what is there
+		kRoomStatus      ///< what is there and what she carries, for a reminder
+	};
+	Common::String describeRoom(const NeuroWorld &world, RoomDetail detail) const;
+	/** layoutChanged: things appeared or went. comings: characters arrived or left. */
+	Common::String describeChanges(const NeuroWorld &before, const NeuroWorld &after, bool &layoutChanged, bool &comings);
+	/** Per room: the traffic count when its full description was last sent. */
+	Common::HashMap<int, uint64> _seenRooms;
+
+	// Where each character in the room was last seen, and from that the thing
+	// each one who left was standing at (by lower-case name)
+	int _actorSeenRoom = 0;
+	struct SeenActor {
+		Common::Point pos;
+		Common::String name;
+	};
+	Common::HashMap<int, SeenActor> _actorSeen;
+	Common::HashMap<Common::String, Common::String> _leftAt;
+	/**
+	 * Named characters seen in this room who are no longer in it; each is reported once.
+	 * With known, only those among them: who came and went during a scene is not news.
+	 */
+	NeuroThingList departed(const NeuroWorld &world, const NeuroThingList *known = nullptr);
+	Common::String lastSeenAt(int actor, const NeuroWorld &world) const;
+
+	// A door she has just opened, to ask whether she wants to go through
+	Common::String _openedDoor;
+
+	// The costume each actor wore when it was named. Scripts reuse actors
+	// for other characters without renaming them, which leaves a wrong name.
+	Common::HashMap<int, int> _namedCostume;
+	/** forList: for the list of characters in the room, as opposed to naming a speaker. */
+	Common::String actorName(int actor, bool forList = false);
+
+	// --- What is said and shown as text (speech.cpp)
+
+	/** Converts game text to UTF-8, dropping control codes and name padding. */
+	Common::String cleanText(const byte *text, bool resolveCodes);
+	/** Who says the line; false if it is not to be passed on. */
+	bool speakerOf(int actor, const Common::String &line, Common::String &speaker);
+	/** A line just heard from the same speaker that is not a reaction to something she did. */
+	bool isBackgroundChatter(const Common::String &spoken);
+
+	Common::String _speechIdPrefix;
+	uint32 _speechCounter = 0;
+	bool _speechOpen = false;
+	uint32 _lastTalkTime = 0;
+	/** When the end of the last line is due to be reported; 0 if it has been. */
+	uint32 _speechEndDueAt = 0;
+	void sendSpeechEnded();
+	bool anotherLineFollows() const;
+
+	/** The last line passed on, as "speaker: text". */
 	Common::String _lastLine;
-
-	// Background chatter (barking dogs, a muttering crowd) repeats forever
+	// Background chatter repeats forever
 	struct HeardLine {
 		Common::String text;
 		uint32 time;
@@ -455,24 +477,85 @@ private:
 	// Speakers nobody has named are told apart by number within a room
 	int _strangerRoom = 0;
 	Common::Array<int> _strangers;
-
 	// Several characters can share one actor and differ only in the colour
 	// of their text; the colours seen so far for each speaker name
 	Common::HashMap<Common::String, Common::Array<byte> > _voiceColors;
-	uint32 _lastActionAt = 0;
+
+	// Servers that predate the speech commands get dialogue as batched context instead
+	bool _dialogueAsContext = false;
+	Common::String _pendingDialogue;
 	uint32 _pendingSince = 0;
+	/** The last line added to the batch and where it starts, to replace it when it is typed out further. */
 	Common::String _lastLineText;
 	uint _lastLineOffset = 0;
-	uint32 _lastTalkTime = 0;
 	void flushDialogue();
 
-	Common::String _speechIdPrefix;
-	uint32 _speechCounter = 0;
-	bool _speechOpen = false;
-	/** When the end of the last line is due to be reported; 0 if it has been. */
-	uint32 _speechEndDueAt = 0;
-	void sendSpeechEnded();
-	bool anotherLineFollows() const;
+	// Text drawn on screen, gathered until the frame is over
+	Common::String _drawnText;
+	Common::String _lastDrawnText;
+	void flushDrawnText();
+
+	// --- Her journal (journal.cpp; kept beside each savegame)
+
+	NeuroJournal _journal;
+	Common::String journalFileName(int slot) const;
+	void saveJournal(int slot);
+	void loadJournal(int slot);
+	void sendJournalNews();
+
+	// --- The column beside the game in a window made to be streamed (panel.cpp)
+
+	void updatePanel();
+	void notePanelAction(const Common::String &name, const NeuroArgs &args);
+	Common::String describeForPanel(const Common::String &name, const NeuroArgs &args);
+	Common::String _panelNow, _panelKey, _panelTitle, _panelHide;
+	Common::StringArray _panelRecent;
+	uint32 _panelCheckedAt = 0;
+	int _panelChat = 30;
+	bool _panelHeld = false;
+
+	// --- Actions that are never registered (debug.cpp)
+
+	enum DebugActions {
+		kDebugNone,
+		kDebugOperator,
+		kDebugAll
+	};
+	DebugActions _debugActions = kDebugNone;
+	void handleDebugAction(const Common::String &id, const Common::String &name, const Common::String &data);
+	/** The console's commands: save, load, status and settings. False if the name is not one of them. */
+	bool handleOperatorAction(const Common::String &id, const Common::String &name, const Common::String &data);
+	bool handleDeveloperAction(const Common::String &id, const Common::String &name, const Common::String &data);
+	void sendStatus(const Common::String &id);
+	void applySetting(const Common::String &setting, const Common::String &value);
+	void debugDump();
+
+	// --- The developer's dump of every room (extract.cpp)
+
+	enum ExtractPhase {
+		kExtractOff,
+		kExtractDumpScripts,
+		kExtractWaitForGame,
+		kExtractEnterRoom,
+		kExtractSettle,
+		kExtractPan
+	};
+	struct Extraction {
+		ExtractPhase phase = kExtractOff;
+		Common::String dir;
+		Common::Array<int> skip;
+		int room = 0;
+		int frames = 0;
+		int width = 0, height = 0, panX = 0;
+		Common::Array<byte> pixels;
+	};
+	Extraction _extract;
+	void startExtraction();
+	void dumpScripts(const Common::String &dir);
+	void updateExtraction();
+	bool extractNextRoom();
+	void extractCopyScreen();
+	void extractWriteRoom();
 };
 
 } // End of namespace Scumm

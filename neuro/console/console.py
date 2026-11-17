@@ -224,7 +224,6 @@ class Console:
         self.load_config()
 
         self.proc = None
-        self.started_at = None
         self.output = collections.deque(maxlen=300)
 
         self.game = None            # the game's connection to us
@@ -272,7 +271,7 @@ class Console:
 
     def empty_view(self):
         return {"location": "", "inventory": [], "goals": [], "now": "", "state": "idle",
-                "speech": None, "question": "", "lines": {}, "recent": []}
+                "speech": None, "question": "", "lines": {}}
 
     def event(self, way, command, text, raw=None):
         self.seq += 1
@@ -305,14 +304,10 @@ class Console:
     def status(self):
         return {
             "running": self.proc is not None and self.proc.returncode is None,
-            "since": self.started_at,
             "game_connected": self.game is not None,
             "neuro_connected": self.upstream is not None,
             "neuro_error": self.upstream_error,
             "hold": self.hold,
-            "game_name": self.game_name,
-            "scummvm": str(self.find_scummvm() or ""),
-            "address": f"ws://127.0.0.1:{self.port}/game",
         }
 
     # The game process
@@ -374,7 +369,6 @@ class Console:
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
         except OSError as error:
             return f"The game could not be started: {error}"
-        self.started_at = time.time()
         self.event("console", "start", "Game started" + (f" from slot {s['start_slot']}" if s["start_slot"] not in (None, "") else ""))
         asyncio.ensure_future(self.read_output(self.proc))
         asyncio.ensure_future(self.watch_start(self.proc, attempt))
@@ -592,7 +586,6 @@ class Console:
                 return
             self.view["now"] = said
             self.view["state"] = "acting"
-            self.view["recent"] = ([said] + self.view["recent"])[:6]
         if self.game is not None:
             self.game.send(text)
 

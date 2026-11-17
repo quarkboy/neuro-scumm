@@ -50,26 +50,26 @@ namespace Scumm {
  *                          colour (one actor standing in for a group)
  *   prompt                 what she is asked when picking a line to say here, in
  *                          place of "Pick a line to say."
- *   layout = shifting      the room is redrawn as a new place without being left
- *                          (the catacombs); list it afresh when things change
+ *   layout = shifting      the room is redrawn as a new place without being left;
+ *                          list it afresh when things change
  *   relative = yes         say whether each thing lies to the left or the right of
- *                          Guybrush (the navigator's head points one way or the other)
- *   comings = quiet        characters wander in and out of sight all the time here
- *                          (dots on the island map); do not report each one
+ *                          the player's character
+ *   comings = quiet        characters wander in and out of sight all the time here;
+ *                          do not report each one
  *   spot.NAME = X,Y | TEXT a place with no object that she can walk to; the
  *                          optional text says what she sees when she does
  *   standing.NAME = BOX BOX ... | TEXT
- *                          where Guybrush is, for a room with parts that do not
- *                          connect on foot (two sides of a stretch of water):
- *                          the text is given while he stands in one of those
- *                          walk boxes, and again when he gets to another part
+ *                          where the player's character is, for a room with
+ *                          parts that do not connect on foot: the text is
+ *                          given while the character stands in one of those
+ *                          walk boxes, and again on getting to another part
  *   passages = ID ID ...   things that, walked to, bring another part of a wide
  *                          room into view where the picture does not follow
- *                          Guybrush there by itself. A command aimed at something
+ *                          the character there by itself. A command aimed at something
  *                          out of view goes by way of the one in view, as a
  *                          player, who cannot click outside the picture, would.
- * A room that the game draws from another room's data (the forest screens)
- * uses that room's section for whatever its own section does not say.
+ * A room that the game draws from another room's data uses that room's
+ * section for whatever its own section does not say.
  * [alert.ID] sections turn a moment she must not miss into a prompt:
  *   room      room number it applies to (omit for any room)
  *   when      arrived: / left: (a character), appeared: / disappeared: (a
@@ -90,7 +90,7 @@ namespace Scumm {
  *   then      optional second command in the same form, run as soon as the
  *             first one has played out
  * [watch.ID] sections put into words something the game only shows as animation
- * and keeps as a number (who won an exchange of a sword fight):
+ * and keeps as a number:
  *   var       the game variable
  *   change    "any" to speak whenever it changes, not only when it goes up
  *   say       what she is told; {value} is the new value
@@ -109,7 +109,7 @@ namespace Scumm {
  */
 class NeuroData {
 public:
-	bool load(const Common::String &path);
+	void load(const Common::String &path);
 
 	/** Says which room's data the game is drawing the given room from. */
 	void setRoomResource(int room, int resource);
@@ -145,7 +145,7 @@ public:
 	};
 	const Common::Array<Spot> &spots(int room) const;
 
-	/** Where in the room Guybrush is when he stands in that walk box; empty if the file does not say. */
+	/** Where in the room the player's character is when standing in that walk box; empty if the file does not say. */
 	Common::String standing(int room, int box) const;
 
 	/** Things that bring another part of the room into view when walked to. */
@@ -190,6 +190,10 @@ public:
 	const Common::Array<LineNote> &lineNotes() const { return _lineNotes; }
 
 private:
+	void addLineNote(const Common::String &section);
+	void addWatch(const Common::String &section);
+	void addAlert(const Common::String &section);
+
 	Common::String get(const Common::String &section, const Common::String &key) const;
 	/** Looks in the room's own section, then in that of the room it is drawn from. */
 	bool roomKey(int room, const Common::String &key, Common::String &value) const;

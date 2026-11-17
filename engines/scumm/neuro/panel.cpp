@@ -23,11 +23,8 @@
 // The column beside the game in a window made to be streamed: where she is,
 // what she is doing, her goals and what she carries. See graphics/streampanel.h.
 
-#define FORBIDDEN_SYMBOL_EXCEPTION_getenv
-
 #include "scumm/neuro/neuro.h"
 
-#include "common/config-manager.h"
 #include "common/system.h"
 
 #include "graphics/font.h"
@@ -43,13 +40,9 @@ namespace {
 const uint kPanelCheckMs = 250;
 const uint kPanelRecent = 6;
 
-Common::String panelSetting(const char *env, const char *key, const char *fallback) {
-	const char *value = getenv(env);
-	if (value && *value)
-		return value;
-	if (ConfMan.hasKey(key))
-		return ConfMan.get(key);
-	return fallback;
+Common::String panelSetting(const char *env, const char *fallback) {
+	const Common::String value = neuroSetting(env);
+	return value.empty() ? Common::String(fallback) : value;
 }
 
 // A goal in the journal is a full sentence of instructions; the column shows its title
@@ -107,6 +100,133 @@ struct PanelWriter {
 		return true;
 	}
 };
+
+/** What the column shows. */
+struct PanelContent {
+	Common::String title, location, state;
+	bool thinking = false;
+	Common::StringArray goals, inventory, recent;
+};
+
+/** hide: the parts to leave out, each between commas: title, chat, location, now, goals, inventory, recent. */
+bool drawPanel(Graphics::StreamPanel &panel, const PanelContent &content, int chatPercent, const Common::String &hide) {
+	auto shown = [&](const char *part) {
+		return !hide.contains(Common::String(",") + part + ",");
+	};
+
+	// The column is drawn small and shown enlarged by a whole number, so that
+	// the built-in bitmap fonts come out as crisp, chunky pixels
+	// (1080 and 900 by two, 1440 by three). Where no whole number gives
+	// text of about the same size (720), it is drawn 540 tall and smoothed.
+	const int zoom = MAX(1, (panel.windowHeight + 270) / 540);
+	int height = panel.windowHeight / zoom;
+	int width = panel.width() / zoom;
+	if (height < 440 || height > 620) {
+		height = 540;
+		width = panel.width() * 540 / panel.windowHeight;
+	}
+	width = MAX(80, width);
+	Graphics::Surface &surface = panel.surface;
+	if (surface.w != width || surface.h != height || !surface.getPixels()) {
+		surface.free();
+		surface.create(width, height, Graphics::StreamPanel::format());
+	}
+
+	const Graphics::Font *big = FontMan.getFontByUsage(Graphics::FontManager::kBigGUIFont);
+	const Graphics::Font *small = FontMan.getFontByUsage(Graphics::FontManager::kGUIFont);
+	if (!big || !small)
+		return false;
+
+	PanelWriter w = { surface, 8, width - 8, 0 };
+	const uint32 gold = w.color(240, 195, 106);
+	const uint32 white = w.color(238, 240, 250);
+	const uint32 dim = w.color(164, 171, 208);
+	const uint32 pink = w.color(255, 156, 203);
+	const uint32 card = w.color(28, 34, 68);
+	const uint32 line = w.color(92, 80, 60);
+
+	// A night sky, darker towards the bottom
+	for (int y = 0; y < height; y++) {
+		const int t = y * 255 / height;
+		w.rect(0, y, width, y + 1, w.color(22 - t * 11 / 255, 28 - t * 12 / 255, 66 - t * 28 / 255));
+	}
+
+	// Title
+	w.y = 8;
+	Common::String title = shown("title") ? content.title : Common::String();
+	while (!title.empty()) {
+		const size_t bar = title.findFirstOf('|');
+		w.text(big, title.substr(0, bar), gold, 2, Graphics::kTextAlignCenter);
+		title = bar == Common::String::npos ? Common::String() : title.substr(bar + 1);
+	}
+	w.y += 5;
+
+	// An empty box to lay the stream's chat over
+	if (chatPercent > 0 && shown("chat")) {
+		const int boxHeight = height * chatPercent / 100;
+		w.rect(w.left - 1, w.y - 1, w.right + 1, w.y + boxHeight + 1, line);
+		w.rect(w.left, w.y, w.right, w.y + boxHeight, w.color(8, 10, 24));
+		w.y += boxHeight + 8;
+	}
+
+	// Each section: a small heading, then its text on a slightly lighter card
+	auto section = [&](const char *heading, int lines) {
+		const int cardHeight = small->getFontHeight() + 4 + lines + 4;
+		w.rect(w.left - 4, w.y, w.right + 4, MIN(w.y + cardHeight, height - 4), card);
+		w.y += 3;
+		w.text(small, heading, gold, 1);
+		w.y += 1;
+	};
+
+	Common::Array<Common::U32String> wrapped;
+
+	if (shown("location")) {
+		big->wordWrapText(content.location.decode(Common::kUtf8), w.right - w.left, wrapped);
+		section("WHERE SHE IS", MIN<int>(MAX<int>(wrapped.size(), 1), 2) * (big->getFontHeight() + 1));
+		w.text(big, content.location.empty() ? Common::String("...") : content.location, white, 2);
+		w.y += 9;
+	}
+
+	if (shown("now")) {
+		wrapped.clear();
+		big->wordWrapText(content.state.decode(Common::kUtf8), w.right - w.left, wrapped);
+		section("RIGHT NOW", MIN<int>(MAX<int>(wrapped.size(), 2), 3) * (big->getFontHeight() + 1));
+		const int stateTop = w.y;
+		w.text(big, content.state, content.thinking ? pink : white, 3);
+		w.y = MAX(w.y, stateTop + 2 * (big->getFontHeight() + 1)) + 9;
+	}
+
+	if (shown("goals") && !content.goals.empty() && w.y < height - 40) {
+		section("HER GOALS", content.goals.size() * (small->getFontHeight() + 1));
+		for (const auto &goal : content.goals) {
+			small->drawString(&surface, Common::U32String("*"), w.left, w.y, 8, gold);
+			if (!w.text(small, goal, white, 1, Graphics::kTextAlignLeft, 9))
+				break;
+		}
+		w.y += 9;
+	}
+
+	if (shown("inventory") && !content.inventory.empty() && w.y < height - 40) {
+		Common::String carrying;
+		for (uint i = 0; i < content.inventory.size(); i++)
+			carrying += (i ? ", " : "") + content.inventory[i];
+		wrapped.clear();
+		small->wordWrapText(carrying.decode(Common::kUtf8), w.right - w.left, wrapped);
+		section("CARRYING", wrapped.size() * (small->getFontHeight() + 1));
+		w.text(small, carrying, white);
+		w.y += 9;
+	}
+
+	if (shown("recent") && !content.recent.empty() && w.y < height - 40) {
+		section("LATELY", content.recent.size() * (small->getFontHeight() + 1));
+		for (uint i = 0; i < content.recent.size(); i++) {
+			if (!w.text(small, content.recent[i], i == 0 ? white : dim, 1))
+				break;
+		}
+	}
+
+	return true;
+}
 
 } // End of anonymous namespace
 
@@ -170,64 +290,49 @@ void NeuroBridge::updatePanel() {
 	_panelCheckedAt = now;
 
 	if (_panelTitle.empty()) {
-		_panelTitle = panelSetting("NEURO_PANEL_TITLE", "neuro_panel_title", "Neuro plays|The Secret of Monkey Island");
-		_panelChat = CLIP(atoi(panelSetting("NEURO_PANEL_CHAT", "neuro_panel_chat", "30").c_str()), 0, 80);
+		_panelTitle = panelSetting("NEURO_PANEL_TITLE", "Neuro plays|The Secret of Monkey Island");
+		_panelChat = CLIP(atoi(panelSetting("NEURO_PANEL_CHAT", "30").c_str()), 0, 80);
 		if (_panelHide.empty())
-			_panelHide = "," + panelSetting("NEURO_PANEL_HIDE", "neuro_panel_hide", "") + ",";
+			_panelHide = "," + panelSetting("NEURO_PANEL_HIDE", "") + ",";
 	}
 
-	// Parts of the column can be left out: title, chat, location, now, goals, inventory, recent
-	auto shown = [&](const char *part) {
-		return !_panelHide.contains(Common::String(",") + part + ",");
-	};
-
-	// What there is to show
-	Common::String location, state;
-	Common::StringArray goals, inventory;
+	PanelContent content;
+	content.title = _panelTitle;
+	content.recent = _panelRecent;
 	if (_vm->_currentRoom != 0) {
 		NeuroWorld world;
 		collectWorld(world);
-		location = _data.roomName(world.room);
+		content.location = _data.roomName(world.room);
 		for (const auto &item : world.inventory)
-			inventory.push_back(item.name);
+			content.inventory.push_back(item.name);
 
-		Common::String journal = _journal.describe(false);
-		while (!journal.empty()) {
-			const size_t end = journal.findFirstOf('\n');
-			const Common::String line = journal.substr(0, end);
-			journal = end == Common::String::npos ? Common::String() : journal.substr(end + 1);
-			// Her own notes come after the goals and are not goals
-			if (line.hasPrefix("Your notes"))
-				break;
-			if (line.hasPrefix("- ")) {
-				const Common::String title = goalTitle(line.substr(2));
-				if (!title.empty())
-					goals.push_back(title);
-			}
+		for (const auto &goal : _journal.activeGoals()) {
+			const Common::String title = goalTitle(goal);
+			if (!title.empty())
+				content.goals.push_back(title);
 		}
 	}
 
-	bool thinking = false;
 	if (_panelHeld) {
-		state = "Taking a short break";
+		content.state = "Taking a short break";
 	} else if (!_ws.isConnected()) {
-		state = "Waiting for Neuro";
+		content.state = "Waiting for Neuro";
 	} else if (_forceActive) {
-		thinking = true;
-		state = "Thinking";
+		content.thinking = true;
+		content.state = "Thinking";
 		for (uint i = 0; i < (now / 400) % 4; i++)
-			state += '.';
+			content.state += '.';
 	} else if (!_panelNow.empty()) {
-		state = _panelNow;
+		content.state = _panelNow;
 	} else {
-		state = "Watching";
+		content.state = "Watching";
 	}
 
 	// Only draw when something changed
-	Common::String key = location + "\n" + state + "\n" + _panelTitle + "\n" + _panelHide + "\n";
-	for (const auto &goal : goals)
+	Common::String key = content.location + "\n" + content.state + "\n" + _panelTitle + "\n" + _panelHide + "\n";
+	for (const auto &goal : content.goals)
 		key += goal + "|";
-	for (const auto &item : inventory)
+	for (const auto &item : content.inventory)
 		key += item + "|";
 	for (const auto &recent : _panelRecent)
 		key += recent + "|";
@@ -235,118 +340,8 @@ void NeuroBridge::updatePanel() {
 		return;
 	_panelKey = key;
 
-	// The column is drawn small and shown enlarged by a whole number, so that
-	// the built-in bitmap fonts come out as crisp, chunky pixels
-	// (1080 and 900 by two, 1440 by three). Where no whole number gives
-	// text of about the same size (720), it is drawn 540 tall and smoothed.
-	const int zoom = MAX(1, (panel.windowHeight + 270) / 540);
-	int height = panel.windowHeight / zoom;
-	int width = panel.width() / zoom;
-	if (height < 440 || height > 620) {
-		height = 540;
-		width = panel.width() * 540 / panel.windowHeight;
-	}
-	width = MAX(80, width);
-	Graphics::Surface &surface = panel.surface;
-	if (surface.w != width || surface.h != height || !surface.getPixels()) {
-		surface.free();
-		surface.create(width, height, Graphics::StreamPanel::format());
-	}
-
-	const Graphics::Font *big = FontMan.getFontByUsage(Graphics::FontManager::kBigGUIFont);
-	const Graphics::Font *small = FontMan.getFontByUsage(Graphics::FontManager::kGUIFont);
-	if (!big || !small)
-		return;
-
-	PanelWriter w = { surface, 8, width - 8, 0 };
-	const uint32 gold = w.color(240, 195, 106);
-	const uint32 white = w.color(238, 240, 250);
-	const uint32 dim = w.color(164, 171, 208);
-	const uint32 pink = w.color(255, 156, 203);
-	const uint32 card = w.color(28, 34, 68);
-	const uint32 line = w.color(92, 80, 60);
-
-	// A night sky, darker towards the bottom
-	for (int y = 0; y < height; y++) {
-		const int t = y * 255 / height;
-		w.rect(0, y, width, y + 1, w.color(22 - t * 11 / 255, 28 - t * 12 / 255, 66 - t * 28 / 255));
-	}
-
-	// Title
-	w.y = 8;
-	Common::String title = shown("title") ? _panelTitle : Common::String();
-	while (!title.empty()) {
-		const size_t bar = title.findFirstOf('|');
-		w.text(big, title.substr(0, bar), gold, 2, Graphics::kTextAlignCenter);
-		title = bar == Common::String::npos ? Common::String() : title.substr(bar + 1);
-	}
-	w.y += 5;
-
-	// An empty box to lay the stream's chat over
-	if (_panelChat > 0 && shown("chat")) {
-		const int boxHeight = height * _panelChat / 100;
-		w.rect(w.left - 1, w.y - 1, w.right + 1, w.y + boxHeight + 1, line);
-		w.rect(w.left, w.y, w.right, w.y + boxHeight, w.color(8, 10, 24));
-		w.y += boxHeight + 8;
-	}
-
-	// Each section: a small heading, then its text on a slightly lighter card
-	auto section = [&](const char *heading, int lines) {
-		const int cardHeight = small->getFontHeight() + 4 + lines + 4;
-		w.rect(w.left - 4, w.y, w.right + 4, MIN(w.y + cardHeight, height - 4), card);
-		w.y += 3;
-		w.text(small, heading, gold, 1);
-		w.y += 1;
-	};
-
-	Common::Array<Common::U32String> wrapped;
-
-	if (shown("location")) {
-		big->wordWrapText(location.decode(Common::kUtf8), w.right - w.left, wrapped);
-		section("WHERE SHE IS", MIN<int>(MAX<int>(wrapped.size(), 1), 2) * (big->getFontHeight() + 1));
-		w.text(big, location.empty() ? Common::String("...") : location, white, 2);
-		w.y += 9;
-	}
-
-	if (shown("now")) {
-		wrapped.clear();
-		big->wordWrapText(state.decode(Common::kUtf8), w.right - w.left, wrapped);
-		section("RIGHT NOW", MIN<int>(MAX<int>(wrapped.size(), 2), 3) * (big->getFontHeight() + 1));
-		const int stateTop = w.y;
-		w.text(big, state, thinking ? pink : white, 3);
-		w.y = MAX(w.y, stateTop + 2 * (big->getFontHeight() + 1)) + 9;
-	}
-
-	if (shown("goals") && !goals.empty() && w.y < height - 40) {
-		section("HER GOALS", goals.size() * (small->getFontHeight() + 1));
-		for (const auto &goal : goals) {
-			small->drawString(&surface, Common::U32String("*"), w.left, w.y, 8, gold);
-			if (!w.text(small, goal, white, 1, Graphics::kTextAlignLeft, 9))
-				break;
-		}
-		w.y += 9;
-	}
-
-	if (shown("inventory") && !inventory.empty() && w.y < height - 40) {
-		Common::String carrying;
-		for (uint i = 0; i < inventory.size(); i++)
-			carrying += (i ? ", " : "") + inventory[i];
-		wrapped.clear();
-		small->wordWrapText(carrying.decode(Common::kUtf8), w.right - w.left, wrapped);
-		section("CARRYING", wrapped.size() * (small->getFontHeight() + 1));
-		w.text(small, carrying, white);
-		w.y += 9;
-	}
-
-	if (shown("recent") && !_panelRecent.empty() && w.y < height - 40) {
-		section("LATELY", _panelRecent.size() * (small->getFontHeight() + 1));
-		for (uint i = 0; i < _panelRecent.size(); i++) {
-			if (!w.text(small, _panelRecent[i], i == 0 ? white : dim, 1))
-				break;
-		}
-	}
-
-	panel.generation++;
+	if (drawPanel(panel, content, _panelChat, _panelHide))
+		panel.generation++;
 }
 
 } // End of namespace Scumm

@@ -319,3 +319,10 @@ CLAUDE.md
 
 # The operator console keeps its token and settings here
 neuro/console/console.local.json
+
+# Output of the development test driver
+neuro/tools/dev/game.out
+neuro/tools/dev/gid
+neuro/tools/dev/pos
+neuro/tools/dev/pid
+neuro/tools/dev/shots/

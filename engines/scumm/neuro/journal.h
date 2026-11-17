@@ -63,9 +63,9 @@ public:
 	void loadGoals(const Common::INIFile &ini);
 	void reset();
 
-	// Each returns true if a goal appeared or was completed
-	bool heard(const Common::String &line);
-	bool observed(int room, const Common::StringArray &inventory);
+	// What she hears and sees can start or finish a goal, or be a clue
+	void heard(const Common::String &line);
+	void observed(int room, const Common::StringArray &inventory);
 
 	/** Announcements for goals that changed since the last call. */
 	Common::String takeNews();
@@ -73,20 +73,22 @@ public:
 	void addNote(const Common::String &text);
 
 	/**
-	 * A clue can quote a game variable as {varN}, for what was only shown
-	 * as animation (how often a handle was pulled).
+	 * A clue can quote the game's variables ({varN} and the other forms the
+	 * description file allows), for what was only shown as animation.
 	 */
-	typedef int (*VarReader)(void *context, int var);
-	void setVarReader(VarReader reader, void *context) {
-		_readVar = reader;
-		_readVarContext = context;
+	typedef Common::String (*Expander)(void *context, const Common::String &text);
+	void setExpander(Expander expander, void *context) {
+		_expand = expander;
+		_expandContext = context;
 	}
 
 	Common::String describe(bool withCompleted = false) const;
 
 	/** The clues noted for one unfinished goal, named by its title, id or opening words. */
 	Common::String describeClues(const Common::String &which) const;
-	bool isEmpty() const;
+
+	/** The unfinished goals, each as its text. */
+	Common::StringArray activeGoals() const;
 
 	/** Bridge state that has to survive a save and load along with the goals. */
 	Common::StringMap memos;
@@ -95,8 +97,8 @@ public:
 	void load(const Common::String &fileName);
 
 private:
-	VarReader _readVar = nullptr;
-	void *_readVarContext = nullptr;
+	Expander _expand = nullptr;
+	void *_expandContext = nullptr;
 	Common::String expand(const Common::String &text) const;
 
 	enum State {
@@ -116,7 +118,7 @@ private:
 	Common::Array<Clue> _clues;
 	Common::String goalTitle(const Common::String &id) const;
 
-	bool fire(const Common::String &kind, const Common::String &argument);
+	void fire(const Common::String &kind, const Common::String &argument);
 	void setState(Goal &goal, State state);
 
 	Common::Array<Goal> _goals;

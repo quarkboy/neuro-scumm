@@ -375,7 +375,7 @@ void Sound::processSfxQueues() {
 				}
 			}
 		}
-			_queuedSoundMode = DIGI_SND_MODE_EMPTY;
+		_queuedSoundMode = DIGI_SND_MODE_EMPTY;
 	}
 
 	const int act = _vm->getTalkingActor();
@@ -827,8 +827,6 @@ void Sound::stopTalkSound() {
 
 	if (letFinish) {
 		// Another character is starting to speak: leave this line playing.
-		// The talk handle is about to be reused, so keep a copy to be able
-		// to stop the line later.
 		// Its handle is already in _seSpeechClips, so it can still be
 		// stopped after the talk handle is reused.
 		_digiSndMode &= ~DIGI_SND_MODE_TALKIE;

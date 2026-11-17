@@ -417,8 +417,6 @@ def main():
             item["speaker"] = ""
 
     lines = [l for l in lines if l["op"] != "style"]
-    for index, item in enumerate(lines):
-        item.pop("index", None)
     said = [l for l in lines if l["op"] == "say"]
     sure = sum(1 for l in said if l.get("color_sure"))
     likely = sum(1 for l in said if isinstance(l.get("color"), int) and not l.get("color_sure"))

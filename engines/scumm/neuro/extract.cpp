@@ -94,17 +94,17 @@ void NeuroBridge::dumpScripts(const Common::String &dir) {
 	writeText(dir + "/index.txt", index);
 }
 
-bool NeuroBridge::startExtraction() {
+void NeuroBridge::startExtraction() {
 	const char *scripts = getenv("NEURO_DUMP_SCRIPTS");
 	if (scripts && *scripts) {
 		_extract.dir = scripts;
 		_extract.phase = kExtractDumpScripts;
-		return true;
+		return;
 	}
 
 	const char *dir = getenv("NEURO_EXTRACT_DIR");
 	if (!dir || !*dir)
-		return false;
+		return;
 
 	_extract.dir = dir;
 	const char *from = getenv("NEURO_EXTRACT_FROM");
@@ -116,7 +116,6 @@ bool NeuroBridge::startExtraction() {
 			_extract.skip.push_back(atoi(rooms.nextToken().c_str()));
 	}
 	_extract.phase = kExtractWaitForGame;
-	return true;
 }
 
 void NeuroBridge::extractCopyScreen() {
@@ -234,7 +233,7 @@ void NeuroBridge::updateExtraction() {
 		}
 		writeText(_extract.dir + "/progress", Common::String::format("%d\n", _extract.room));
 
-		_vm->_actors[_vm->VAR(_vm->VAR_EGO)]->_room = _extract.room;
+		ego()->_room = _extract.room;
 		_vm->startScene(_extract.room, nullptr, 0);
 		_vm->_fullRedraw = true;
 		_extract.frames = 0;
@@ -245,13 +244,13 @@ void NeuroBridge::updateExtraction() {
 	case kExtractSettle:
 		if (++_extract.frames < kSettleFrames)
 			return;
-		// Guybrush was moved here only to enter the room; he is not part of it.
+		// The player's character was moved here only to enter the room, and is not part of it.
 		// Hiding him can leave his last image on screen where nothing redraws,
 		// so start again from the clean background and let the others redraw.
-		_vm->_actors[_vm->VAR(_vm->VAR_EGO)]->hideActor();
+		ego()->hideActor();
 		// A full redraw marks every actor in the room for drawing, hidden or not;
 		// only one without a costume is really left out
-		_vm->_actors[_vm->VAR(_vm->VAR_EGO)]->_costume = 0;
+		ego()->_costume = 0;
 		{
 			VirtScreen &vs = _vm->_virtscr[kMainVirtScreen];
 			if (vs.hasTwoBuffers) {
