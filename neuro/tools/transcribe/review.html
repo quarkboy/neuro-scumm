@@ -484,7 +484,7 @@ function renderRoom() {
 	const byId = new Map(r.captures.flatMap(c => c.objects.map(o => [String(o.id), o])));
 	const objectRow = id => {
 		const o = byId.get(String(id)), hidden = ini.names[id] === "";
-		return el("tr", { class: o?.untouchable ? "hidden" : "", "data-oid": id, ...rowEvents("o" + id) },
+		return el("tr", { "data-oid": id, ...rowEvents("o" + id) },
 			el("td", { class: "id" }, id),
 			el("td", { class: "name" }, o ? (o.name || "(no name)") + ` (state ${o.state})` : el("span", { class: "note" }, "not in the capture")),
 			el("td", {}, el("input", { class: "rename", value: ini.names[id] || "", placeholder: "same" })),
@@ -576,6 +576,7 @@ function renderRoom() {
 		const objects = new Map(c.objects.map(o => [String(o.id), o]));
 		for (const row of objectTable.querySelectorAll("[data-oid]")) {
 			const id = row.dataset.oid, o = objects.get(id);
+			row.classList.toggle("hidden", !!o?.untouchable);
 			row.cells[1].textContent = o ? (o.name || "(no name)") + ` (state ${o.state})` : "Absent from this capture";
 			row.hidden = !showHidden && !row.dataset.manual && !(o?.name && !o.untouchable || id in ini.objects || id in ini.names ||
 				row.querySelector(".rename").value || row.querySelector(".notefield").value || row.querySelector(".hide").checked);
