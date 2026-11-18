@@ -140,7 +140,7 @@ void NeuroBridge::registerActions(const char *replace) {
 		journal.setVal("show_completed", typeSchema("boolean"));
 		journal.setVal("clues_for", typeSchema("string"));
 		actions.push_back(actionDefinition("read_journal",
-			"Read your goals and notes. clues_for: name a goal to read its clues instead. show_completed adds finished goals.",
+			"Read your goals and notes. clues_for reads one goal's clues, including a finished goal by its exact title or ID. show_completed lists finished goals.",
 			objectSchema(journal)));
 
 		Common::JSONObject note;

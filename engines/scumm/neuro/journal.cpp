@@ -230,15 +230,15 @@ Common::String NeuroJournal::describeClues(const Common::String &which) const {
 	wanted.toLowercase();
 	wanted.trim();
 
-	// By id, by title, or by any words of the goal itself; the first unfinished one that fits
+	// Completed goals can be requested by id or title. Keep suggestions and partial matches current.
 	const Goal *match = nullptr;
 	Common::String titles;
 	for (int pass = 0; pass < 2 && !match; pass++) {
 		for (const auto &goal : _goals) {
-			if (goal.nudge || goal.state != kActive)
+			if (goal.nudge || goal.state == kHidden || (pass != 0 && goal.state != kActive))
 				continue;
 			Common::String title = goalTitle(goal.id), text = goal.text;
-			if (pass == 0)
+			if (pass == 0 && goal.state == kActive)
 				titles += (titles.empty() ? "" : ", ") + title;
 			title.toLowercase();
 			text.toLowercase();
@@ -278,8 +278,8 @@ Common::String NeuroJournal::describe(bool withCompleted) const {
 				active += Common::String::format(" (%u clue%s)", clues, clues == 1 ? "" : "s");
 			active += "\n";
 			hiddenClues += clues;
-		} else if (goal.state == kDone)
-			done += "- " + goal.text + "\n";
+		} else if (goal.state == kDone && withCompleted)
+			done += "- " + goalTitle(goal.id) + ": " + goal.text + "\n";
 	}
 
 	Common::String text = "## Your journal\n\n";
