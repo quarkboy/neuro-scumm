@@ -57,6 +57,8 @@ namespace Scumm {
  *                          and "cave 2").
  *   relative = yes         say whether each thing lies to the left or the right of
  *                          the player's character
+ *   back_within = DISTANCE OBJECT...   describe these openings as at the back
+ *                          when within the given SCUMM interaction distance
  *   comings = quiet        characters wander in and out of sight all the time here;
  *                          do not report each one
  *   spot.NAME = X,Y | TEXT a place with no object that she can walk to; the
@@ -64,6 +66,7 @@ namespace Scumm {
  *                          "X,Y twice" steps onto it a second time after a pause,
  *                          for a place that only reacts to a step from next to it
  *   scenery.OBJECT.STATE = sentence visible in this room while the object has this state
+ *   pose.COSTUME.FRAME = what the player character is visibly doing in this pose
  *   standing.NAME = BOX BOX ... | TEXT
  *                          where the player's character is, for a room with
  *                          parts that do not connect on foot: the text is
@@ -155,6 +158,7 @@ public:
 	bool quietComings(int room) const;
 	bool shiftingLayout(int room) const;
 	bool relativePlaces(int room) const;
+	int backDistance(int room, int object) const;
 	Common::String groundBetween(int room) const { return roomGet(room, "ground_between"); }
 	Common::String roomPrompt(int room) const;
 
@@ -199,6 +203,7 @@ public:
 
 	struct Scenery { int object, state; Common::String text; };
 	const Common::Array<Scenery> &scenery(int room) const { return places(room).scenery; }
+	Common::String playerPose(int room, int costume, int frame) const;
 	/** Text for the player character's current walk box. */
 	Common::String standing(int room, int box) const;
 
@@ -273,6 +278,9 @@ private:
 		Common::Array<Spot> spots;
 		Common::Array<Standing> standing;
 		Common::Array<Scenery> scenery;
+		Common::HashMap<uint32, Common::String> poses;
+		int backDistance = -1;
+		Common::Array<int> backObjects;
 	};
 	mutable Places _places;
 	const Places &places(int room) const;

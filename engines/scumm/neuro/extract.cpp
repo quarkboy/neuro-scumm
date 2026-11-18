@@ -167,6 +167,8 @@ bool NeuroBridge::writeRoomSnapshot(const Common::String &base, int room, int wi
 		object.setVal("state", new Common::JSONValue((long long int)od.state));
 		object.setVal("untouchable", new Common::JSONValue(_vm->getClass(od.obj_nr, kObjectClassUntouchable)));
 		object.setVal("usable", new Common::JSONValue(usableRoomObject(i)));
+		if (_data.relativePlaces(room) && ego()->isInCurrentRoom() && usableRoomObject(i))
+			object.setVal("distance", new Common::JSONValue((long long int)_vm->getObjActToObjActDist(_vm->VAR(_vm->VAR_EGO), od.obj_nr)));
 		object.setVal("parent", new Common::JSONValue((long long int)od.parent));
 		objects.push_back(new Common::JSONValue(object));
 	}

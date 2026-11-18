@@ -205,6 +205,21 @@ bool NeuroData::relativePlaces(int room) const {
 	return roomGet(room, "relative").equalsIgnoreCase("yes");
 }
 
+Common::String NeuroData::playerPose(int room, int costume, int frame) const {
+	const auto &poses = places(room).poses;
+	const auto it = poses.find(((uint32)costume << 8) | frame);
+	return it == poses.end() ? Common::String() : it->_value;
+}
+
+int NeuroData::backDistance(int room, int object) const {
+	const Places &p = places(room);
+	for (int id : p.backObjects) {
+		if (id == object)
+			return p.backDistance;
+	}
+	return -1;
+}
+
 Common::String NeuroData::roomPrompt(int room) const {
 	return roomGet(room, "prompt");
 }
@@ -269,6 +284,12 @@ const NeuroData::Places &NeuroData::places(int room) const {
 
 	_places = Places();
 	_places.room = room;
+	Common::StringTokenizer back(roomGet(room, "back_within"), " ,");
+	if (!back.empty()) {
+		_places.backDistance = atoi(back.nextToken().c_str());
+		while (!back.empty())
+			_places.backObjects.push_back(atoi(back.nextToken().c_str()));
+	}
 	if (!_ini.hasSection(roomSection(room)))
 		return _places;
 
@@ -284,6 +305,11 @@ const NeuroData::Places &NeuroData::places(int room) const {
 			char trailing;
 			if (sscanf(kv.key.c_str(), "scenery.%d.%d%c", &object, &state, &trailing) == 2 && object > 0 && state >= 0 && state <= 255 && !kv.value.empty())
 				_places.scenery.push_back({object, state, kv.value});
+		} else if (kv.key.hasPrefix("pose.")) {
+			int costume, frame;
+			char trailing;
+			if (sscanf(kv.key.c_str(), "pose.%d.%d%c", &costume, &frame, &trailing) == 2 && costume >= 0 && costume <= 65535 && frame >= 0 && frame <= 255)
+				_places.poses[((uint32)costume << 8) | frame] = kv.value;
 		} else if (kv.key.hasPrefix("spot.")) {
 			Spot spot;
 			spot.name = kv.key.substr(5);

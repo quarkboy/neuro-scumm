@@ -96,6 +96,11 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 		if (i > 0 && _vm->_objs[i].state == rule.state)
 			world.scenery.push_back(rule.text);
 	}
+	if (ego()->isInCurrentRoom() && ego()->_visible) {
+		const Common::String pose = _data.playerPose(world.room, ego()->_costume, ego()->_frame);
+		if (!pose.empty())
+			world.scenery.push_back(pose);
+	}
 
 	// Things that cannot be used right now still take part in numbering, so
 	// that "door 2" stays "door 2" when door 1 becomes unusable.
@@ -154,8 +159,10 @@ void NeuroBridge::collectObjects(NeuroWorld &world, Common::Array<bool> &usable)
 			thing.name = cleanText(_vm->getObjOrActorName(od.obj_nr), true);
 		thing.note = _data.objectNote(world.room, od.obj_nr);
 		if (_data.relativePlaces(world.room)) {
-			// Left or right is all the game's own pointer tells apart in such a room
-			const Common::String where = "to " + egoName() + (thing.x < ego()->getPos().x ? "'s left" : "'s right");
+			const int distance = _data.backDistance(world.room, od.obj_nr);
+			const bool atBack = distance >= 0 && _vm->getObjActToObjActDist(_vm->VAR(_vm->VAR_EGO), od.obj_nr) <= distance;
+			const Common::String where = atBack ? "to the back, where " + egoName() + " is standing"
+				: "to " + egoName() + (thing.x < ego()->getPos().x ? "'s left" : "'s right");
 			thing.note = thing.note.empty() ? where : thing.note + "; " + where;
 		}
 		// Several objects given one name and note are one thing to her;

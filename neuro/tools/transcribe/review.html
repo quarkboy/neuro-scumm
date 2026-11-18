@@ -201,7 +201,7 @@ function flash(text) {
 }
 
 /** A room's section, sorted into the kinds of key the page edits. */
-const ROOM_PLAIN = ["name", "description", "status", "review_note", "prompt", "layout", "relative", "comings", "passages", "ground_between"];
+const ROOM_PLAIN = ["name", "description", "status", "review_note", "prompt", "layout", "relative", "comings", "passages", "ground_between", "back_within"];
 function parseRoom({ keys, comment }) {
 	const ini = { keys, comment, objects: {}, names: {}, actors: {}, scenery: [], voices: [], spots: [], standing: [], other: {} };
 	for (const key of ROOM_PLAIN) ini[key] = keys[key] || "";
@@ -443,7 +443,7 @@ function sceneryEditor(room, objects, refresh) {
 	return box;
 }
 
-function previewTargets(capture, table, actorTable, relative) {
+function previewTargets(capture, table, actorTable, relative, backDistance, backObjects) {
 	const rows = new Map([...table.querySelectorAll("[data-oid]")].map(row => [Number(row.dataset.oid), row]));
 	const items = [];
 	for (const o of capture.objects) {
@@ -454,8 +454,15 @@ function previewTargets(capture, table, actorTable, relative) {
 		if (!name) continue;
 		const x = o.x + Math.floor(o.w / 2);
 		const notes = [row.querySelector(".notefield").value.trim()];
-		if (relative && capture.ego_x != null)
-			notes.push("to " + (journal.game.keys.ego_name || "your character") + (x < capture.ego_x ? "'s left" : "'s right"));
+		if (relative && capture.ego_x != null) {
+			const who = journal.game.keys.ego_name || "your character";
+			if (backObjects.includes(o.id) && o.distance == null)
+				notes.push("direction unavailable in this capture");
+			else if (backObjects.includes(o.id) && o.distance <= backDistance)
+				notes.push("to the back, where " + who + " is standing");
+			else
+				notes.push("to " + who + (x < capture.ego_x ? "'s left" : "'s right"));
+		}
 		const note = notes.filter(Boolean).join("; ");
 		const item = { name, note, x, state: o.state, usable: o.usable ?? !o.untouchable };
 		const duplicate = rename && items.find(t => t.name === name && t.note === note);
@@ -581,6 +588,7 @@ function renderRoom() {
 			field("prompt", "What she is asked when picking a line here (blank: \"Pick a line to say.\")", "textarea", "short"),
 			check("layout", "shifting", "The room is redrawn as a new place without being left; list it afresh when things change"),
 			field("ground_between", "Offer walkable ground between adjacent things named"),
+			field("back_within", "Openings at the back (distance followed by object IDs)"),
 			check("relative", "yes", "Say whether each thing is to the left or the right of Guybrush"),
 			check("comings", "quiet", "Characters wander in and out all the time here; do not report each one"),
 			el("label", {}, "Passages: things that bring a part of a wide room into view when walked to", passages), passageHint),
@@ -613,7 +621,8 @@ function renderRoom() {
 		const relative = form.querySelector('[data-switch="relative"]').checked;
 		if (c.objects.some(o => o.parent && o.usable == null)) missing.push("This older capture lacks availability for nested objects.");
 		if (relative && c.ego_x == null) missing.push("This capture has no player position for left/right directions.");
-		const { things, people } = previewTargets(c, objectTable, actorTable, relative);
+		const [backDistance, ...backObjects] = form.elements.back_within.value.trim().split(/[ ,]+/).map(Number);
+		const { things, people } = previewTargets(c, objectTable, actorTable, relative, backDistance, backObjects);
 		const places = spots.read().map(row => row.name).filter(Boolean);
 		const between = form.elements.ground_between.value.trim();
 		if (between) {
@@ -634,7 +643,7 @@ function renderRoom() {
 async function saveRoom(form, parts) {
 	const r = roomById.get(current), ini = r.ini, set = {}, blank = [];
 	const data = Object.fromEntries(new FormData(form));
-	for (const key of ["name", "description", "status", "review_note", "prompt", "passages", "ground_between"]) set[key] = (data[key] || "").trim() || null;
+	for (const key of ["name", "description", "status", "review_note", "prompt", "passages", "ground_between", "back_within"]) set[key] = (data[key] || "").trim() || null;
 	form.querySelectorAll("[data-switch]").forEach(box => {
 		// A value the page has no box for (written by hand) is left alone unless the box is ticked
 		const key = box.dataset.switch, known = !ini[key] || ini[key].toLowerCase() === box.dataset.on;
