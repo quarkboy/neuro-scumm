@@ -166,7 +166,12 @@ void SoundCD::playCDTrackInternal(int track, int numLoops, int startFrame, int d
 			return;
 
 		Audio::Timestamp start = Audio::Timestamp(0, startFrame, 75);
-		Audio::Timestamp end = Audio::Timestamp(0, startFrame + duration, 75);
+		// A zero duration plays to the end, including when resuming mid-track.
+		Audio::Timestamp end = duration ? Audio::Timestamp(0, startFrame + duration, 75) : stream->getLength();
+		if (start >= stream->getLength()) {
+			delete stream;
+			return;
+		}
 
 		_mixer->playStream(Audio::Mixer::kMusicSoundType, _fileBasedCDAudioHandle,
 						   Audio::makeLoopingAudioStream(stream, start, end, (numLoops < 1) ? numLoops + 1 : numLoops));
