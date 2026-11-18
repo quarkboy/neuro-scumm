@@ -52,7 +52,9 @@ namespace Scumm {
  *                          place of "Pick a line to say."
  *   layout = shifting      the room is redrawn as a new place without being left;
  *                          list it afresh when things change
- *   ground_between = cave  offer reachable ground between adjacent caves.
+ *   ground_between = NAME  offer reachable ground between adjacent objects with
+ *                          this base name (for example, "cave" matches "cave 1"
+ *                          and "cave 2").
  *   relative = yes         say whether each thing lies to the left or the right of
  *                          the player's character
  *   comings = quiet        characters wander in and out of sight all the time here;
