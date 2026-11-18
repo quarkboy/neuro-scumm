@@ -586,6 +586,15 @@ void NeuroBridge::actionInteract(const Common::String &id, const NeuroArgs &args
 		return;
 	}
 
+	if (_walkTarget && _interaction.outcome.pending() && !first.walk) {
+		for (const auto &item : world.inventory) {
+			if (first.objects[0] == item.id) {
+				sendActionResult(id, false, egoNameCapital() + " is still walking. Try again after arrival.");
+				return;
+			}
+		}
+	}
+
 	// For a place, say what stepping there looks like
 	sendActionResult(id, true, first.note);
 	cancelQueuedInput();
