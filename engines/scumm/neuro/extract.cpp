@@ -194,6 +194,16 @@ bool NeuroBridge::writeRoomSnapshot(const Common::String &base, int room, int wi
 	root.setVal("room_width", new Common::JSONValue((long long int)_vm->_roomWidth));
 	// The cold survey hides the player and pans the camera through an artificial scene.
 	if (_extract.phase == kExtractOff && ego()->isInCurrentRoom()) {
+		const Common::String between = _data.groundBetween(room);
+		if (!between.empty()) {
+			NeuroWorld world;
+			collectWorld(world);
+			Common::JSONArray places;
+			for (uint i = _data.spots(room).size(); i < world.spots.size(); i++)
+				places.push_back(new Common::JSONValue(world.spots[i].name));
+			root.setVal("ground_between", new Common::JSONValue(between));
+			root.setVal("ground_places", new Common::JSONValue(places));
+		}
 		root.setVal("walkbox", new Common::JSONValue((long long int)ego()->_walkbox));
 		root.setVal("ego_x", new Common::JSONValue((long long int)ego()->getPos().x));
 	}

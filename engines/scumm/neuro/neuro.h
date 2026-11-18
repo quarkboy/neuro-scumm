@@ -466,6 +466,7 @@ private:
 	void collectInventory(NeuroWorld &world);
 	void collectVerbs(NeuroWorld &world);
 	void collectSpots(NeuroWorld &world);
+	bool groundBetween(int left, int right, Common::Point &point) const;
 	void noteLines(NeuroWorld &world);
 
 	/** The world as she was last told about it. */

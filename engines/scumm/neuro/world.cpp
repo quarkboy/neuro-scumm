@@ -27,6 +27,7 @@
 #include "common/system.h"
 
 #include "scumm/actor.h"
+#include "scumm/boxes.h"
 #include "scumm/object.h"
 #include "scumm/resource.h"
 #include "scumm/scumm.h"
@@ -260,6 +261,44 @@ void NeuroBridge::collectVerbs(NeuroWorld &world) {
 	}
 }
 
+/** A name without the number that tells same-named things apart. */
+static Common::String baseName(const Common::String &name) {
+	Common::String base = name;
+	while (!base.empty() && Common::isDigit(base.lastChar()))
+		base.deleteLastChar();
+	base.trim();
+	return base;
+}
+
+// Find a click on bare walkable ground, strictly between the targets and inside
+// the current view. Keep a little clear of the edges that change the camera.
+bool NeuroBridge::groundBetween(int left, int right, Common::Point &point) const {
+	const VirtScreen &view = _vm->_virtscr[kMainVirtScreen];
+	const int lo = MAX(left + 1, view.xstart + 16);
+	const int hi = MIN(right - 1, view.xstart + _vm->_screenWidth - 17);
+	if (lo > hi || ego()->_walkbox >= _vm->getNumBoxes())
+		return false;
+	const int middle = (lo + hi) / 2;
+	int best = INT_MAX;
+	for (int i = 1; i < _vm->getNumBoxes(); ++i) {
+		if (_vm->getBoxFlags(i) & (kBoxInvisible | kBoxLocked))
+			continue;
+		const BoxCoords box = _vm->getBoxCoordinates(i);
+		const int boxY = (box.ul.y + box.ur.y + box.ll.y + box.lr.y) / 4;
+		int16 x = middle, y = boxY;
+		if (!_vm->checkXYInBoxBounds(i, x, y))
+			getClosestPtOnBox(box, middle, boxY, x, y);
+		if (x < lo || x > hi || y < 0 || y >= view.h || _vm->findObject(x, y))
+			continue;
+		const int score = ABS(x - middle) * view.h + ABS(y - ego()->getPos().y);
+		if (score < best && _vm->getNextBox(ego()->_walkbox, i) >= 0) {
+			best = score;
+			point = Common::Point(x, y);
+		}
+	}
+	return best != INT_MAX;
+}
+
 void NeuroBridge::collectSpots(NeuroWorld &world) {
 	const Common::Array<NeuroData::Spot> &spots = _data.spots(world.room);
 	for (uint i = 0; i < spots.size(); i++) {
@@ -271,6 +310,24 @@ void NeuroBridge::collectSpots(NeuroWorld &world) {
 		world.spots.push_back(thing);
 		world.spotPositions.push_back(Common::Point(spots[i].x, spots[i].y));
 		world.spotTwice.push_back(spots[i].twice);
+	}
+
+	const Common::String between = _data.groundBetween(world.room);
+	const NeuroThing *previous = nullptr;
+	for (const auto &object : world.objects) {
+		if (between.empty() || !baseName(object.name).equalsIgnoreCase(between))
+			continue;
+		Common::Point point;
+		if (previous && groundBetween(previous->x, object.x, point)) {
+			NeuroThing place;
+			place.id = -(int)world.spots.size() - 1;
+			place.x = point.x;
+			place.name = "ground between " + previous->name + " and " + object.name;
+			world.spots.push_back(place);
+			world.spotPositions.push_back(point);
+			world.spotTwice.push_back(false);
+		}
+		previous = &object;
 	}
 
 	// A close-up of something she is reading has nothing in it; a click anywhere puts it away
@@ -403,15 +460,6 @@ static NeuroThingList difference(const NeuroThingList &from, const NeuroThingLis
 			result.push_back(thing);
 	}
 	return result;
-}
-
-/** A name without the number that tells same-named things apart. */
-static Common::String baseName(const Common::String &name) {
-	Common::String base = name;
-	while (!base.empty() && Common::isDigit(base.lastChar()))
-		base.deleteLastChar();
-	base.trim();
-	return base;
 }
 
 Common::String NeuroBridge::lastSeenAt(int actor, const NeuroWorld &world) const {

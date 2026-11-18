@@ -368,7 +368,7 @@ void NeuroBridge::runCommand(const NeuroCommand &command) {
 	beginAction();
 	_queueSawBusy = false;
 	_queueIdleSince = 0;
-	_walkTarget = command.walk && command.objects[0] > 0 ? command.objects[0] : 0;
+	_walkTarget = command.walk ? command.objects[0] : 0;
 	if (command.walk) {
 		clickInRoom(command.x, command.y);
 		return;
@@ -468,6 +468,10 @@ void NeuroBridge::finishAction(const NeuroWorld &world) {
 		return;
 
 	_interaction.outcome.finish();
+	if (_walkTarget < 0 && !_interaction.outcome.reported() && !world.inDialogue && !_data.groundBetween(world.room).empty()) {
+		sendContext(describeRoom(world, kRoomRevisit), false);
+		return;
+	}
 	// A conversation prompts her with the lines to choose from. Otherwise she
 	// needs a cue that is hers: the replies to her action were not sent as one.
 	if (!_interaction.outcome.reported() && !world.inDialogue) {

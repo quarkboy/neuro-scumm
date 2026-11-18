@@ -71,6 +71,12 @@ flags objects or states the selected capture cannot match. **Save** writes
 on the individual targets. A scenery sentence also reaches the player on a
 revisit, after a load, or when the state changes while the player is there.
 
+In a scrolling room, the capture selector shows which part of the room is in view.
+In room 39, compare **Crossing 1**, **Crossing 2**, and **Crossing 3** to follow
+Guybrush across the cavern and back. Under **How the room behaves**, entering
+`cave` in the walkable ground field offers a place between adjacent caves when
+the game finds reachable floor there. New live captures record those places for the preview.
+
 To collect a named capture during play, start the developer driver with
 `NEURO_CAPTURE_DIR` set to the absolute path of the existing extraction folder.
 Once the game shows the desired scene, run:

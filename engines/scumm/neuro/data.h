@@ -52,6 +52,7 @@ namespace Scumm {
  *                          place of "Pick a line to say."
  *   layout = shifting      the room is redrawn as a new place without being left;
  *                          list it afresh when things change
+ *   ground_between = cave  offer reachable ground between adjacent caves.
  *   relative = yes         say whether each thing lies to the left or the right of
  *                          the player's character
  *   comings = quiet        characters wander in and out of sight all the time here;
@@ -151,6 +152,7 @@ public:
 	bool quietComings(int room) const;
 	bool shiftingLayout(int room) const;
 	bool relativePlaces(int room) const;
+	Common::String groundBetween(int room) const { return roomGet(room, "ground_between"); }
 	Common::String roomPrompt(int room) const;
 
 	/** The [game] section. */

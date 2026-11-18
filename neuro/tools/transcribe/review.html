@@ -201,7 +201,7 @@ function flash(text) {
 }
 
 /** A room's section, sorted into the kinds of key the page edits. */
-const ROOM_PLAIN = ["name", "description", "status", "review_note", "prompt", "layout", "relative", "comings", "passages"];
+const ROOM_PLAIN = ["name", "description", "status", "review_note", "prompt", "layout", "relative", "comings", "passages", "ground_between"];
 function parseRoom({ keys, comment }) {
 	const ini = { keys, comment, objects: {}, names: {}, actors: {}, scenery: [], voices: [], spots: [], standing: [], other: {} };
 	for (const key of ROOM_PLAIN) ini[key] = keys[key] || "";
@@ -324,6 +324,13 @@ function shownObjects(r) {
 	return r.objects.filter(o => showHidden || (o.name && !o.untouchable) || o.id in r.ini.objects || o.id in r.ini.names);
 }
 const captureChoice = new Map();
+function captureView(c) {
+	if (!c.room_width || c.width >= c.room_width) return "full room";
+	const start = c.origin || 0, end = start + c.width;
+	if (c.width * 2 === c.room_width && start === 0) return "left half";
+	if (c.width * 2 === c.room_width && end === c.room_width) return "right half";
+	return `x ${start}–${end - 1} of ${c.room_width}`;
+}
 function selectedCapture(room) {
 	return room.captures.find(c => c.image === captureChoice.get(room.room)) || room.captures[0];
 }
@@ -374,7 +381,7 @@ function renderPicture() {
 	const zoomButton = z => el("button", { class: "small" + (z === zoom ? " on" : ""), type: "button", onclick: () => { zoom = z; renderPicture(); } }, z === "fit" ? "fit" : `${z}×`);
 	pane.replaceChildren(el("div", { class: "toolbar" }, ...["fit", 2, 3, 4].map(zoomButton),
 		el("button", { class: "small" + (showHidden ? " on" : ""), type: "button", title: "Also show things with no name and things the game does not let her touch", onclick: () => { showHidden = !showHidden; renderPicture(); document.querySelector("#room-form")?.dispatchEvent(new Event("input")); } }, "untouchable"),
-		el("span", { class: "info" }, `${r.width}×${r.height}`)), frame);
+		el("span", { class: "info" }, `${r.width}×${r.height} · ${captureView(r)}`)), frame);
 }
 
 /* ---------- editable rows ---------- */
@@ -554,7 +561,7 @@ function renderRoom() {
 	const capture = el("select", { onchange: () => {
 		captureChoice.set(current, capture.value);
 		renderPicture(); refresh();
-	} }, ...r.captures.map(c => el("option", { value: c.image, selected: c === selectedCapture(r) }, c.label)));
+	} }, ...r.captures.map(c => el("option", { value: c.image, selected: c === selectedCapture(r) }, c.label + " — " + captureView(c))));
 	const saved = el("span", { class: "saved" });
 	const form = el("form", { id: "room-form", class: "stack", oninput: refresh, onchange: refresh, onsubmit: e => { e.preventDefault(); saveRoom(form, { voices, spots, standing, scenery, comment }); } },
 		el("label", {}, "Capture", capture),
@@ -570,9 +577,10 @@ function renderRoom() {
 		group("Voices", ini.voices.length, el("div", { class: "help" }, "Who is speaking when text of a colour appears: with no actor (a dog in the scenery, someone off screen), or from one actor who stands in for several people."), voices),
 		group("Places to walk to", ini.spots.length, el("div", { class: "help" }, "Places with no object that she can walk to by name. They show as green diamonds in the picture."), spots),
 		group("Where Guybrush stands", ini.standing.length, el("div", { class: "help" }, "For a room with parts that do not connect on foot. She is told the text while he stands in one of the walk boxes, and again when he reaches another part."), standing),
-		group("How the room behaves", (ini.prompt ? 1 : 0) + (ini.layout ? 1 : 0) + (ini.relative ? 1 : 0) + (ini.comings ? 1 : 0) + (ini.passages ? 1 : 0),
+		group("How the room behaves", (ini.prompt ? 1 : 0) + (ini.layout ? 1 : 0) + (ini.relative ? 1 : 0) + (ini.comings ? 1 : 0) + (ini.passages ? 1 : 0) + (ini.ground_between ? 1 : 0),
 			field("prompt", "What she is asked when picking a line here (blank: \"Pick a line to say.\")", "textarea", "short"),
 			check("layout", "shifting", "The room is redrawn as a new place without being left; list it afresh when things change"),
+			field("ground_between", "Offer walkable ground between adjacent things named"),
 			check("relative", "yes", "Say whether each thing is to the left or the right of Guybrush"),
 			check("comings", "quiet", "Characters wander in and out all the time here; do not report each one"),
 			el("label", {}, "Passages: things that bring a part of a wide room into view when walked to", passages), passageHint),
@@ -607,6 +615,11 @@ function renderRoom() {
 		if (relative && c.ego_x == null) missing.push("This capture has no player position for left/right directions.");
 		const { things, people } = previewTargets(c, objectTable, actorTable, relative);
 		const places = spots.read().map(row => row.name).filter(Boolean);
+		const between = form.elements.ground_between.value.trim();
+		if (between) {
+			if (c.ground_between === between) places.push(...c.ground_places);
+			else missing.push("Capture this view during play to preview its walkable ground targets.");
+		}
 		if (!things.length && !people.length && !places.length) places.push("away (stop looking at this)");
 		const position = standing.read().find(row => row.boxes.split(/[ ,]+/).includes(String(c.walkbox)));
 		preview.textContent = [form.elements.name.value, form.elements.description.value, ...sentences, position?.text, "Things: " + (things.join(", ") || "nothing"),
@@ -621,7 +634,7 @@ function renderRoom() {
 async function saveRoom(form, parts) {
 	const r = roomById.get(current), ini = r.ini, set = {}, blank = [];
 	const data = Object.fromEntries(new FormData(form));
-	for (const key of ["name", "description", "status", "review_note", "prompt", "passages"]) set[key] = (data[key] || "").trim() || null;
+	for (const key of ["name", "description", "status", "review_note", "prompt", "passages", "ground_between"]) set[key] = (data[key] || "").trim() || null;
 	form.querySelectorAll("[data-switch]").forEach(box => {
 		// A value the page has no box for (written by hand) is left alone unless the box is ticked
 		const key = box.dataset.switch, known = !ini[key] || ini[key].toLowerCase() === box.dataset.on;
