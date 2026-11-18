@@ -126,8 +126,6 @@ void NeuroBridge::onTalkStarted(int actor, const byte *text) {
 	if (isBackgroundChatter(spoken))
 		return;
 
-	if (_speechEndDueAt)
-		sendSpeechEnded();
 	_speechOpen = true;
 	if (_dialogueAsContext) {
 		// Text that is typed out a bit at a time ("Ps", "Pss", "Psssst.") is one line
@@ -186,7 +184,7 @@ void NeuroBridge::sendHeldSpeech() {
 	_heldSpeech.waiting = false;
 	sendSpeechStarted(_heldSpeech.speaker, _heldSpeech.text, _heldSpeech.noReply);
 	if (_heldSpeech.ended)
-		reportSpeechEnd();
+		sendSpeechEnded();
 }
 
 bool NeuroBridge::speakerOf(int actor, const Common::String &line, Common::String &speaker) {
@@ -366,22 +364,10 @@ void NeuroBridge::onTalkStopped() {
 		_heldSpeech.ended = true;
 		return;
 	}
-	reportSpeechEnd();
-}
-
-void NeuroBridge::reportSpeechEnd() {
-	// Lines of one scene follow each other with short pauses. Reporting each
-	// end at once would leave her those pauses to start talking in, so the
-	// end is held back: the next line reports it, or update() once the pause
-	// has lasted or the player is back in control.
-	if (playerHasControl())
-		sendSpeechEnded();
-	else
-		_speechEndDueAt = _lastTalkTime + kSpeechGapMs;
+	sendSpeechEnded();
 }
 
 void NeuroBridge::sendSpeechEnded() {
-	_speechEndDueAt = 0;
 	Common::JSONObject data;
 	data.setVal("id", new Common::JSONValue(Common::String::format("%s-%u", _speechIdPrefix.c_str(), _speechCounter)));
 	send("speech/ended", &data);

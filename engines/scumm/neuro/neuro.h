@@ -39,9 +39,6 @@ namespace Scumm {
 class Actor;
 class ScummEngine;
 
-/** While the game keeps control, a line's end is only reported once this long has passed without another line. */
-static const uint32 kSpeechGapMs = 2000;
-
 /**
  * A setting, from the environment variable or else the config key of the same
  * name in lower case (or the key given). Empty if neither is set.
@@ -536,11 +533,8 @@ private:
 	uint32 _speechCounter = 0;
 	bool _speechOpen = false;
 	uint32 _lastTalkTime = 0;
-	/** When the end of the last line is due to be reported; 0 if it has been. */
-	uint32 _speechEndDueAt = 0;
 	void sendSpeechStarted(const Common::String &speaker, const Common::String &line, bool noReply);
 	void sendSpeechEnded();
-	void reportSpeechEnd();
 
 	// A short line held back in case it is one piece of text being typed out
 	struct HeldSpeech {

@@ -209,8 +209,6 @@ void NeuroBridge::update() {
 
 	if (_heldSpeech.waiting && g_system->getMillis() >= _heldSpeech.dueAt)
 		sendHeldSpeech();
-	if (_speechEndDueAt && (g_system->getMillis() >= _speechEndDueAt || playerHasControl()))
-		sendSpeechEnded();
 
 	flushDrawnText();
 	pressKeys();
@@ -239,7 +237,6 @@ void NeuroBridge::onConnected() {
 	// Describe the current room again from scratch
 	_described = NeuroWorld();
 	_speechOpen = false;
-	_speechEndDueAt = 0;
 	_heldSpeech.waiting = false;
 	_lastActivity = g_system->getMillis();
 }
@@ -323,7 +320,7 @@ void NeuroBridge::resetAfterLoad() {
 	_voiceColors.clear();
 	_described = NeuroWorld();
 	_pendingDialogue.clear();
-	if (_speechEndDueAt || (_speechOpen && !_heldSpeech.waiting && !_dialogueAsContext))
+	if (_speechOpen && !_heldSpeech.waiting && !_dialogueAsContext)
 		sendSpeechEnded();
 	_speechOpen = false;
 	_heldSpeech.waiting = false;
