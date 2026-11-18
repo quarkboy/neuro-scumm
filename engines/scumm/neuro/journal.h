@@ -49,6 +49,8 @@ namespace Scumm {
  * [clue.ID] sections are things she learns that help with a goal:
  *   goal    the id of the goal it belongs to
  *   when    a trigger, as above (usually heard: with the line's words)
+ *   when_bit   also note the clue when this game bit is set
+ *   superseded_by   hide this clue once the named clue has been found
  *   text    the clue as a short note in plain words
  * A clue is noted once, announced at the next pause, and listed under its
  * goal for as long as that goal is unfinished. A goal's optional "title" is
@@ -67,6 +69,13 @@ public:
 	// What she hears and sees can start or finish a goal, or be a clue
 	void heard(const Common::String &line);
 	void observed(int room, const Common::StringArray &inventory);
+	template<class BitSet>
+	void observeBits(BitSet bitSet) {
+		for (auto &clue : _clues) {
+			if (!clue.found && clue.whenBit >= 0 && bitSet(clue.whenBit))
+				noteClue(clue);
+		}
+	}
 
 	/** Announcements for goals that changed since the last call. */
 	Common::String takeNews();
@@ -114,10 +123,13 @@ private:
 		bool onPanel;
 	};
 	struct Clue {
-		Common::String id, goal, when, text;
+		Common::String id, goal, when, text, supersededBy;
+		int whenBit = -1;
 		bool found;
 	};
 	Common::Array<Clue> _clues;
+	bool listed(const Clue &clue) const;
+	void noteClue(Clue &clue);
 	Common::String goalTitle(const Common::String &id) const;
 
 	void fire(const Common::String &kind, const Common::String &argument);

@@ -1032,7 +1032,7 @@ const GAME_FIELDS = [["name", "Name of the game"], ["intro", "Who she plays, for
 	["sentence_line_verb", "Verb slot that is the sentence line", "num"], ["inventory_first_verb", "First inventory button", "num"], ["inventory_slots", "Inventory buttons on screen", "num"],
 	["inventory_slot_var", "First variable holding what they show", "num"], ["inventory_up_verb", "Button that scrolls the inventory up", "num"], ["inventory_down_verb", "Button that scrolls it down", "num"]];
 const GOAL_FIELDS = [["title", "Short title (the words she uses to ask for its clues)"], ["text", "The goal, as she reads it", "area"], ["start", "Appears when (nothing: there from the beginning)", "triggers"], ["done", "Finished when", "triggers"], ["panel", "In the stream column", "select", [["", "shown"], ["no", "left out"]]]];
-const CLUE_FIELDS = [["goal", "Goal", "goal"], ["text", "The clue", "area"], ["when", "Noted when", "triggers"]];
+const CLUE_FIELDS = [["goal", "Goal", "goal"], ["text", "The clue", "area"], ["when", "Noted when", "triggers"], ["when_bit", "Also noted when game bit is set (bit number)"], ["superseded_by", "Hide once this clue is found (clue ID)"]];
 const NUDGE_FIELDS = [["when", "Suggest writing a note when", "triggers"], ["say", "Wording (blank: just says it may be worth a note)", "area"]];
 function renderJournal() {
 	const list = el("div");

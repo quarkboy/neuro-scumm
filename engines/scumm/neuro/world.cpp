@@ -640,6 +640,7 @@ void NeuroBridge::pollWorld() {
 	Common::StringArray carried;
 	for (const auto &item : world.inventory)
 		carried.push_back(item.name);
+	_journal.observeBits([this](int bit) { return readDataVar(0x8000 | bit) != 0; });
 	_journal.observed(world.room, carried);
 	// Goals and nudges wait for a pause: the end of the conversation, or the
 	// moment she is asked to pick her next line (the prompt for that follows

@@ -42,6 +42,15 @@ void NeuroJournal::loadGoals(const Common::INIFile &ini) {
 				clue.when = kv->value;
 			if (const Common::INIFile::KeyValue *kv = section.getKey("text"))
 				clue.text = kv->value;
+			if (const Common::INIFile::KeyValue *kv = section.getKey("superseded_by"))
+				clue.supersededBy = kv->value;
+			clue.supersededBy.trim();
+			if (const Common::INIFile::KeyValue *kv = section.getKey("when_bit")) {
+				char *end;
+				long bit = strtol(kv->value.c_str(), &end, 10);
+				if (end != kv->value.c_str() && !*end && bit >= 0 && bit <= 0x7fff)
+					clue.whenBit = bit;
+			}
 			clue.goal.trim();
 			clue.when.trim();
 			clue.text.trim();
@@ -161,12 +170,26 @@ Common::String NeuroJournal::goalTitle(const Common::String &id) const {
 	return id;
 }
 
+bool NeuroJournal::listed(const Clue &clue) const {
+	if (clue.found && !clue.supersededBy.empty()) {
+		for (const auto &other : _clues) {
+			if (other.found && other.id == clue.supersededBy)
+				return false;
+		}
+	}
+	return clue.found;
+}
+
+void NeuroJournal::noteClue(Clue &clue) {
+	clue.found = true;
+	if (listed(clue))
+		_news += "Clue noted (" + goalTitle(clue.goal) + "): " + expand(clue.text) + "\n";
+}
+
 void NeuroJournal::fire(const Common::String &kind, const Common::String &argument) {
 	for (auto &clue : _clues) {
-		if (!clue.found && matches(clue.when, kind, argument)) {
-			clue.found = true;
-			_news += "Clue noted (" + goalTitle(clue.goal) + "): " + expand(clue.text) + "\n";
-		}
+		if (!clue.found && matches(clue.when, kind, argument))
+			noteClue(clue);
 	}
 	for (uint i = 0; i < _goals.size(); i++) {
 		Goal &goal = _goals[i];
@@ -255,7 +278,7 @@ Common::String NeuroJournal::describeClues(const Common::String &which) const {
 	Common::String text = "## Clues: " + goalTitle(match->id) + "\n\n";
 	bool any = false;
 	for (const auto &clue : _clues) {
-		if (clue.found && clue.goal == match->id) {
+		if (clue.goal == match->id && listed(clue)) {
 			text += "- " + expand(clue.text) + "\n";
 			any = true;
 		}
@@ -272,7 +295,7 @@ Common::String NeuroJournal::describe(bool withCompleted) const {
 		if (goal.state == kActive) {
 			uint clues = 0;
 			for (const auto &clue : _clues)
-				clues += (clue.found && clue.goal == goal.id) ? 1 : 0;
+				clues += (clue.goal == goal.id && listed(clue)) ? 1 : 0;
 			active += "- " + goal.text;
 			if (clues)
 				active += Common::String::format(" (%u clue%s)", clues, clues == 1 ? "" : "s");
