@@ -84,6 +84,11 @@ void NeuroBridge::fireAlert(const NeuroData::Alert &original, const NeuroWorld &
 		sendContext(alert.say, false);
 		return;
 	}
+	// Retire the idle force before offering a time-sensitive yes/no action.
+	if (!world.inDialogue && _interaction.prompt.idle() && !alert.command.empty() &&
+			(alert.priority == "high" || alert.priority == "critical"))
+		endPrompt();
+
 	// Only one force may be outstanding; otherwise say it as plainly as context allows
 	if (_interaction.prompt.active() || world.inDialogue) {
 		sendContext(alert.say + " " + alert.ask, false);

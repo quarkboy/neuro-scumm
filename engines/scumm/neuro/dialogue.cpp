@@ -300,6 +300,7 @@ void NeuroBridge::updateForces(const NeuroWorld &world) {
 	if (_idleForceMs && !_interaction.prompt.active() && now - _lastActivity > _idleForceMs) {
 		_lastActivity = now;
 		sendForce(describeRoom(world, kRoomStatus), "Your move.", "interact");
+		_interaction.prompt.markIdle();
 	}
 }
 

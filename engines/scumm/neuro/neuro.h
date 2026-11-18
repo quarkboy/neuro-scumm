@@ -118,11 +118,14 @@ struct NeuroInteraction {
 	public:
 		void open(const char *action, int room, uint32 now, const Question &question) {
 			_action = action;
+			_idle = false;
 			_room = room;
 			_startedAt = now;
 			_question = question;
 		}
 		bool active() const { return !_action.empty(); }
+		void markIdle() { _idle = true; }
+		bool idle() const { return _idle; }
 		const Common::String &action() const { return _action; }
 		const Question &question() const { return _question; }
 		uint32 age(uint32 now) const { return now - _startedAt; }
@@ -138,6 +141,7 @@ struct NeuroInteraction {
 
 	private:
 		Common::String _action;
+		bool _idle = false;
 		int _room = 0;
 		uint32 _startedAt = 0;
 		Question _question;
