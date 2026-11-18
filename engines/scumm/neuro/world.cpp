@@ -184,6 +184,7 @@ void NeuroBridge::collectActors(NeuroWorld &world) {
 		Actor *actor = _vm->_actors[i];
 		if (actor == ego() || !actor->_visible || !actor->isInCurrentRoom())
 			continue;
+		world.visibleCostumes[i] = actor->_costume;
 		if (untouchable(i))
 			continue;
 

@@ -959,7 +959,7 @@ function searchBar(state, placeholder, draw, keys) {
 
 /* ---------- one section as a form ---------- */
 const ALERT_WHEN = [["arrived", "a character arrives, named"], ["left", "a character leaves, named"], ["appeared", "a thing appears, named"],
-	["disappeared", "a thing disappears, named"], ["gained", "she gains an item named"], ["lost", "she loses an item named"], ["entered", "she walks into the room"]];
+	["disappeared", "a thing disappears, named"], ["gained", "she gains an item named"], ["lost", "she loses an item named"], ["costume", "a character takes a costume"], ["entered", "she walks into the room"]];
 function roomOptions(first) {
 	return [el("option", { value: "" }, first), ...Object.entries(journal.rooms).sort((a, b) => a[0] - b[0]).map(([n, r]) => el("option", { value: n }, `${n} ${r.name || ""}`))];
 }
@@ -973,7 +973,10 @@ function control(kind, value, extra) {
 		const pick = el("select", { style: "width:auto" }, ...ALERT_WHEN.map(([k, label]) => el("option", { value: k }, label)), start === "other" ? el("option", { value: "other" }, "other (as written)") : "");
 		const text = el("input", { value: start === "other" ? value : known ? m[2] : "", placeholder: "part of the name; start with = for the exact name" });
 		pick.value = start;
-		const show = () => text.style.display = pick.value === "entered" ? "none" : "";
+		const show = () => {
+			text.style.display = pick.value === "entered" ? "none" : "";
+			text.placeholder = pick.value === "costume" ? "actor number and costume number, separated by a space" : "part of the name; start with = for the exact name";
+		};
 		pick.addEventListener("change", show); show();
 		return { node: el("div", { class: "pair" }, pick, text), get: () => pick.value === "entered" ? "entered" : pick.value === "other" ? text.value : text.value.trim() ? `${pick.value}: ${text.value.trim()}` : "" };
 	}

@@ -47,6 +47,8 @@ static bool containsName(const NeuroThingList &things, const Common::String &nam
 
 /** Whether the situation an alert is about holds in the given world. */
 static bool alertHolds(const NeuroData::Alert &alert, const NeuroWorld &world) {
+	if (alert.kind == "costume")
+		return world.visibleCostumes.contains(alert.actor) && world.visibleCostumes[alert.actor] == alert.costume;
 	if (alert.kind == "arrived" || alert.kind == "left")
 		return containsName(world.actors, alert.name) == (alert.kind == "arrived");
 	if (alert.kind == "appeared" || alert.kind == "disappeared")

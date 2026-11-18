@@ -177,6 +177,7 @@ struct NeuroInteraction {
 
 /** Everything the player could see or use at one moment. */
 struct NeuroWorld {
+	Common::HashMap<int, int> visibleCostumes;
 	int room = 0;
 	NeuroThingList objects;
 	NeuroThingList actors;

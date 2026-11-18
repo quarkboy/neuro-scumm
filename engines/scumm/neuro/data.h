@@ -80,6 +80,7 @@ namespace Scumm {
  *   room      room number it applies to (omit for any room)
  *   when      arrived: / left: (a character), appeared: / disappeared: (a
  *             thing), gained: / lost: (an inventory item), then part of a name;
+ *             "costume: ACTOR COSTUME" when a visible actor takes that costume,
  *             or just "entered", for walking into the room
  *   while     optional "script N": only while that game script is running
  *   lead      seconds after that moment at which her action should land;
@@ -211,6 +212,7 @@ public:
 
 	struct Alert {
 		int room = 0;
+		int actor = 0, costume = 0;
 		uint32 leadMs = 0;
 		int holdVar = 0;
 		int whileScript = 0;

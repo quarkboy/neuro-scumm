@@ -137,6 +137,13 @@ void NeuroData::addAlert(const Common::String &section) {
 		alert.name.trim();
 		alert.kind.toLowercase();
 		alert.name.toLowercase();
+		if (alert.kind == "costume") {
+			char extra;
+			if (sscanf(alert.name.c_str(), "%d %d %c", &alert.actor, &alert.costume, &extra) != 2 || alert.actor <= 0 || alert.costume <= 0) {
+				warning("Neuro: Alert '%s' needs an actor and costume number", section.c_str());
+				return;
+			}
+		}
 	}
 	_alerts.push_back(alert);
 }
