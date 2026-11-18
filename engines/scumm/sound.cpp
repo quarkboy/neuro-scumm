@@ -2252,6 +2252,9 @@ void Sound::updateMusicTimer() {
 }
 
 void Sound::startRemasteredSpeech(const char *msgString, uint16 roomNumber, uint16 actorTalking, uint16 numWaits) {
+	if (_vm->_voiceMode == 2)
+		return;
+
 	// Crudely adapted from the disasm of MI1SE...
 	// TODO: Apply the various speech-line substitutions performed per-game
 
