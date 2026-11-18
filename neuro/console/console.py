@@ -239,6 +239,8 @@ def describe_action(name, data, lines):
         return f"Picks line {option}"
     if name == "answer":
         return f"Answers {args.get('answer', args.get('reply', '?'))}"
+    if name == "check_inventory":
+        return "Checks her inventory"
     if name == "read_journal":
         return "Reads her journal"
     if name == "add_note":

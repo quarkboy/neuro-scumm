@@ -253,6 +253,8 @@ Common::String NeuroBridge::describeForPanel(const Common::String &name, const N
 	}
 	if (name == "answer")
 		return "Answers " + args.get("answer|response|reply|value|choice", true);
+	if (name == "check_inventory")
+		return "Checks her inventory";
 	if (name == "read_journal")
 		return "Reads her journal";
 	if (name == "add_note")

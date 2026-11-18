@@ -132,6 +132,7 @@ void NeuroBridge::registerActions(const char *replace) {
 		actions.push_back(actionDefinition("choose_dialogue", "In a conversation, say the line with this number.", objectSchema(choose, "option")));
 	}
 	if (only.empty()) {
+		actions.push_back(actionDefinition("check_inventory", "List everything you are carrying."));
 		actions.push_back(actionDefinition("wait", "Let the game continue for a moment."));
 		if (_allowSkip)
 			actions.push_back(actionDefinition("skip_cutscene", "Skip the current cutscene."));

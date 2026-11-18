@@ -493,6 +493,13 @@ void NeuroBridge::handleAction(const Common::String &id, const Common::String &r
 		return;
 	}
 
+	if (name == "check_inventory") {
+		NeuroWorld world;
+		collectInventory(world);
+		sendActionResult(id, true, "Inventory: " + neuroListNames(world.inventory));
+		return;
+	}
+
 	if (name == "read_journal") {
 		Common::String completed = args.get("show_completed|completed|show_done|all", true);
 		completed.toLowercase();

@@ -89,6 +89,7 @@ Registered once at startup:
 | `choose_dialogue` | Picks a line to say, by number or by text. Asked for with a force whenever the game shows lines |
 | `answer` | Replies yes or no to a timed question |
 | `read_journal`, `add_note` | Her goals, the clues gathered under each, and her own notes |
+| `check_inventory` | Lists everything the current player character carries |
 | `wait` | Lets time pass |
 | `skip_cutscene` | Skips the scene that is playing |
 
