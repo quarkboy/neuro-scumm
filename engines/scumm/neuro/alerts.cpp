@@ -234,6 +234,17 @@ void NeuroBridge::pressKeys() {
 	}
 }
 
+void NeuroBridge::onActorAnimation(int actor, int costume, int animation) {
+	if (!_ws.isConnected() || _extract.phase != kExtractOff)
+		return;
+	for (const auto &cue : _data.animationWatches()) {
+		if (cue.room == _vm->_currentRoom && cue.actor == actor && cue.costume == costume && cue.animation == animation) {
+			flushDialogue();
+			sendContext(expandText(cue.say), false);
+		}
+	}
+}
+
 void NeuroBridge::checkWatches() {
 	Common::String text;
 	for (const auto &watch : _data.watches()) {

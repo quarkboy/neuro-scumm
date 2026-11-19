@@ -92,8 +92,18 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 		world.standing = _data.standing(world.room, ego()->_walkbox);
 
 	for (const auto &rule : _data.scenery(world.room)) {
-		const int i = _vm->getObjectIndex(rule.object);
-		if (i > 0 && _vm->_objs[i].state == rule.state)
+		if (rule.source == NeuroData::Scenery::kScript) {
+			if (_vm->isScriptRunning(rule.number))
+				world.scenery.push_back(rule.text);
+			continue;
+		}
+		if (rule.source == NeuroData::Scenery::kVariable) {
+			if (rule.number < _vm->_numVariables && readDataVar(rule.number) == rule.value)
+				world.scenery.push_back(rule.text);
+			continue;
+		}
+		const int i = _vm->getObjectIndex(rule.number);
+		if (i > 0 && _vm->_objs[i].state == rule.value)
 			world.scenery.push_back(rule.text);
 	}
 	if (ego()->isInCurrentRoom() && ego()->_visible) {
@@ -157,7 +167,7 @@ void NeuroBridge::collectObjects(NeuroWorld &world, Common::Array<bool> &usable)
 		const bool renamed = _data.objectName(world.room, od.obj_nr, thing.name);
 		if (!renamed)
 			thing.name = cleanText(_vm->getObjOrActorName(od.obj_nr), true);
-		thing.note = _data.objectNote(world.room, od.obj_nr);
+		thing.stateNote = _data.objectNote(world.room, od.obj_nr, od.state, thing.note);
 		if (_data.relativePlaces(world.room)) {
 			const int distance = _data.backDistance(world.room, od.obj_nr);
 			const bool atBack = distance >= 0 && _vm->getObjActToObjActDist(_vm->VAR(_vm->VAR_EGO), od.obj_nr) <= distance;
@@ -392,6 +402,22 @@ void NeuroBridge::onActorNamed(int actor) {
 	_namedCostume[actor] = -1;
 }
 
+void NeuroBridge::onActorPlacedAtObject(int actor, int object) {
+	const int room = _vm->_currentRoom;
+	if (!_ws.isConnected() || actor != _vm->VAR(_vm->VAR_EGO) || _described.room != room || !ego()->isInCurrentRoom())
+		return;
+	const Common::Array<int> exits = _data.roomObjects(room, "emerge_at");
+	if (Common::find(exits.begin(), exits.end(), object) == exits.end())
+		return;
+	for (const auto &thing : _described.objects) {
+		if (thing.id == object) {
+			sendContext(egoNameCapital() + " comes back out through " + thing.name + ". The location is still " + _data.roomName(room) + ".", false);
+			_interaction.outcome.report();
+			break;
+		}
+	}
+}
+
 /** Names with their notes, for telling her what is in a room. */
 static Common::String joinDescribed(const NeuroThingList &things, const NeuroData &data) {
 	if (things.empty())
@@ -404,9 +430,11 @@ static Common::String joinDescribed(const NeuroThingList &things, const NeuroDat
 		result += things[i].name;
 
 		Common::String extra = data.stateName(things[i].name, things[i].state);
-		if (!extra.empty() && !things[i].note.empty())
-			extra += "; ";
-		extra += things[i].note;
+		if (!things[i].note.empty() && !extra.equalsIgnoreCase(things[i].note)) {
+			if (!extra.empty())
+				extra += "; ";
+			extra += things[i].note;
+		}
 		if (!extra.empty())
 			result += " (" + extra + ")";
 	}
@@ -592,26 +620,29 @@ Common::String NeuroBridge::describeChanges(const NeuroWorld &before, const Neur
 		for (const auto &old : before.objects) {
 			// Things that move by themselves in the background are noise
 			const bool hers = (thing.id == _lastTargets[0] || thing.id == _lastTargets[1]);
-			if (hers && old.id == thing.id && old.name == thing.name && old.state != thing.state) {
-				changed.push_back(thing);
+			if (old.id != thing.id || old.name != thing.name || old.state == thing.state)
+				continue;
+			const bool noteChanged = (thing.stateNote || old.stateNote) && thing.note != old.note;
+			if (noteChanged)
+				text += "Changed: " + joinDescribed({thing}, _data) + "\n";
+			if (hers) {
+				const Common::String label = _data.stateName(thing.name, thing.state);
+				if (label == (_data.game().doorOpenState.empty() ? Common::String("open") : _data.game().doorOpenState))
+					_openedDoor = thing.name;
+				if (!noteChanged) {
+					if (label.empty())
+						changed.push_back(thing);
+					else
+						text += Common::String::format("Now %s: %s\n", label.c_str(), thing.name.c_str());
+				}
 				// Once is enough: a thing that keeps animating afterwards is not news
 				for (int &target : _lastTargets) {
 					if (target == thing.id)
 						target = 0;
 				}
 			}
+			break;
 		}
-	}
-	for (uint i = 0; i < changed.size();) {
-		const Common::String label = _data.stateName(changed[i].name, changed[i].state);
-		if (label.empty()) {
-			i++;
-			continue;
-		}
-		text += Common::String::format("Now %s: %s\n", label.c_str(), changed[i].name.c_str());
-		if (label == (_data.game().doorOpenState.empty() ? Common::String("open") : _data.game().doorOpenState))
-			_openedDoor = changed[i].name;
-		changed.remove_at(i);
 	}
 	if (!changed.empty())
 		text += Common::String::format("Changed: %s\n", neuroListNames(changed).c_str());
@@ -629,6 +660,19 @@ Common::String NeuroBridge::describeWorld() {
 }
 
 void NeuroBridge::pollWorld() {
+	const int room = _vm->_currentRoom;
+	if (room != _lastShownRoom) {
+		_lastShownRoom = room;
+		_data.setRoomResource(room, _vm->_roomResource);
+		if (_data.announceOnShow(room)) {
+			const Common::String text = _data.roomDescription(room);
+			if (!text.empty()) {
+				sendContext(text, false);
+				_seenRooms[_data.descriptionRoom(room)] = _tokensSent;
+			}
+		}
+	}
+
 	const uint32 now = g_system->getMillis();
 	if (now < _nextWorldPoll)
 		return;

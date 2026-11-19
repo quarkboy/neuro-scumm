@@ -2872,8 +2872,13 @@ void Actor::animateActor(int anim) {
 	default:
 		if (_vm->_game.version <= 2)
 			startAnimActor(anim >> 2);
-		else
+		else {
 			startAnimActor(anim);
+#ifdef ENABLE_NEURO
+			if (_vm->_neuro && _visible && isInCurrentRoom())
+				_vm->_neuro->onActorAnimation(_number, _costume, anim);
+#endif
+		}
 	}
 }
 

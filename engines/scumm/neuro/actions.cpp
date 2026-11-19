@@ -629,7 +629,7 @@ void NeuroBridge::actionInteract(const Common::String &id, const NeuroArgs &args
 bool NeuroBridge::passageTo(int room, int target, NeuroCommand &passage) const {
 	if (target <= 0 || _vm->objIsActor(target) || _vm->VAR_CAMERA_MIN_X == 0xFF || _vm->VAR_CAMERA_MAX_X == 0xFF)
 		return false;
-	const Common::Array<int> passages = _data.passages(room);
+	const Common::Array<int> passages = _data.roomObjects(room, "passages");
 	if (passages.empty())
 		return false;
 

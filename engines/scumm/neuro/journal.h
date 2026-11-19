@@ -50,6 +50,8 @@ namespace Scumm {
  *   goal    the id of the goal it belongs to
  *   when    a trigger, as above (usually heard: with the line's words)
  *   when_bit   also note the clue when this game bit is set
+ *   hide_once   permanently retire the clue on any matching trigger, even before discovery
+ *   hide_bit    also retire the clue when this game bit is set
  *   superseded_by   hide this clue once the named clue has been found
  *   text    the clue as a short note in plain words
  * A clue is noted once, announced at the next pause, and listed under its
@@ -72,6 +74,8 @@ public:
 	template<class BitSet>
 	void observeBits(BitSet bitSet) {
 		for (auto &clue : _clues) {
+			if (!clue.retired && clue.hideBit >= 0 && bitSet(clue.hideBit))
+				clue.retired = true;
 			if (!clue.found && clue.whenBit >= 0 && bitSet(clue.whenBit))
 				noteClue(clue);
 		}
@@ -123,8 +127,10 @@ private:
 		bool onPanel;
 	};
 	struct Clue {
-		Common::String id, goal, when, text, supersededBy;
+		Common::String id, goal, when, text, supersededBy, hideOnce;
 		int whenBit = -1;
+		int hideBit = -1;
+		bool retired = false;
 		bool found;
 	};
 	Common::Array<Clue> _clues;
@@ -137,7 +143,11 @@ private:
 
 	Common::Array<Goal> _goals;
 	Common::StringArray _notes;
-	Common::String _news;
+	struct News {
+		Common::String text;
+		const Clue *clue;
+	};
+	Common::Array<News> _news;
 };
 
 } // End of namespace Scumm

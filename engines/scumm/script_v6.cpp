@@ -1331,6 +1331,10 @@ void ScummEngine_v6::o6_putActorAtObject() {
 	if (room == 0xFF)
 		room = a->_room;
 	a->putActor(x, y, room);
+#ifdef ENABLE_NEURO
+	if (_neuro && whereIsObject(obj) == WIO_ROOM)
+		_neuro->onActorPlacedAtObject(a->_number, obj);
+#endif
 }
 
 void ScummEngine_v6::o6_faceActor() {

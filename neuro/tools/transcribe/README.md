@@ -71,6 +71,21 @@ flags objects or states the selected capture cannot match. **Save** writes
 on the individual targets. A scenery sentence also reaches the player on a
 revisit, after a load, or when the state changes while the player is there.
 
+Choose **Thing note override** on an object-state row to put its text beside
+the target in **Things**. For example, give a chest the usual note `closed`
+and set its state 1 override to `open`. This writes `object.ID.1 = open`.
+Other states use the usual note. A hidden or unavailable target stays omitted.
+
+For scenery driven by a global game variable, choose **+ variable value**,
+enter its number, the matching value and the sentence. Save the rule before
+making a new capture so the engine records the variable for preview and
+**Use captured value**. Older captures can lack that reading. The room key is
+`scenery.var.NUMBER.VALUE`. Room 16 uses variable 242 for the seesaw's angle.
+
+Choose **+ running script** to show a sentence while a game script is active.
+On the Mêlée Island map, `scenery.script.202` describes the roaming pirates.
+Captures made after saving the rule record whether the script was running.
+
 In a scrolling room, the capture selector shows which part of the room is in view.
 In room 39, compare **Crossing 1**, **Crossing 2**, and **Crossing 3** to follow
 Guybrush across the cavern and back. Under **How the room behaves**, entering
@@ -108,7 +123,10 @@ The page has four tabs:
   commands such as "Look at poster" are lines like any other.
 - **Goals and clues:** everything her journal can show: goals with their clues folded
   under them, and nudges. The search box narrows the list to goals and clues that
-  mention a word.
+  mention a word. In a clue, **Hide once** retires it when any listed event happens.
+  For example, hide a shovel price when she has the item named exactly `shovel`.
+  You can also retire a clue when a game bit is set or a named replacement clue
+  is found. Retirement survives saving and loading, even if it preceded discovery.
 - **Alerts and rules:** alerts, watched variables, notes on dialogue choices, speakers
   set for single lines, state labels, fallback actor names and the game's switches, plus
   a list of the rooms that have settings of their own.

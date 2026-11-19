@@ -190,6 +190,21 @@ bool NeuroBridge::writeRoomSnapshot(const Common::String &base, int room, int wi
 	}
 
 	Common::JSONObject root;
+	Common::JSONObject variables;
+	Common::JSONObject scripts;
+	for (const auto &rule : _data.scenery(room)) {
+		if (_vm->_currentRoom != room)
+			continue;
+		if (rule.source == NeuroData::Scenery::kScript)
+			scripts.setVal(Common::String::format("%d", rule.number), new Common::JSONValue((bool)_vm->isScriptRunning(rule.number)));
+		if (rule.source == NeuroData::Scenery::kVariable && rule.number < _vm->_numVariables) {
+			const Common::String key = Common::String::format("%d", rule.number);
+			if (!variables.contains(key))
+				variables.setVal(key, new Common::JSONValue((long long int)readDataVar(rule.number)));
+		}
+	}
+	root.setVal("variables", new Common::JSONValue(variables));
+	root.setVal("scripts", new Common::JSONValue(scripts));
 	root.setVal("room", new Common::JSONValue((long long int)room));
 	root.setVal("game", new Common::JSONValue(_vm->_game.gameid));
 	root.setVal("origin", new Common::JSONValue((long long int)origin));

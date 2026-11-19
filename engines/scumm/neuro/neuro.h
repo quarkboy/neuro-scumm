@@ -57,6 +57,7 @@ struct NeuroThing {
 
 	/** Extra words for the room listing; not part of the name. */
 	Common::String note;
+	bool stateNote = false;
 };
 
 typedef Common::Array<NeuroThing> NeuroThingList;
@@ -234,6 +235,8 @@ public:
 
 	/** A script gave an actor a name. */
 	void onActorNamed(int actor);
+	void onActorAnimation(int actor, int costume, int animation);
+	void onActorPlacedAtObject(int actor, int object);
 
 	/** The engine has just written or read a savegame. */
 	void onSaveLoad(bool saved, int slot);
@@ -477,6 +480,7 @@ private:
 	uint32 _controlSince = 0;
 	uint32 _speechBlockSince = 0;
 	void pollWorld();
+	int _lastShownRoom = -1;
 	void trackActors();
 	bool worldSettled(uint32 now);
 	void reportRoom(const NeuroWorld &world);

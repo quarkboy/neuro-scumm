@@ -235,6 +235,7 @@ void NeuroBridge::onConnected() {
 	sendIntro();
 
 	// Describe the current room again from scratch
+	_lastShownRoom = -1;
 	_described = NeuroWorld();
 	_speechOpen = false;
 	_heldSpeech.waiting = false;
@@ -328,6 +329,7 @@ void NeuroBridge::resetAfterLoad() {
 	_recentLines.clear();
 	_lastActivity = g_system->getMillis();
 	_seenRooms.clear();
+	_lastShownRoom = -1;
 	_watched.clear();
 	sendContext("A saved game was loaded. Forget where you were; your situation is described again below.", true);
 }

@@ -201,7 +201,7 @@ function flash(text) {
 }
 
 /** A room's section, sorted into the kinds of key the page edits. */
-const ROOM_PLAIN = ["name", "description", "status", "review_note", "prompt", "layout", "relative", "comings", "passages", "ground_between", "back_within"];
+const ROOM_PLAIN = ["name", "description", "status", "review_note", "prompt", "layout", "relative", "comings", "passages", "emerge_at", "ground_between", "back_within", "announce_on_show"];
 function parseRoom({ keys, comment }) {
 	const ini = { keys, comment, objects: {}, names: {}, actors: {}, scenery: [], voices: [], spots: [], standing: [], other: {} };
 	for (const key of ROOM_PLAIN) ini[key] = keys[key] || "";
@@ -209,7 +209,10 @@ function parseRoom({ keys, comment }) {
 		let m;
 		if (ROOM_PLAIN.includes(k)) continue;
 		if ((m = /^object\.(\d+)$/.exec(k))) ini.objects[m[1]] = v;
+		else if ((m = /^object\.(\d+)\.(\d+)$/.exec(k))) ini.scenery.push({ object: m[1], state: m[2], note: true, text: v });
 		else if ((m = /^scenery\.(\d+)\.(\d+)$/.exec(k))) ini.scenery.push({ object: m[1], state: m[2], text: v });
+		else if ((m = /^scenery\.var\.(\d+)\.(-?\d+)$/.exec(k))) ini.scenery.push({ variable: m[1], state: m[2], text: v });
+		else if ((m = /^scenery\.script\.(\d+)$/.exec(k))) ini.scenery.push({ script: m[1], text: v });
 		else if ((m = /^name\.(\d+)$/.exec(k))) ini.names[m[1]] = v;
 		else if ((m = /^actor\.(\d+)$/.exec(k))) ini.actors[m[1]] = v;
 		else if ((m = /^voice\.(?:(\d+)\.)?(\d+)$/.exec(k))) ini.voices.push({ color: m[2], actor: m[1] || "", name: v });
@@ -232,9 +235,12 @@ function roomExtras(keys) {
 	add(count((k, v) => /^actor\.\d+$/.test(k) && !v), "1 actor hidden", "actors hidden");
 	add(count(k => k.startsWith("voice.")), "1 voice", "voices");
 	add(count(k => k.startsWith("scenery.")), "1 scenery sentence", "scenery sentences");
+	add(count(k => /^object\.\d+\.\d+$/.test(k)), "1 state note", "state notes");
 	add(count(k => k.startsWith("spot.")), "1 place to walk to", "places to walk to");
 	add(count(k => k.startsWith("standing.")), "1 standing place", "standing places");
 	if (keys.passages) out.push("passages");
+	if (keys.announce_on_show === "yes") out.push("announced on display");
+	if (keys.emerge_at) out.push("same-room exits");
 	if (keys.prompt) out.push("own dialogue prompt");
 	if (keys.layout) out.push(`layout: ${keys.layout}`);
 	if (keys.relative) out.push("left/right of Guybrush");
@@ -407,43 +413,65 @@ function group(title, count, ...nodes) {
 	return el("details", { class: "group", open: count > 0 }, el("summary", {}, title, count ? el("span", { class: "n" }, count) : ""), el("div", { class: "inner" }, ...nodes));
 }
 
+function sceneryKey(rule) {
+	if (rule.script != null) return "scenery.script." + rule.script;
+	if (rule.note) return "object." + rule.object + "." + rule.state;
+	return "scenery." + (rule.variable != null ? "var." + rule.variable : rule.object) + "." + rule.state;
+}
+
 function sceneryEditor(room, objects, refresh) {
 	const rows = el("div", { class: "rows" });
 	function add(rule = { object: "", state: "", text: "" }) {
-		const ids = new Set([...objects.keys(), ...room.ini.scenery.map(r => r.object)]);
-		const object = el("select", { title: "Scenery object", required: true },
+		if (rule.script != null) {
+			const script = el("input", { type: "number", min: 1, max: 65535, required: true, value: rule.script, title: "Script number", style: "width:6em" });
+			const text = el("input", { required: true, value: rule.text, placeholder: "What Neuro sees while the script runs", style: "flex:1" });
+			const row = el("div", { class: "row" }, "While script runs", script, text,
+				el("button", { type: "button", class: "small danger", title: "Remove scenery sentence", onclick: () => { row.remove(); refresh(); } }, "×"));
+			row.read = () => ({ script: script.value === "" ? "" : String(Number(script.value)), text: text.value.trim() });
+			rows.append(row);
+			return;
+		}
+		const isVar = rule.variable != null;
+		const output = isVar ? null : el("select", { title: "Show this text as" },
+			el("option", { value: "sentence" }, "Room sentence"),
+			el("option", { value: "note", selected: rule.note }, "Thing note override"));
+		const ids = new Set([...objects.keys(), ...room.ini.scenery.map(r => r.object).filter(Boolean)]);
+		const object = isVar ? el("input", { type: "number", min: 0, max: 16383, required: true, value: rule.variable, placeholder: "Variable ID", title: "Global game variable", style: "width:7em" }) : el("select", { title: "Scenery object", required: true },
 			el("option", { value: "" }, "Choose object"),
 			...[...ids].sort((a, b) => a - b).map(id => el("option", { value: id, selected: id === rule.object },
 				id + " " + (objects.get(id)?.name || "(unnamed)"))));
-		const state = el("input", { type: "number", min: 0, max: 255, required: true, value: rule.state, title: "Object state", style: "width:5em" });
+		const state = el("input", { type: "number", min: isVar ? -2147483648 : 0, max: isVar ? 2147483647 : 255, required: true, value: rule.state, title: isVar ? "Variable value" : "Object state", style: "width:5em" });
+		const captured = c => isVar ? c.variables?.[object.value] : c.objects.find(o => String(o.id) === object.value)?.state;
 		const text = el("input", { required: true, value: rule.text, placeholder: "What Neuro sees", title: "Scenery sentence", style: "flex:1" });
 		const use = el("button", { type: "button", class: "small", onclick: () => {
-			const found = selectedCapture(room).objects.find(o => String(o.id) === object.value);
-			if (!found) { flash("Choose an object present in this capture."); return; }
-			state.value = found.state; refresh();
-		} }, "Use captured state");
+			const value = captured(selectedCapture(room));
+			if (value == null) { flash(isVar ? "This capture has no value for that variable." : "Choose an object present in this capture."); return; }
+			state.value = value; refresh();
+		} }, isVar ? "Use captured value" : "Use captured state");
 		const captures = el("div", { class: "note", style: "flex-basis:100%" });
 		const showStates = () => {
 			captures.hidden = !object.value;
 			captures.textContent = object.value ? room.captures.map(c => {
-				const found = c.objects.find(o => String(o.id) === object.value);
-				return c.label + (found?.state != null ? ` (state ${found.state})` : " (state unavailable)");
+				const value = captured(c), label = isVar ? "value" : "state";
+				return c.label + " (" + label + " " + (value ?? "unavailable") + ")";
 			}).join(" · ") : "";
 		};
 		object.addEventListener("change", showStates);
 		showStates();
-		const row = el("div", { class: "row", style: "flex-wrap:wrap" }, object, state, use, text,
+		const row = el("div", { class: "row", style: "flex-wrap:wrap" }, isVar ? "Variable" : "", object, state, use, output, text,
 			el("button", { type: "button", class: "small danger", title: "Remove scenery sentence", onclick: () => { row.remove(); refresh(); } }, "×"), captures);
-		row.read = () => ({ object: object.value, state: state.value === "" ? "" : String(Number(state.value)), text: text.value.trim() });
+		row.read = () => ({ [isVar ? "variable" : "object"]: isVar && object.value !== "" ? String(Number(object.value)) : object.value, state: state.value === "" ? "" : String(Number(state.value)), note: output?.value === "note", text: text.value.trim() });
 		rows.append(row);
 	}
 	room.ini.scenery.forEach(add);
-	const box = el("div", {}, rows, el("button", { type: "button", class: "small", onclick: () => { add(); refresh(); } }, "+ scenery sentence"));
+	const box = el("div", {}, rows, el("button", { type: "button", class: "small", onclick: () => { add(); refresh(); } }, "+ object state"),
+		el("button", { type: "button", class: "small", onclick: () => { add({ variable: "", state: "", text: "" }); refresh(); } }, "+ variable value"),
+		el("button", { type: "button", class: "small", onclick: () => { add({ script: "", text: "" }); refresh(); } }, "+ running script"));
 	box.read = () => [...rows.children].map(row => row.read());
 	return box;
 }
 
-function previewTargets(capture, table, actorTable, relative, backDistance, backObjects) {
+function previewTargets(capture, table, actorTable, relative, backDistance, backObjects, rules) {
 	const rows = new Map([...table.querySelectorAll("[data-oid]")].map(row => [Number(row.dataset.oid), row]));
 	const items = [];
 	for (const o of capture.objects) {
@@ -453,7 +481,8 @@ function previewTargets(capture, table, actorTable, relative, backDistance, back
 		const name = rename || o.name;
 		if (!name) continue;
 		const x = o.x + Math.floor(o.w / 2);
-		const notes = [row.querySelector(".notefield").value.trim()];
+		const override = rules.find(rule => rule.note && rule.object === String(o.id) && rule.state === String(o.state));
+		const notes = [override?.text ?? row.querySelector(".notefield").value.trim()];
 		if (relative && capture.ego_x != null) {
 			const who = journal.game.keys.ego_name || "your character";
 			if (backObjects.includes(o.id) && o.distance == null)
@@ -464,7 +493,7 @@ function previewTargets(capture, table, actorTable, relative, backDistance, back
 				notes.push("to " + who + (x < capture.ego_x ? "'s left" : "'s right"));
 		}
 		const note = notes.filter(Boolean).join("; ");
-		const item = { name, note, x, state: o.state, usable: o.usable ?? !o.untouchable };
+		const item = { name, note, x, state: o.state, usable: o.usable ?? (!o.parent && !o.untouchable) };
 		const duplicate = rename && items.find(t => t.name === name && t.note === note);
 		if (!duplicate) items.push(item);
 		else if (!duplicate.usable && item.usable) Object.assign(duplicate, item);
@@ -488,7 +517,7 @@ function previewTargets(capture, table, actorTable, relative, backDistance, back
 		const key = t.name.toLowerCase(), n = (counts.get(key) || 0) + 1;
 		counts.set(key, n);
 		const state = journal.states.keys[key]?.split(",")[t.state]?.trim();
-		const note = [state, t.note].filter(Boolean).join("; ");
+		const note = state && state.toLowerCase() === t.note.toLowerCase() ? state : [state, t.note].filter(Boolean).join("; ");
 		if (t.usable) (t.actor ? people : things).push(t.name + (totals.get(key) > 1 ? " " + n : "") + (note ? " (" + note + ")" : ""));
 	}
 	return { things, people };
@@ -584,12 +613,14 @@ function renderRoom() {
 		group("Voices", ini.voices.length, el("div", { class: "help" }, "Who is speaking when text of a colour appears: with no actor (a dog in the scenery, someone off screen), or from one actor who stands in for several people."), voices),
 		group("Places to walk to", ini.spots.length, el("div", { class: "help" }, "Places with no object that she can walk to by name. They show as green diamonds in the picture."), spots),
 		group("Where Guybrush stands", ini.standing.length, el("div", { class: "help" }, "For a room with parts that do not connect on foot. She is told the text while he stands in one of the walk boxes, and again when he reaches another part."), standing),
-		group("How the room behaves", (ini.prompt ? 1 : 0) + (ini.layout ? 1 : 0) + (ini.relative ? 1 : 0) + (ini.comings ? 1 : 0) + (ini.passages ? 1 : 0) + (ini.ground_between ? 1 : 0),
+		group("How the room behaves", (ini.prompt ? 1 : 0) + (ini.layout ? 1 : 0) + (ini.relative ? 1 : 0) + (ini.comings ? 1 : 0) + (ini.passages ? 1 : 0) + (ini.emerge_at ? 1 : 0) + (ini.ground_between ? 1 : 0) + (ini.announce_on_show === "yes" ? 1 : 0),
 			field("prompt", "What she is asked when picking a line here (blank: \"Pick a line to say.\")", "textarea", "short"),
 			check("layout", "shifting", "The room is redrawn as a new place without being left; list it afresh when things change"),
+			check("announce_on_show", "yes", "Send the room description as soon as this screen appears, even during a cutscene"),
 			field("ground_between", "Offer walkable ground between adjacent things named"),
 			field("back_within", "Openings at the back (distance followed by object IDs)"),
-			check("relative", "yes", "Say whether each thing is to the left or the right of Guybrush"),
+			field("emerge_at", "Report when the game places the player at one of these same-room exits (object IDs)"),
+			check("relative", "yes", "Label each thing as left or right of Guybrush. Label a listed opening as “back” when Guybrush is within the configured distance."),
 			check("comings", "quiet", "Characters wander in and out all the time here; do not report each one"),
 			el("label", {}, "Passages: things that bring a part of a wide room into view when walked to", passages), passageHint),
 		alerts.length ? el("div", {}, el("h3", {}, "Alerts in this room"), ...alerts.map(a => el("div", { class: "roomrow", onclick: () => { openFolds.add("alert." + a.id); view = "other"; render(); } },
@@ -612,17 +643,31 @@ function renderRoom() {
 			row.cells[1].textContent = a ? (a.name || "—") + ` (costume ${a.costume})` : "Absent from this capture";
 		}
 		const rules = scenery.read(), missing = [];
-		const sentences = rules.filter(rule => objects.get(rule.object)?.state === Number(rule.state) && rule.state !== "").map(rule => rule.text);
-		for (const id of new Set(rules.map(rule => rule.object).filter(Boolean))) {
+		const sentences = rules.filter(rule => {
+			if (rule.script != null) {
+				const running = c.scripts?.[rule.script];
+				if (rule.script && running == null) missing.push("Script " + rule.script + " was not recorded in this capture.");
+				return running === true;
+			}
+			return !rule.note && (rule.variable != null ? c.variables?.[rule.variable] : objects.get(rule.object)?.state) === Number(rule.state) && rule.state !== "";
+		}).map(rule => rule.text);
+		for (const id of new Set(rules.map(rule => rule.variable).filter(Boolean))) {
+			const value = c.variables?.[id];
+			if (value == null) missing.push("Variable " + id + " was not recorded in this capture.");
+			else if (!rules.some(rule => rule.variable === id && rule.state !== "" && Number(rule.state) === value))
+				missing.push("Variable " + id + " has no sentence for value " + value + ".");
+		}
+		for (const id of new Set(rules.filter(rule => !rule.note).map(rule => rule.object).filter(Boolean))) {
 			const o = objects.get(id);
-			if (!o || !rules.some(rule => rule.object === id && rule.state !== "" && Number(rule.state) === o.state))
+			if (!o || !rules.some(rule => !rule.note && rule.object === id && rule.state !== "" && Number(rule.state) === o.state))
 				missing.push(o ? `Object ${id} has no sentence for state ${o.state}.` : `Object ${id} is absent from this capture.`);
 		}
 		const relative = form.querySelector('[data-switch="relative"]').checked;
-		if (c.objects.some(o => o.parent && o.usable == null)) missing.push("This older capture lacks availability for nested objects.");
+		const unknown = c.objects.filter(o => o.parent && !o.untouchable && o.usable == null);
+		if (unknown.length) missing.push("Availability unknown for nested objects in this older capture: " + unknown.map(o => o.id).join(", ") + ". They are omitted from Things.");
 		if (relative && c.ego_x == null) missing.push("This capture has no player position for left/right directions.");
 		const [backDistance, ...backObjects] = form.elements.back_within.value.trim().split(/[ ,]+/).map(Number);
-		const { things, people } = previewTargets(c, objectTable, actorTable, relative, backDistance, backObjects);
+		const { things, people } = previewTargets(c, objectTable, actorTable, relative, backDistance, backObjects, rules);
 		const places = spots.read().map(row => row.name).filter(Boolean);
 		const between = form.elements.ground_between.value.trim();
 		if (between) {
@@ -643,7 +688,7 @@ function renderRoom() {
 async function saveRoom(form, parts) {
 	const r = roomById.get(current), ini = r.ini, set = {}, blank = [];
 	const data = Object.fromEntries(new FormData(form));
-	for (const key of ["name", "description", "status", "review_note", "prompt", "passages", "ground_between", "back_within"]) set[key] = (data[key] || "").trim() || null;
+	for (const key of ["name", "description", "status", "review_note", "prompt", "passages", "emerge_at", "ground_between", "back_within"]) set[key] = (data[key] || "").trim() || null;
 	form.querySelectorAll("[data-switch]").forEach(box => {
 		// A value the page has no box for (written by hand) is left alone unless the box is ticked
 		const key = box.dataset.switch, known = !ini[key] || ini[key].toLowerCase() === box.dataset.on;
@@ -665,12 +710,12 @@ async function saveRoom(form, parts) {
 	for (const v of parts.voices.read()) if (v.color && v.name) set[v.actor ? `voice.${v.actor}.${v.color}` : `voice.${v.color}`] = v.name;
 	for (const s of parts.spots.read()) if (s.name && s.x && s.y) set[`spot.${s.name}`] = `${s.x},${s.y}` + (s.twice.trim() ? " twice" : "") + (s.text ? ` | ${s.text}` : "");
 	for (const s of parts.standing.read()) if (s.name && s.boxes) set[`standing.${s.name}`] = `${s.boxes} | ${s.text}`;
-	for (const rule of ini.scenery) set[`scenery.${rule.object}.${rule.state}`] = null;
+	for (const rule of ini.scenery) set[sceneryKey(rule)] = null;
 	const seen = new Set();
 	for (const rule of parts.scenery.read()) {
-		const key = `scenery.${rule.object}.${rule.state}`;
-		if (!rule.object || !/^\d+$/.test(rule.state) || Number(rule.state) > 255 || !rule.text || seen.has(key)) {
-			alert("Each scenery row needs an object, a unique state (0–255) for that object, and a sentence."); return;
+		const key = sceneryKey(rule);
+		if (!(rule.script ?? rule.variable ?? rule.object) || (rule.script == null && !rule.state) || !rule.text || seen.has(key)) {
+			alert("Each scenery row needs a unique condition and a sentence."); return;
 		}
 		seen.add(key); set[key] = rule.text;
 	}
@@ -1044,11 +1089,16 @@ const GAME_FIELDS = [["name", "Name of the game"], ["intro", "Who she plays, for
 	["sentence_line_verb", "Verb slot that is the sentence line", "num"], ["inventory_first_verb", "First inventory button", "num"], ["inventory_slots", "Inventory buttons on screen", "num"],
 	["inventory_slot_var", "First variable holding what they show", "num"], ["inventory_up_verb", "Button that scrolls the inventory up", "num"], ["inventory_down_verb", "Button that scrolls it down", "num"]];
 const GOAL_FIELDS = [["title", "Short title (the words she uses to ask for its clues)"], ["text", "The goal, as she reads it", "area"], ["start", "Appears when (nothing: there from the beginning)", "triggers"], ["done", "Finished when", "triggers"], ["panel", "In the stream column", "select", [["", "shown"], ["no", "left out"]]]];
-const CLUE_FIELDS = [["goal", "Goal", "goal"], ["text", "The clue", "area"], ["when", "Noted when", "triggers"], ["when_bit", "Also noted when game bit is set (bit number)"], ["superseded_by", "Hide once this clue is found (clue ID)"]];
+const CLUE_FIELDS = [["goal", "Goal", "goal"], ["text", "The clue", "area"], ["when", "Noted when", "triggers"], ["when_bit", "Also noted when game bit is set (bit number)"], ["hide_once", "Hide once", "triggers"], ["hide_bit", "Also hide once this game bit is set (bit number)", "num"], ["superseded_by", "Hide once this clue is found (clue ID)"]];
 const NUDGE_FIELDS = [["when", "Suggest writing a note when", "triggers"], ["say", "Wording (blank: just says it may be worth a note)", "area"]];
 function renderJournal() {
 	const list = el("div");
-	const clueFold = c => fold("clue." + c.id, [tag("clue", "clue"), gist(c.text), tag(triggerGist(c.when).slice(0, 40) || "no trigger")], () => card("clue." + c.id, CLUE_FIELDS, c));
+	const clueFold = c => {
+		const textTrigger = triggerGist(c.when).slice(0, 40);
+		const bit = String(c.when_bit ?? "").trim();
+		const triggers = [textTrigger, bit && `game bit ${bit} is set`].filter(Boolean);
+		return fold("clue." + c.id, [tag("clue", "clue"), gist(c.text), tag(triggers.join(" or ") || "no trigger")], () => card("clue." + c.id, CLUE_FIELDS, c));
+	};
 	const keys = () => [...journal.goals.flatMap(g => ["goal." + g.id, "goalself." + g.id]), ...journal.clues.map(c => "clue." + c.id), ...journal.nudges.map(n => "nudge." + n.id)];
 	const bar = searchBar(journalSearch, "Search goals, clues and nudges: any word in the text, a trigger or an id", () => draw(), keys);
 	function draw() {
@@ -1097,10 +1147,10 @@ const KINDS = [
 			["while", "Only while this game script runs", "", "script N"]],
 		summary: a => [what(a.id), tag(a.room ? `${a.room} ${journal.rooms[a.room]?.name || ""}` : "any room"), gist(`${a.when || ""}${a.ask ? "  ·  " + a.ask : "  ·  tells her only"}`)],
 		fresh: () => ({ when: "entered", say: "(what she is told)" }) },
-	{ list: "watches", prefix: "watch", title: "Watched variables", add: "a watch",
-		help: "Things the game shows only as animation and keeps as a number. She is told the text when the variable changes; {value} is the new value.",
-		fields: [["var", "Game variable", "num"], ["change", "Speak", "select", [["", "when it goes up"], ["any", "on any change"]]], ["say", "What she is told", "area"]],
-		summary: w => [what(w.id), tag(`variable ${w.var || "?"}`), gist(w.say)],
+	{ list: "watches", prefix: "watch", title: "Watched variables and animations", add: "a watch",
+		help: "Enter a game variable to announce changes ({value} is the new value), or enter a room and animation to announce a visual cue.",
+		fields: [["var", "Game variable", "num"], ["change", "Variable changes", "select", [["", "when it goes up"], ["any", "on any change"]]], ["room", "Room for animation", "num"], ["animation", "Actor, costume and animation numbers (space-separated)"], ["say", "What she is told", "area"]],
+		summary: w => [what(w.id), tag(w.animation ? `room ${w.room}, animation ${w.animation}` : `variable ${w.var || "?"}`), gist(w.say)],
 		fresh: () => ({ say: "(what she is told)" }) },
 	{ list: "linenotes", prefix: "linenote", title: "Notes on dialogue choices", add: "a note on choices",
 		help: "Marks some of the lines she can pick from with a heading (insults she has not heard the comeback to). The numbers come from the game's scripts.",

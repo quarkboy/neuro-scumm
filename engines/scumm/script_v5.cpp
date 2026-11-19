@@ -2162,6 +2162,10 @@ void ScummEngine_v5::o5_putActorAtObject() {
 		}
 	}
 	a->putActor(x, y);
+#ifdef ENABLE_NEURO
+	if (_neuro && whereIsObject(obj) == WIO_ROOM)
+		_neuro->onActorPlacedAtObject(a->_number, obj);
+#endif
 }
 
 void ScummEngine_v5::o5_putActorInRoom() {

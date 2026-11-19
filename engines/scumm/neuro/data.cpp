@@ -103,6 +103,19 @@ void NeuroData::addLineNote(const Common::String &section) {
 }
 
 void NeuroData::addWatch(const Common::String &section) {
+	const Common::String animation = get(section, "animation");
+	if (!animation.empty()) {
+		AnimationWatch cue;
+		cue.room = atoi(get(section, "room").c_str());
+		cue.say = get(section, "say");
+		char extra;
+		if (sscanf(animation.c_str(), "%d %d %d %c", &cue.actor, &cue.costume, &cue.animation, &extra) == 3 &&
+			cue.room > 0 && cue.actor > 0 && cue.costume > 0 && cue.animation >= 0 && !cue.say.empty())
+			_animationWatches.push_back(cue);
+		else
+			warning("Neuro: Invalid animation watch '%s'", section.c_str());
+		return;
+	}
 	Watch watch;
 	watch.var = atoi(get(section, "var").c_str());
 	watch.say = get(section, "say");
@@ -245,8 +258,11 @@ Common::String NeuroData::roomDescription(int room) const {
 	return roomGet(room, "description");
 }
 
-Common::String NeuroData::objectNote(int room, int object) const {
-	return roomGet(room, Common::String::format("object.%d", object));
+bool NeuroData::objectNote(int room, int object, int state, Common::String &note) const {
+	if (roomKey(room, Common::String::format("object.%d.%d", object, state), note))
+		return true;
+	note = roomGet(room, Common::String::format("object.%d", object));
+	return false;
 }
 
 bool NeuroData::objectName(int room, int object, Common::String &name) const {
@@ -301,10 +317,18 @@ const NeuroData::Places &NeuroData::places(int room) const {
 			text.trim();
 		}
 		if (kv.key.hasPrefix("scenery.")) {
-			int object, state;
+			int number, value;
 			char trailing;
-			if (sscanf(kv.key.c_str(), "scenery.%d.%d%c", &object, &state, &trailing) == 2 && object > 0 && state >= 0 && state <= 255 && !kv.value.empty())
-				_places.scenery.push_back({object, state, kv.value});
+			if (kv.key.hasPrefix("scenery.script.")) {
+				if (sscanf(kv.key.c_str(), "scenery.script.%d%c", &number, &trailing) == 1 && number > 0 && number <= 65535 && !kv.value.empty())
+					_places.scenery.push_back({number, 1, Scenery::kScript, kv.value});
+				continue;
+			}
+			const bool variable = kv.key.hasPrefix("scenery.var.");
+			const char *format = variable ? "scenery.var.%d.%d%c" : "scenery.%d.%d%c";
+			if (sscanf(kv.key.c_str(), format, &number, &value, &trailing) == 2 && !kv.value.empty() &&
+				(variable ? (number >= 0 && number < 0x4000) : (number > 0 && value >= 0 && value <= 255)))
+				_places.scenery.push_back({number, value, variable ? Scenery::kVariable : Scenery::kObject, kv.value});
 		} else if (kv.key.hasPrefix("pose.")) {
 			int costume, frame;
 			char trailing;
@@ -339,9 +363,9 @@ Common::String NeuroData::standing(int room, int box) const {
 	return "";
 }
 
-Common::Array<int> NeuroData::passages(int room) const {
+Common::Array<int> NeuroData::roomObjects(int room, const char *key) const {
 	Common::Array<int> result;
-	Common::StringTokenizer ids(roomGet(room, "passages"), " ,");
+	Common::StringTokenizer ids(roomGet(room, key), " ,");
 	while (!ids.empty())
 		result.push_back(atoi(ids.nextToken().c_str()));
 	return result;

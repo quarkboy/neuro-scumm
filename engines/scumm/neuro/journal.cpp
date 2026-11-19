@@ -29,6 +29,15 @@ namespace Scumm {
 static const uint kMaxNotes = 12;
 static const uint kMaxNoteLength = 300;
 
+static int readBit(const Common::INIFile::Section &section, const char *key) {
+	const Common::INIFile::KeyValue *kv = section.getKey(key);
+	if (!kv)
+		return -1;
+	char *end;
+	long bit = strtol(kv->value.c_str(), &end, 10);
+	return end != kv->value.c_str() && !*end && bit >= 0 && bit <= 0x7fff ? bit : -1;
+}
+
 void NeuroJournal::loadGoals(const Common::INIFile &ini) {
 	_goals.clear();
 	_clues.clear();
@@ -45,12 +54,10 @@ void NeuroJournal::loadGoals(const Common::INIFile &ini) {
 			if (const Common::INIFile::KeyValue *kv = section.getKey("superseded_by"))
 				clue.supersededBy = kv->value;
 			clue.supersededBy.trim();
-			if (const Common::INIFile::KeyValue *kv = section.getKey("when_bit")) {
-				char *end;
-				long bit = strtol(kv->value.c_str(), &end, 10);
-				if (end != kv->value.c_str() && !*end && bit >= 0 && bit <= 0x7fff)
-					clue.whenBit = bit;
-			}
+			if (const Common::INIFile::KeyValue *kv = section.getKey("hide_once"))
+				clue.hideOnce = kv->value;
+			clue.whenBit = readBit(section, "when_bit");
+			clue.hideBit = readBit(section, "hide_bit");
 			clue.goal.trim();
 			clue.when.trim();
 			clue.text.trim();
@@ -91,8 +98,10 @@ void NeuroJournal::loadGoals(const Common::INIFile &ini) {
 void NeuroJournal::reset() {
 	for (auto &goal : _goals)
 		goal.state = (goal.start.empty() && !goal.nudge) ? kActive : kHidden;
-	for (auto &clue : _clues)
+	for (auto &clue : _clues) {
 		clue.found = false;
+		clue.retired = false;
+	}
 	_notes.clear();
 	_news.clear();
 	memos.clear();
@@ -103,9 +112,9 @@ void NeuroJournal::setState(Goal &goal, State state) {
 		return;
 	goal.state = state;
 	if (goal.nudge)
-		_news += goal.text + "\n";
+		_news.push_back({goal.text, nullptr});
 	else
-		_news += (state == kActive ? "New goal: " : "Goal completed: ") + goal.text + "\n";
+		_news.push_back({(state == kActive ? "New goal: " : "Goal completed: ") + goal.text, nullptr});
 }
 
 static bool matchesOne(const Common::String &trigger, const Common::String &kind, const Common::String &argument);
@@ -171,6 +180,8 @@ Common::String NeuroJournal::goalTitle(const Common::String &id) const {
 }
 
 bool NeuroJournal::listed(const Clue &clue) const {
+	if (clue.retired)
+		return false;
 	if (clue.found && !clue.supersededBy.empty()) {
 		for (const auto &other : _clues) {
 			if (other.found && other.id == clue.supersededBy)
@@ -183,11 +194,13 @@ bool NeuroJournal::listed(const Clue &clue) const {
 void NeuroJournal::noteClue(Clue &clue) {
 	clue.found = true;
 	if (listed(clue))
-		_news += "Clue noted (" + goalTitle(clue.goal) + "): " + expand(clue.text) + "\n";
+		_news.push_back({"Clue noted (" + goalTitle(clue.goal) + "): " + expand(clue.text), &clue});
 }
 
 void NeuroJournal::fire(const Common::String &kind, const Common::String &argument) {
 	for (auto &clue : _clues) {
+		if (!clue.retired && !clue.hideOnce.empty() && matches(clue.hideOnce, kind, argument))
+			clue.retired = true;
 		if (!clue.found && matches(clue.when, kind, argument))
 			noteClue(clue);
 	}
@@ -218,7 +231,23 @@ void NeuroJournal::observed(int room, const Common::StringArray &inventory) {
 }
 
 Common::String NeuroJournal::takeNews() {
-	Common::String news = _news;
+	Common::String news;
+	for (const auto &entry : _news) {
+		if (entry.clue) {
+			if (!listed(*entry.clue))
+				continue;
+			bool finished = false;
+			for (const auto &goal : _goals) {
+				if (goal.id == entry.clue->goal) {
+					finished = goal.state == kDone;
+					break;
+				}
+			}
+			if (finished)
+				continue;
+		}
+		news += entry.text + "\n";
+	}
 	_news.clear();
 	return news;
 }
@@ -331,6 +360,8 @@ void NeuroJournal::save(const Common::String &fileName) const {
 	for (const auto &clue : _clues) {
 		if (clue.found)
 			file->writeString("clue " + clue.id + "\n");
+		if (clue.retired)
+			file->writeString("retired " + clue.id + "\n");
 	}
 	for (const auto &note : _notes)
 		file->writeString("note " + note + "\n");
@@ -349,10 +380,16 @@ void NeuroJournal::load(const Common::String &fileName) {
 	// Goals that are active from the start may have been completed in the save
 	while (!file->eos()) {
 		Common::String line = file->readLine();
-		if (line.hasPrefix("clue ")) {
+		if (line.hasPrefix("clue ") || line.hasPrefix("retired ")) {
+			const bool retired = line.hasPrefix("retired ");
+			const Common::String id = line.substr(retired ? 8 : 5);
 			for (auto &clue : _clues) {
-				if (clue.id == line.substr(5))
-					clue.found = true;
+				if (clue.id == id) {
+					if (retired)
+						clue.retired = true;
+					else
+						clue.found = true;
+				}
 			}
 		} else if (line.hasPrefix("note ")) {
 			_notes.push_back(line.substr(5));
@@ -371,6 +408,12 @@ void NeuroJournal::load(const Common::String &fileName) {
 		}
 	}
 	delete file;
+	// A newer annotation may depend on a goal already completed in this save.
+	for (const auto &goal : _goals) {
+		if (goal.state == kDone)
+			fire("goal", goal.id);
+	}
+	_news.clear();
 }
 
 } // End of namespace Scumm

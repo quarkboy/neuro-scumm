@@ -66,6 +66,9 @@ namespace Scumm {
  *                          "X,Y twice" steps onto it a second time after a pause,
  *                          for a place that only reacts to a step from next to it
  *   scenery.OBJECT.STATE = sentence visible in this room while the object has this state
+ *   object.OBJECT.STATE = replaces that object's usual note while it has this state
+ *   scenery.var.NUMBER.VALUE = sentence visible while this global game variable equals VALUE
+ *   scenery.script.NUMBER = sentence visible while the numbered script is running
  *   pose.COSTUME.FRAME = what the player character is visibly doing in this pose
  *   standing.NAME = BOX BOX ... | TEXT
  *                          where the player's character is, for a room with
@@ -104,6 +107,8 @@ namespace Scumm {
  *   var       the game variable
  *   change    "any" to speak whenever it changes, not only when it goes up
  *   say       what she is told; {value} is the new value
+ * Alternatively, use room and animation (actor, costume and animation numbers)
+ * to send say when the script starts that animation in that room.
  * [press.ID] sections press a key for her, for a screen that only takes the
  * keyboard and that she is not meant to deal with (a copy protection question
  * the engine lets any answer pass):
@@ -155,6 +160,8 @@ public:
 	int descriptionRoom(int room) const;
 
 	Common::String roomName(int room) const;
+	// Announce the room's description on display, including during cutscenes.
+	bool announceOnShow(int room) const { return roomGet(room, "announce_on_show").equalsIgnoreCase("yes"); }
 	bool quietComings(int room) const;
 	bool shiftingLayout(int room) const;
 	bool relativePlaces(int room) const;
@@ -177,7 +184,7 @@ public:
 	/** The verb a word stands for, from [synonyms]; false if the file has none. */
 	bool synonym(const Common::String &word, Common::String &verb) const;
 	Common::String roomDescription(int room) const;
-	Common::String objectNote(int room, int object) const;
+	bool objectNote(int room, int object, int state, Common::String &note) const;
 	/** Returns false if the file does not rename this object; an empty name hides it. */
 	bool objectName(int room, int object, Common::String &name) const;
 	/** actor: the actor number, or 0 for text that belongs to no actor. */
@@ -201,14 +208,20 @@ public:
 	};
 	const Common::Array<Spot> &spots(int room) const;
 
-	struct Scenery { int object, state; Common::String text; };
+	struct Scenery {
+		enum Source { kObject, kVariable, kScript };
+		int number, value;
+		Source source;
+		Common::String text;
+	};
 	const Common::Array<Scenery> &scenery(int room) const { return places(room).scenery; }
 	Common::String playerPose(int room, int costume, int frame) const;
 	/** Text for the player character's current walk box. */
 	Common::String standing(int room, int box) const;
 
 	/** Things that bring another part of the room into view when walked to. */
-	Common::Array<int> passages(int room) const;
+	// Room options containing a list of object IDs (passages, emerge_at).
+	Common::Array<int> roomObjects(int room, const char *key) const;
 
 	/** A word for the state an object is in, e.g. "open"; empty if unknown. */
 	Common::String stateName(const Common::String &objectName, int state) const;
@@ -231,6 +244,11 @@ public:
 		Common::String say;
 	};
 	const Common::Array<Watch> &watches() const { return _watches; }
+	struct AnimationWatch {
+		int room, actor, costume, animation;
+		Common::String say;
+	};
+	const Common::Array<AnimationWatch> &animationWatches() const { return _animationWatches; }
 
 	struct Press {
 		int whileScript = 0;
@@ -289,6 +307,7 @@ private:
 	Game _game;
 	Common::Array<Alert> _alerts;
 	Common::Array<Watch> _watches;
+	Common::Array<AnimationWatch> _animationWatches;
 	Common::Array<Press> _presses;
 	Common::Array<LineNote> _lineNotes;
 	Common::StringMap _lineSpeakers;
