@@ -85,6 +85,9 @@ public:
 	Common::String takeNews();
 
 	void addNote(const Common::String &text);
+	bool editNote(uint id, const Common::String &text);
+	bool deleteNote(uint id);
+	uint notesPages() const;
 
 	/**
 	 * A clue can quote the game's variables ({varN} and the other forms the
@@ -96,7 +99,7 @@ public:
 		_expandContext = context;
 	}
 
-	Common::String describe(bool withCompleted = false) const;
+	Common::String describe(bool withCompleted = false, uint notesPage = 1) const;
 
 	/** The clues noted for one unfinished goal, named by its title, id or opening words. */
 	Common::String describeClues(const Common::String &which) const;
@@ -142,7 +145,12 @@ private:
 	void setState(Goal &goal, State state);
 
 	Common::Array<Goal> _goals;
-	Common::StringArray _notes;
+	struct Note {
+		uint id;
+		Common::String text;
+	};
+	Common::Array<Note> _notes;
+	uint _lastNoteId = 0;
 	struct News {
 		Common::String text;
 		const Clue *clue;

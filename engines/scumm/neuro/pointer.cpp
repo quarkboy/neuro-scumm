@@ -248,8 +248,7 @@ void NeuroBridge::updateClick() {
 			clickAt(_clickQueue.remove_at(0));
 		} else if (_shownSentence) {
 			_shownSentence = false;
-			_interaction.outcome.dispatchedAt(g_system->getMillis());
-			_vm->doSentence(_shownVerb, _shownObjects[0], _shownObjects[1]);
+			dispatchSentence(_shownVerb, _shownObjects[0], _shownObjects[1]);
 		}
 		break;
 	case kClickHover:

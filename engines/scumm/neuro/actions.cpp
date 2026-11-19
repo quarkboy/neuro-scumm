@@ -140,13 +140,21 @@ void NeuroBridge::registerActions(const char *replace) {
 		Common::JSONObject journal;
 		journal.setVal("show_completed", typeSchema("boolean"));
 		journal.setVal("clues_for", typeSchema("string"));
+		journal.setVal("notes_page", typeSchema("integer"));
 		actions.push_back(actionDefinition("read_journal",
-			"Read your goals and notes. clues_for reads one goal's clues, including a finished goal by its exact title or ID. show_completed lists finished goals.",
+			"Read current goals and 10 personal notes, newest first. notes_page starts at 1. clues_for reads only one goal's clues, including a finished goal by exact title or ID. show_completed lists finished goals.",
 			objectSchema(journal)));
 
 		Common::JSONObject note;
 		note.setVal("text", typeSchema("string"));
 		actions.push_back(actionDefinition("add_note", "Add a short note to your journal.", objectSchema(note, "text")));
+		Common::JSONObject noteId;
+		noteId.setVal("note_id", typeSchema("integer"));
+		actions.push_back(actionDefinition("delete_note", "Remove an obsolete personal note by its journal ID.", objectSchema(noteId, "note_id")));
+		Common::JSONObject editNote;
+		editNote.setVal("note_id", typeSchema("integer"));
+		editNote.setVal("text", typeSchema("string"));
+		actions.push_back(actionDefinition("edit_note", "Replace a personal note by its journal ID, for example when a plan is finished or a guess was wrong.", objectSchema(editNote, "note_id", "text")));
 	}
 	if (only.empty() || only == "answer") {
 		Common::JSONArray yesNo;
@@ -247,7 +255,7 @@ void NeuroBridge::actionAnswer(const Common::String &id, const NeuroArgs &args) 
 	const Common::String thenCommand = _interaction.prompt.question().thenCommand;
 	// These questions are about a passing moment
 	if (command.empty() || _interaction.prompt.expired(_vm->_currentRoom, g_system->getMillis())) {
-		sendActionResult(id, true, "No question is waiting.");
+		sendActionResult(id, false, "No yes/no prompt is waiting.");
 		return;
 	}
 	if (answer == "no") {
@@ -259,8 +267,8 @@ void NeuroBridge::actionAnswer(const Common::String &id, const NeuroArgs &args) 
 	collectWorld(world);
 	NeuroCommand resolved;
 	if (!playerHasControl() || !resolvePreset(world, command, resolved)) {
-		// Not a failure she should retry: the moment has simply gone
-		sendActionResult(id, true, "Too late.");
+		sendActionResult(id, false, "Too late. The offer has ended.");
+		endPrompt();
 		return;
 	}
 	sendActionResult(id, true);
@@ -359,14 +367,14 @@ bool NeuroBridge::resolveCommand(const NeuroWorld &world, const Common::String &
 }
 
 /** From here on, what happens is the outcome of her action, which she is told once it has played out. */
-void NeuroBridge::beginAction() {
+void NeuroBridge::beginAction(const NeuroCommand &command) {
 	_walkTarget = 0;
 	_lastTargets[0] = _lastTargets[1] = 0;
-	_interaction.outcome.begin(_vm->_currentRoom, g_system->getMillis());
+	_interaction.outcome.begin(_vm->_currentRoom, g_system->getMillis(), command);
 }
 
 void NeuroBridge::runCommand(const NeuroCommand &command) {
-	beginAction();
+	beginAction(command);
 	_queueSawBusy = false;
 	_queueIdleSince = 0;
 	_walkTarget = command.walk ? command.objects[0] : 0;
@@ -398,7 +406,24 @@ void NeuroBridge::runCommand(const NeuroCommand &command) {
 			return;
 		}
 	}
-	_vm->doSentence(command.verb, command.objects[0], command.objects[1]);
+	dispatchSentence(command.verb, command.objects[0], command.objects[1]);
+}
+
+bool NeuroBridge::canDispatchSentence() const {
+	return playerHasControl() && !_vm->_sentenceNum && !sentenceRunning();
+}
+
+void NeuroBridge::dispatchSentence(int verb, int first, int second) {
+	// Direct sentences bypass the game's mouse handler. Control can change
+	// between accepting the action and the pointer reaching its target.
+	if (!canDispatchSentence()) {
+		cancelQueuedInput();
+		_interaction.outcome.finish();
+		sendContext("The action did not start. Try again when the current interaction finishes.", false);
+		return;
+	}
+	_interaction.outcome.dispatchedAt(g_system->getMillis());
+	_vm->doSentence(verb, first, second);
 }
 
 void NeuroBridge::updateQueuedCommand() {
@@ -460,7 +485,7 @@ void NeuroBridge::finishAction(const NeuroWorld &world) {
 	// (what a click sets off takes a moment to show)
 	const bool busy = _clickPhase != kClickIdle || !_interaction.queue.empty() || !_clickQueue.empty() || _pagerState != kPagerIdle
 		|| g_system->getMillis() - _lastClickAt < kClickTakesMs
-		|| ego()->_moving || sentenceRunning();
+		|| ego()->_moving || _vm->_sentenceNum > 0 || sentenceRunning();
 	if (busy || _interaction.outcome.age(g_system->getMillis()) < kCommandStartsMs)
 		return;
 	// After someone has spoken, lines to choose from may be about to appear;
@@ -586,6 +611,17 @@ void NeuroBridge::actionInteract(const Common::String &id, const NeuroArgs &args
 		return;
 	}
 
+	// The same SDK action can arrive twice while the first click or sentence is
+	// still in flight. Keep its pending input and any scheduled follow-up intact.
+	if (_interaction.outcome.running(world.room, first) ||
+			(!_interaction.queue.empty() && _interaction.queue[0].afterPassage && _interaction.queue[0].sameAction(first))) {
+		Common::String action = verbName + " " + targetName;
+		if (!secondName.empty())
+			action += " / " + secondName;
+		sendActionResult(id, false, "Already in progress: " + action + ".");
+		return;
+	}
+
 	if (_walkTarget && _interaction.outcome.pending() && !first.walk) {
 		for (const auto &item : world.inventory) {
 			if (first.objects[0] == item.id) {
@@ -593,6 +629,11 @@ void NeuroBridge::actionInteract(const Common::String &id, const NeuroArgs &args
 				return;
 			}
 		}
+	}
+
+	if (!first.walk && first.clicks.empty() && !canDispatchSentence()) {
+		sendActionResult(id, false, "The current interaction is still in progress. Try again when it finishes.");
+		return;
 	}
 
 	// For a place, say what stepping there looks like

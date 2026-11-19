@@ -245,6 +245,10 @@ def describe_action(name, data, lines):
         return "Reads her journal"
     if name == "add_note":
         return f"Notes: {args.get('text', '')}"
+    if name == "edit_note":
+        return f"Updates note #{args.get('note_id', '?')}"
+    if name == "delete_note":
+        return f"Deletes note #{args.get('note_id', '?')}"
     if name == "wait":
         return "Waits"
     if name == "skip_cutscene":

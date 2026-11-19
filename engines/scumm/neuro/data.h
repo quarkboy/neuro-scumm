@@ -50,6 +50,7 @@ namespace Scumm {
  *                          colour (one actor standing in for a group)
  *   prompt                 what she is asked when picking a line to say here, in
  *                          place of "Pick a line to say."
+ *   prompt_script          use the room prompt only while this script is running
  *   layout = shifting      the room is redrawn as a new place without being left;
  *                          list it afresh when things change
  *   ground_between = NAME  offer reachable ground between adjacent objects with
@@ -168,6 +169,7 @@ public:
 	int backDistance(int room, int object) const;
 	Common::String groundBetween(int room) const { return roomGet(room, "ground_between"); }
 	Common::String roomPrompt(int room) const;
+	int roomPromptScript(int room) const;
 
 	/** The [game] section. */
 	struct Game {
@@ -199,6 +201,8 @@ public:
 	struct Spot {
 		Common::String name;
 		int x, y;
+		int script = 0; // Optional "script N": offer this place only while N is running.
+		int bit = -1; // Optional "bit N": also require this game bit to be set.
 
 		/** What stepping there looks like. */
 		Common::String effect;

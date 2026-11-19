@@ -285,7 +285,10 @@ void NeuroBridge::updateForces(const NeuroWorld &world) {
 			Common::String state = lines;
 			if (!_lastHeard.empty() && now - _lastHeardAt < kLastHeardMs)
 				state = "Last said to you: " + _lastHeard + "\n\n" + lines;
-			Common::String query = expandText(_data.roomPrompt(world.room));
+			const int promptScript = _data.roomPromptScript(world.room);
+			Common::String query;
+			if (!promptScript || _vm->isScriptRunning(promptScript))
+				query = expandText(_data.roomPrompt(world.room));
 			if (query.empty())
 				query = "Pick a line to say.";
 			sendForce(state, query, "choose_dialogue");

@@ -259,6 +259,10 @@ Common::String NeuroBridge::describeForPanel(const Common::String &name, const N
 		return "Reads her journal";
 	if (name == "add_note")
 		return "Writes a note";
+	if (name == "edit_note")
+		return "Updates a note";
+	if (name == "delete_note")
+		return "Deletes a note";
 	if (name == "wait")
 		return "Waits";
 	if (name == "skip_cutscene")

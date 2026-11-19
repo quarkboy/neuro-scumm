@@ -458,6 +458,19 @@ void NeuroBridge::handleMessage(const Common::String &text) {
 	delete root;
 }
 
+static uint journalNumber(const Common::String &value) {
+	uint result = 0;
+	for (uint i = 0; i < value.size(); i++) {
+		if (value[i] < '0' || value[i] > '9')
+			return 0;
+		const uint digit = value[i] - '0';
+		if (result > (UINT_MAX - digit) / 10)
+			return 0;
+		result = result * 10 + digit;
+	}
+	return result;
+}
+
 void NeuroBridge::handleAction(const Common::String &id, const Common::String &rawName, const Common::String &data) {
 	// "Choose-Dialogue" is still choose_dialogue
 	Common::String name = rawName;
@@ -500,24 +513,38 @@ void NeuroBridge::handleAction(const Common::String &id, const Common::String &r
 	}
 
 	if (name == "read_journal") {
-		Common::String completed = args.get("show_completed|completed|show_done|all", true);
+		const Common::String pageArg = args.get("notes_page");
+		Common::String completed = args.get("show_completed|completed|show_done|all", pageArg.empty());
 		completed.toLowercase();
 		// One goal's clues at a time: all of them together would be a wall of text
 		const Common::String cluesFor = args.get("clues_for|clues|goal|show_clues");
 		if (!cluesFor.empty())
 			sendActionResult(id, true, _journal.describeClues(cluesFor));
-		else
-			sendActionResult(id, true, _journal.describe(completed == "true" || completed == "yes" || completed == "1"));
+		else {
+			const uint page = pageArg.empty() ? 1 : journalNumber(pageArg);
+			if (!page || page > _journal.notesPages())
+				sendActionResult(id, false, Common::String::format("Choose a notes_page from 1 to %u.", _journal.notesPages()));
+			else
+				sendActionResult(id, true, _journal.describe(completed == "true" || completed == "yes" || completed == "1", page));
+		}
 		return;
 	}
-	if (name == "add_note") {
-		const Common::String text = args.get("text|note|content|message", true);
+	if (name == "add_note" || name == "edit_note") {
+		const Common::String text = args.get("text|note|content|message", name == "add_note");
 		if (text.empty()) {
-			sendActionResult(id, false, "add_note needs some text.");
+			sendActionResult(id, false, name + " needs some text.");
+		} else if (name == "edit_note") {
+			const bool edited = _journal.editNote(journalNumber(args.get("note_id")), text);
+			sendActionResult(id, edited, edited ? "Updated." : "Unknown note ID. Check read_journal.");
 		} else {
 			_journal.addNote(text);
 			sendActionResult(id, true, "Noted.");
 		}
+		return;
+	}
+	if (name == "delete_note") {
+		const bool removed = _journal.deleteNote(journalNumber(args.get("note_id")));
+		sendActionResult(id, removed, removed ? "Deleted." : "Unknown note ID. Check read_journal.");
 		return;
 	}
 

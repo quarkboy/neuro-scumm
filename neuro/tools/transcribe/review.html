@@ -201,7 +201,7 @@ function flash(text) {
 }
 
 /** A room's section, sorted into the kinds of key the page edits. */
-const ROOM_PLAIN = ["name", "description", "status", "review_note", "prompt", "layout", "relative", "comings", "passages", "emerge_at", "ground_between", "back_within", "announce_on_show"];
+const ROOM_PLAIN = ["name", "description", "status", "review_note", "prompt", "prompt_script", "layout", "relative", "comings", "passages", "emerge_at", "ground_between", "back_within", "announce_on_show"];
 function parseRoom({ keys, comment }) {
 	const ini = { keys, comment, objects: {}, names: {}, actors: {}, scenery: [], voices: [], spots: [], standing: [], other: {} };
 	for (const key of ROOM_PLAIN) ini[key] = keys[key] || "";
@@ -217,8 +217,9 @@ function parseRoom({ keys, comment }) {
 		else if ((m = /^actor\.(\d+)$/.exec(k))) ini.actors[m[1]] = v;
 		else if ((m = /^voice\.(?:(\d+)\.)?(\d+)$/.exec(k))) ini.voices.push({ color: m[2], actor: m[1] || "", name: v });
 		else if (k.startsWith("spot.")) {
-			const bar = v.indexOf("|"), where = bar < 0 ? v : v.slice(0, bar), [x, y] = where.replace("twice", "").split(",");
-			ini.spots.push({ name: k.slice(5), x: (x || "").trim(), y: (y || "").trim(), twice: where.includes("twice") ? "twice" : "", text: bar < 0 ? "" : v.slice(bar + 1).trim() });
+			const bar = v.indexOf("|"), where = (bar < 0 ? v : v.slice(0, bar)).trim();
+			const [x, y] = where.split(/\s+(?:twice|script|bit)\b/, 1)[0].split(",");
+			ini.spots.push({ name: k.slice(5), x: (x || "").trim(), y: (y || "").trim(), twice: where.includes("twice") ? "twice" : "", bit: where.match(/\bbit\s+(\d+)/)?.[1] || "", script: where.match(/\bscript\s+(\d+)/)?.[1] || "", text: bar < 0 ? "" : v.slice(bar + 1).trim() });
 		} else if (k.startsWith("standing.")) {
 			const bar = v.indexOf("|");
 			ini.standing.push({ name: k.slice(9), boxes: (bar < 0 ? v : v.slice(0, bar)).trim(), text: bar < 0 ? "" : v.slice(bar + 1).trim() });
@@ -576,7 +577,7 @@ function renderRoom() {
 			inputs.color.addEventListener("input", paint); paint();
 			return swatch;
 		});
-	const spots = rowsEditor([{ key: "name", label: "name she uses", grow: 2, width: "90px" }, { key: "x", label: "x", width: "38px" }, { key: "y", label: "y", width: "38px" }, { key: "twice", label: "\"twice\": step on it a second time", placeholder: "once", width: "46px" }, { key: "text", label: "what she sees on getting there (optional)", grow: 4, width: "120px" }],
+	const spots = rowsEditor([{ key: "name", label: "name she uses", grow: 2, width: "90px" }, { key: "x", label: "x", width: "38px" }, { key: "y", label: "y", width: "38px" }, { key: "twice", label: "\"twice\": step on it a second time", placeholder: "once", width: "46px" }, { key: "bit", label: "require game bit", placeholder: "any", width: "55px" }, { key: "script", label: "only while script runs", placeholder: "always", width: "60px" }, { key: "text", label: "what she sees on getting there (optional)", grow: 4, width: "120px" }],
 		ini.spots, "+ place", inputs => el("button", { class: "small", type: "button", title: "Then click the spot in the picture", onclick: () => {
 			picking = { x: inputs.x, y: inputs.y }; document.getElementById("picturePane").classList.add("picking");
 		} }, "pick"));
@@ -615,6 +616,7 @@ function renderRoom() {
 		group("Where Guybrush stands", ini.standing.length, el("div", { class: "help" }, "For a room with parts that do not connect on foot. She is told the text while he stands in one of the walk boxes, and again when he reaches another part."), standing),
 		group("How the room behaves", (ini.prompt ? 1 : 0) + (ini.layout ? 1 : 0) + (ini.relative ? 1 : 0) + (ini.comings ? 1 : 0) + (ini.passages ? 1 : 0) + (ini.emerge_at ? 1 : 0) + (ini.ground_between ? 1 : 0) + (ini.announce_on_show === "yes" ? 1 : 0),
 			field("prompt", "What she is asked when picking a line here (blank: \"Pick a line to say.\")", "textarea", "short"),
+			field("prompt_script", "Use this prompt only while game script number (leave blank for all dialogue) is running"),
 			check("layout", "shifting", "The room is redrawn as a new place without being left; list it afresh when things change"),
 			check("announce_on_show", "yes", "Send the room description as soon as this screen appears, even during a cutscene"),
 			field("ground_between", "Offer walkable ground between adjacent things named"),
@@ -668,7 +670,16 @@ function renderRoom() {
 		if (relative && c.ego_x == null) missing.push("This capture has no player position for left/right directions.");
 		const [backDistance, ...backObjects] = form.elements.back_within.value.trim().split(/[ ,]+/).map(Number);
 		const { things, people } = previewTargets(c, objectTable, actorTable, relative, backDistance, backObjects, rules);
-		const places = spots.read().map(row => row.name).filter(Boolean);
+		const places = spots.read().filter(row => {
+			if (row.bit) {
+				const value = c.variables?.[0x8000 | Number(row.bit)];
+				if (value == null) missing.push("Game bit " + row.bit + " was not recorded for place " + row.name + ".");
+				if (!value) return false;
+			}
+			if (!row.script) return true;
+			if (c.scripts?.[row.script] == null) missing.push("Script " + row.script + " was not recorded for place " + row.name + ".");
+			return c.scripts?.[row.script] === true;
+		}).map(row => row.name).filter(Boolean);
 		const between = form.elements.ground_between.value.trim();
 		if (between) {
 			if (c.ground_between === between) places.push(...c.ground_places);
@@ -688,7 +699,7 @@ function renderRoom() {
 async function saveRoom(form, parts) {
 	const r = roomById.get(current), ini = r.ini, set = {}, blank = [];
 	const data = Object.fromEntries(new FormData(form));
-	for (const key of ["name", "description", "status", "review_note", "prompt", "passages", "emerge_at", "ground_between", "back_within"]) set[key] = (data[key] || "").trim() || null;
+	for (const key of ["name", "description", "status", "review_note", "prompt", "prompt_script", "passages", "emerge_at", "ground_between", "back_within"]) set[key] = (data[key] || "").trim() || null;
 	form.querySelectorAll("[data-switch]").forEach(box => {
 		// A value the page has no box for (written by hand) is left alone unless the box is ticked
 		const key = box.dataset.switch, known = !ini[key] || ini[key].toLowerCase() === box.dataset.on;
@@ -708,7 +719,17 @@ async function saveRoom(form, parts) {
 	// Rows that can be removed: clear every key of the kind, then write the rows that are left
 	for (const key of Object.keys(ini.keys)) if (/^(voice|spot|standing)\./.test(key)) set[key] = null;
 	for (const v of parts.voices.read()) if (v.color && v.name) set[v.actor ? `voice.${v.actor}.${v.color}` : `voice.${v.color}`] = v.name;
-	for (const s of parts.spots.read()) if (s.name && s.x && s.y) set[`spot.${s.name}`] = `${s.x},${s.y}` + (s.twice.trim() ? " twice" : "") + (s.text ? ` | ${s.text}` : "");
+	for (const s of parts.spots.read()) if (s.name && s.x && s.y) {
+		if (s.bit && (!/^\d+$/.test(s.bit) || +s.bit > 32767)) {
+			flash("Enter a game bit from 0 to 32767 for " + s.name + ".");
+			return;
+		}
+		if (s.script && (!/^\d+$/.test(s.script) || +s.script < 1 || +s.script > 65535)) {
+			flash("Enter a script number from 1 to 65535 for " + s.name + ".");
+			return;
+		}
+		set[`spot.${s.name}`] = `${s.x},${s.y}` + (s.twice.trim() ? " twice" : "") + (s.script ? " script " + Number(s.script) : "") + (s.bit ? " bit " + Number(s.bit) : "") + (s.text ? ` | ${s.text}` : "");
+	}
 	for (const s of parts.standing.read()) if (s.name && s.boxes) set[`standing.${s.name}`] = `${s.boxes} | ${s.text}`;
 	for (const rule of ini.scenery) set[sceneryKey(rule)] = null;
 	const seen = new Set();

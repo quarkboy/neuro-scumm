@@ -203,6 +203,14 @@ bool NeuroBridge::writeRoomSnapshot(const Common::String &base, int room, int wi
 				variables.setVal(key, new Common::JSONValue((long long int)readDataVar(rule.number)));
 		}
 	}
+	if (_vm->_currentRoom == room) {
+		for (const auto &spot : _data.spots(room)) {
+			if (spot.bit >= 0)
+				variables.setVal(Common::String::format("%d", 0x8000 | spot.bit), new Common::JSONValue((long long int)readDataVar(0x8000 | spot.bit)));
+			if (spot.script)
+				scripts.setVal(Common::String::format("%d", spot.script), new Common::JSONValue((bool)_vm->isScriptRunning(spot.script)));
+		}
+	}
 	root.setVal("variables", new Common::JSONValue(variables));
 	root.setVal("scripts", new Common::JSONValue(scripts));
 	root.setVal("room", new Common::JSONValue((long long int)room));
@@ -216,7 +224,7 @@ bool NeuroBridge::writeRoomSnapshot(const Common::String &base, int room, int wi
 			NeuroWorld world;
 			collectWorld(world);
 			Common::JSONArray places;
-			for (uint i = _data.spots(room).size(); i < world.spots.size(); i++)
+			for (uint i = world.authoredSpotCount; i < world.spots.size(); i++)
 				places.push_back(new Common::JSONValue(world.spots[i].name));
 			root.setVal("ground_between", new Common::JSONValue(between));
 			root.setVal("ground_places", new Common::JSONValue(places));

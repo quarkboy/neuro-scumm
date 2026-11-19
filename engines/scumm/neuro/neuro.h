@@ -103,6 +103,12 @@ struct NeuroCommand {
 
 	/** When set, the command is carried out as these clicks, as a player would. */
 	Common::Array<NeuroClick> clicks;
+
+	bool sameAction(const NeuroCommand &other) const {
+		return objects[0] && walk == other.walk && verb == other.verb &&
+			objects[0] == other.objects[0] && objects[1] == other.objects[1] &&
+			(!isSpot || (x == other.x && y == other.y));
+	}
 };
 
 /** A prompt can arrive while the previous action's outcome is still settling. */
@@ -147,13 +153,17 @@ struct NeuroInteraction {
 
 	class Outcome {
 	public:
-		void begin(int room, uint32 now) {
+		void begin(int room, uint32 now, const NeuroCommand &command) {
+			_command = command;
 			_room = room;
 			_startedAt = now;
 			_pending = true;
 			_reported = _spoken = false;
 		}
 		bool pending() const { return _pending; }
+		bool running(int room, const NeuroCommand &command) const {
+			return _pending && _room == room && _command.sameAction(command);
+		}
 		bool reported() const { return _reported; }
 		bool spoken() const { return _spoken; }
 		void report() { _reported = _pending; }
@@ -162,9 +172,10 @@ struct NeuroInteraction {
 		void dispatchedAt(uint32 now) { _startedAt = now; }
 		uint32 age(uint32 now) const { return now - _startedAt; }
 		bool leftRoom(int room) const { return _pending && _room != room; }
-		void enteredRoom(int room) { _room = room; }
+		void enteredRoom(int room) { _room = room; _command = NeuroCommand(); }
 
 	private:
+		NeuroCommand _command;
 		int _room = 0;
 		uint32 _startedAt = 0;
 		bool _pending = false, _reported = false, _spoken = false;
@@ -184,6 +195,7 @@ struct NeuroWorld {
 
 	/** Places without an object that can still be walked to; id is -(index + 1). */
 	NeuroThingList spots;
+	uint authoredSpotCount = 0;
 	Common::Array<Common::Point> spotPositions;
 	Common::Array<bool> spotTwice;
 
@@ -341,6 +353,8 @@ private:
 	bool resolvePreset(const NeuroWorld &world, const Common::String &preset, NeuroCommand &command);
 	bool passageTo(int room, int target, NeuroCommand &passage) const;
 	void runCommand(const NeuroCommand &command);
+	bool canDispatchSentence() const;
+	void dispatchSentence(int verb, int first, int second);
 
 	// Follow-up steps, each run as soon as the one before has played out
 	bool _queueSawBusy = false;
@@ -354,7 +368,7 @@ private:
 	int _walkTarget = 0;
 	// What her last action was aimed at; only these are worth a note when their look changes
 	int _lastTargets[2] = {0, 0};
-	void beginAction();
+	void beginAction(const NeuroCommand &command = NeuroCommand());
 	void finishAction(const NeuroWorld &world);
 
 	// --- Conversations and prompts (dialogue.cpp)

@@ -237,6 +237,10 @@ Common::String NeuroData::roomPrompt(int room) const {
 	return roomGet(room, "prompt");
 }
 
+int NeuroData::roomPromptScript(int room) const {
+	return atoi(roomGet(room, "prompt_script").c_str());
+}
+
 Common::String NeuroData::verbName(int verb) const {
 	return get("verbs", Common::String::format("%d", verb));
 }
@@ -340,7 +344,27 @@ const NeuroData::Places &NeuroData::places(int room) const {
 			if (sscanf(kv.value.c_str(), "%d,%d", &spot.x, &spot.y) != 2)
 				continue;
 			spot.effect = text;
-			spot.twice = kv.value.substr(0, bar).contains("twice");
+			spot.twice = false;
+			Common::StringTokenizer fields(kv.value.substr(0, bar));
+			fields.nextToken(); // X,Y
+			while (!fields.empty()) {
+				const Common::String option = fields.nextToken();
+				if (option == "twice")
+					spot.twice = true;
+				else if (option == "script" || option == "bit") {
+					int &number = option == "script" ? spot.script : spot.bit;
+					const int minimum = option == "script" ? 1 : 0;
+					const int maximum = option == "script" ? 65535 : 0x7fff;
+					char trailing;
+					if (fields.empty() || sscanf(fields.nextToken().c_str(), "%d%c", &number, &trailing) != 1 ||
+							number < minimum || number > maximum) {
+						spot.script = -1;
+						break;
+					}
+				}
+			}
+			if (spot.script < 0)
+				continue;
 			_places.spots.push_back(spot);
 		} else if (kv.key.hasPrefix("standing.") && bar != Common::String::npos) {
 			Common::StringTokenizer boxes(kv.value.substr(0, bar), " ,");

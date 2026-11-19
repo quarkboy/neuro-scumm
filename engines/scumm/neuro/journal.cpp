@@ -26,7 +26,7 @@
 
 namespace Scumm {
 
-static const uint kMaxNotes = 12;
+static const uint kNotesPerPage = 10;
 static const uint kMaxNoteLength = 300;
 
 static int readBit(const Common::INIFile::Section &section, const char *key) {
@@ -103,6 +103,7 @@ void NeuroJournal::reset() {
 		clue.retired = false;
 	}
 	_notes.clear();
+	_lastNoteId = 0;
 	_news.clear();
 	memos.clear();
 }
@@ -252,7 +253,7 @@ Common::String NeuroJournal::takeNews() {
 	return news;
 }
 
-void NeuroJournal::addNote(const Common::String &text) {
+static Common::String noteText(const Common::String &text) {
 	Common::String note = text;
 	note.trim();
 	if (note.size() > kMaxNoteLength)
@@ -261,11 +262,35 @@ void NeuroJournal::addNote(const Common::String &text) {
 		if (note[i] == '\n' || note[i] == '\r')
 			note.setChar(' ', i);
 	}
-	if (note.empty())
-		return;
-	_notes.push_back(note);
-	while (_notes.size() > kMaxNotes)
-		_notes.remove_at(0);
+	return note;
+}
+
+void NeuroJournal::addNote(const Common::String &text) {
+	_notes.push_back({++_lastNoteId, noteText(text)});
+}
+
+bool NeuroJournal::editNote(uint id, const Common::String &text) {
+	for (auto &note : _notes) {
+		if (note.id == id) {
+			note.text = noteText(text);
+			return true;
+		}
+	}
+	return false;
+}
+
+bool NeuroJournal::deleteNote(uint id) {
+	for (uint i = 0; i < _notes.size(); i++) {
+		if (_notes[i].id == id) {
+			_notes.remove_at(i);
+			return true;
+		}
+	}
+	return false;
+}
+
+uint NeuroJournal::notesPages() const {
+	return _notes.empty() ? 1 : 1 + (_notes.size() - 1) / kNotesPerPage;
 }
 
 Common::StringArray NeuroJournal::panelGoals() const {
@@ -315,7 +340,7 @@ Common::String NeuroJournal::describeClues(const Common::String &which) const {
 	return any ? text : text + "None noted yet.\n";
 }
 
-Common::String NeuroJournal::describe(bool withCompleted) const {
+Common::String NeuroJournal::describe(bool withCompleted, uint notesPage) const {
 	Common::String active, done;
 	uint hiddenClues = 0;
 	for (const auto &goal : _goals) {
@@ -341,10 +366,18 @@ Common::String NeuroJournal::describe(bool withCompleted) const {
 	// Finished goals are left out unless asked for: seeing them invites doing them again
 	if (withCompleted)
 		text += "\nCompleted goals:\n" + (done.empty() ? Common::String("- none yet\n") : done);
-	if (!_notes.empty()) {
-		text += "\nYour notes:\n";
-		for (const auto &note : _notes)
-			text += "- " + note + "\n";
+	if (!_notes.empty() && notesPage >= 1 && notesPage <= notesPages()) {
+		text += "\nYour own notes (newest first). Plans may already be done. Use edit_note or delete_note with the note ID to keep them current.\n";
+		const uint first = (notesPage - 1) * kNotesPerPage;
+		const uint count = MIN<uint>(kNotesPerPage, _notes.size() - first);
+		for (uint i = 0; i < count; i++) {
+			const Note &note = _notes[_notes.size() - 1 - first - i];
+			text += Common::String::format("- [#%u] %s\n", note.id, note.text.c_str());
+		}
+		text += Common::String::format("Showing %u-%u of %u notes.", first + 1, first + count, _notes.size());
+		if (notesPage < notesPages())
+			text += Common::String::format(" Use notes_page: %u for older notes.", notesPage + 1);
+		text += "\n";
 	}
 	return text;
 }
@@ -363,8 +396,9 @@ void NeuroJournal::save(const Common::String &fileName) const {
 		if (clue.retired)
 			file->writeString("retired " + clue.id + "\n");
 	}
+	file->writeString(Common::String::format("last_note_id %u\n", _lastNoteId));
 	for (const auto &note : _notes)
-		file->writeString("note " + note + "\n");
+		file->writeString(Common::String::format("note_id %u %s\n", note.id, note.text.c_str()));
 	for (const auto &memo : memos)
 		file->writeString("memo " + memo._key + " " + memo._value + "\n");
 	file->finalize();
@@ -392,7 +426,17 @@ void NeuroJournal::load(const Common::String &fileName) {
 				}
 			}
 		} else if (line.hasPrefix("note ")) {
-			_notes.push_back(line.substr(5));
+			// Older sidecars stored personal notes in creation order without IDs.
+			_notes.push_back({++_lastNoteId, line.substr(5)});
+		} else if (line.hasPrefix("last_note_id ")) {
+			_lastNoteId = MAX(_lastNoteId, (uint)strtoul(line.c_str() + 13, nullptr, 10));
+		} else if (line.hasPrefix("note_id ")) {
+			char *end;
+			const uint id = strtoul(line.c_str() + 8, &end, 10);
+			if (id && *end == ' ') {
+				_notes.push_back({id, end + 1});
+				_lastNoteId = MAX(_lastNoteId, id);
+			}
 		} else if (line.hasPrefix("memo ")) {
 			const size_t space = line.findFirstOf(' ', 5);
 			if (space != Common::String::npos)

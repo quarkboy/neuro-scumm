@@ -320,8 +320,12 @@ bool NeuroBridge::groundBetween(int left, int right, Common::Point &point) const
 void NeuroBridge::collectSpots(NeuroWorld &world) {
 	const Common::Array<NeuroData::Spot> &spots = _data.spots(world.room);
 	for (uint i = 0; i < spots.size(); i++) {
+		if (spots[i].script && !_vm->isScriptRunning(spots[i].script))
+			continue;
+		if (spots[i].bit >= 0 && !readDataVar(0x8000 | spots[i].bit))
+			continue;
 		NeuroThing thing;
-		thing.id = -(int)(i + 1);
+		thing.id = -(int)world.spots.size() - 1;
 		thing.x = spots[i].x;
 		thing.name = spots[i].name;
 		thing.note = spots[i].effect;
@@ -330,6 +334,7 @@ void NeuroBridge::collectSpots(NeuroWorld &world) {
 		world.spotTwice.push_back(spots[i].twice);
 	}
 
+	world.authoredSpotCount = world.spots.size();
 	const Common::String between = _data.groundBetween(world.room);
 	const NeuroThing *previous = nullptr;
 	for (const auto &object : world.objects) {
