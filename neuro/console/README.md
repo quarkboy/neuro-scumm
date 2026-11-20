@@ -31,7 +31,7 @@ everything through in both directions. That is where the live view comes from, a
 console can talk to both sides without a restart:
 
 - **To the game:** saving and loading, and the settings marked "changes at once" (her pace, the
-  sound volumes, and the column's side, title, chat box and parts).
+  sound volumes, fast mode, and the column’s side, title, chat box and parts). **She may skip cutscenes** controls whether `skip_cutscene` is offered. Fast mode separately controls how quickly the game runs.
 - **To Neuro:** your messages, sent as context from the game and marked with your name.
 - **Taking her controls away** unregisters her actions with the server, as the SDK prescribes
   for actions that are not available; giving them back registers them again and repeats the
@@ -41,6 +41,8 @@ The game to play is chosen in the top bar, beside "Start the game": every folder
 `neuro/games` with a `game.json` is offered. The savegames listed and the game folder
 follow the choice. The game folder and the column's title can be left empty, to use the
 folder Steam installs that game to and "Neuro plays" with the game's name.
+
+A save slot has a ScummVM save and a matching journal file in the selected save directory. Keep both when moving a checkpoint. The journal holds goals, learned and retired clues, and personal notes. A server such as Gary manages its own conversation history separately.
 
 Settings that ScummVM only reads when it starts (the game, the game folder, the window's size, whether it
 has a column, the way dialogue is sent) apply the next time the game is started. If the Neuro

@@ -1,13 +1,12 @@
 # Games
 
-One folder per game. The module in `engines/scumm/neuro/` knows nothing about any
-particular game; what it needs to be told is here.
+One folder per game. The bridge reads room layouts, object IDs, character names, puzzle conditions and prose from these folders. Engine-version and platform compatibility checks live in `engines/scumm/neuro/`.
 
 A game's folder holds:
 
 - `descriptions.ini`: the description file. Its `[game]` section names the game and says
   what the module cannot work out about its screen (the verb slot of the sentence line,
-  the inventory's buttons and variables, the verbs for walking, giving and opening), and
+  the inventory’s buttons and variables, the verbs for walking, giving and opening, and the optional numeric `pickup_verb` that prevents picking up a carried object again). The `[inventory]` section can label a carried object by ID and current game name.
   `[synonyms]` lists other words for its verbs, `[verbs]` names verbs the game
   draws as pictures, and `[press.*]` sections press keys for her on a screen that
   only takes the keyboard (a copy protection question). The rest is the rooms, goals, clues and

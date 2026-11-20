@@ -4,22 +4,24 @@ This is a fork of [ScummVM](https://www.scummvm.org/) that lets [Neuro-sama](htt
 
 It is an unofficial fan project. It is not affiliated with the ScummVM team, Vedal, or the owners of Monkey Island, and it contains no game data: you need your own copy of the game.
 
-**Status: playable from start to finish.** A stand-in language model has played the whole game through it, from a new game to the end credits, with stops for fixes along the way. Part One's descriptions have been reviewed by a person; the other three parts are a first pass. It is built for Linux and Windows; nearly all of the testing so far has been on Linux under WSL. Neuro herself has not played it. What is left is in [`neuro/ROADMAP.md`](neuro/ROADMAP.md).
+**Release 0.9.3 is playable from the opening to the credits.** Stand-in models have completed all four parts, including a Gemini Neon run without puzzle hints. All 85 numbered room sections in the Monkey Island 1 annotations are marked checked. Neuro-sama herself has yet to play it. [Download the Windows or Linux release](https://github.com/quarkboy/neuro-scumm/releases/tag/neuro-v0.9.3).
 
-**Other games.** The module is not tied to Monkey Island: everything about a game lives in a folder of its own, and it starts for any SCUMM game of versions 1 to 6 that has a verb bar. *Monkey Island 2* is set up as a second game and starts and plays, but its descriptions are not written. See [Other SCUMM games](#other-scumm-games) below.
+**Other games.** Monkey Island 2 starts and plays using its own game folder. Its first screen has annotations, and most of its rooms still need writing. See [Other SCUMM games](#other-scumm-games) for the supported engine versions and tested games.
 
 ## How it works
 
 Neuro cannot see the screen, so everything goes through text.
 
 - **What she is told.** A description of each room and the things, people and exits in it; every line of dialogue, with who said it; text that is only drawn on the screen, such as a map or a note; and what changed as a result of her actions.
-- **What she can do.** `interact` uses any of the game's verbs on anything in the room or her inventory, and also walks. `choose_dialogue` picks a line in a conversation. `answer` replies to a quick yes/no question. `read_journal` and `add_note` keep track of goals and of the clues she has come across. `wait` lets time pass, and `skip_cutscene` skips a scene the way the Escape key does.
-- **Timing.** Moments that need a fast reaction (slipping past the cook, for example) are sent as a high-priority question, timed to her reaction speed. An action can also carry a second step that runs the instant the first one ends.
-- **Not talking over the game.** A line's end is reported together with the start of the next one when lines follow each other closely, and a line that the script follows straight away with another is marked as not to be replied to, so she is not handed the short gaps inside a conversation.
-- **On screen.** The mouse pointer travels to each thing she uses, the way a player's would, so viewers can follow what she is doing.
-- **Hand-written text.** Room descriptions, names for characters the game leaves unnamed, goals, clues and timed questions live in a plain text file, [`neuro/games/monkey1/descriptions.ini`](neuro/games/monkey1/descriptions.ini). They say what is on screen and what characters have told her, never how to solve a puzzle.
+- **Actions.** `interact` uses a verb on one or two targets and can queue a follow-up. `check_inventory` reads the current player's inventory slots. `choose_dialogue` takes the menu number and option together. A delayed reply to an earlier menu cannot select a line from the new one.
+- **Journal.** `read_journal` shows goals, learned clues and personal notes. Neuro can add, edit and delete notes by ID, or read older notes in pages of ten. The journal is saved alongside each game slot.
+- **Timing.** `answer` handles timed yes/no prompts, such as slipping past the cook. `wait` lets time pass. The operator can enable or disable `skip_cutscene` during play.
+- **Speech.** In speech mode the bridge sends `speech/ended` when a spoken line finishes. Lines printed a piece at a time are briefly held so Neuro hears the assembled text once.
 
-The Neuro code is in [`engines/scumm/neuro/`](engines/scumm/neuro/) and knows nothing about any one game; everything about Monkey Island is in [`neuro/games/monkey1/`](neuro/games/monkey1/README.md). The design is explained in [`neuro/PLAN.md`](neuro/PLAN.md).
+- **On screen.** The pointer travels to the target of each action. The optional stream column shows the location, current action, goals, inventory and recent moves.
+- **Hand-written text.** Room descriptions, names for characters the game leaves unnamed, goals, clues and timed questions live in a plain text file, [`neuro/games/monkey1/descriptions.ini`](neuro/games/monkey1/descriptions.ini). Permanent scenery belongs in the base description. State-dependent notes, visible objects, and alerts convey what changed. Journal clues record relevant observations and dialogue.
+
+The Neuro code is in [`engines/scumm/neuro/`](engines/scumm/neuro/) and reads room, object, dialogue and puzzle rules from the game folder. The Monkey Island annotations are in [`neuro/games/monkey1/`](neuro/games/monkey1/README.md). The design is explained in [`neuro/PLAN.md`](neuro/PLAN.md).
 
 ## Quick start
 
@@ -39,7 +41,7 @@ The rest of this page is about building it yourself and running it without the c
 - A C++ compiler, `make`, SDL2 and libcurl, with their development packages.
 - The game and a server, as above.
 
-The steps below are for Linux. The Windows packages are built with Visual Studio and vcpkg by [`.github/workflows/ci.yml`](.github/workflows/ci.yml), which is the reference for doing the same by hand.
+The steps below are for Linux. The Windows packages are built with Visual Studio 2022 and vcpkg by [`.github/workflows/ci.yml`](.github/workflows/ci.yml), which is the reference for doing the same by hand.
 
 ## Building
 
@@ -95,7 +97,7 @@ The console works from a source checkout too: `python3 neuro/console/console.py 
 | `NEURO_DEBUG_ACTIONS` | off | `operator` lets the server side save, load, read the status and change settings with unregistered `debug_` actions (the console sets this for itself and passes none on from the server). `all` adds the developer's ones, which can change the game's state. |
 | `NEURO_PANEL_HIDE` | unset | Parts of the column to leave out, separated by commas: `title`, `chat`, `location`, `now`, `goals`, `inventory`, `recent`. |
 
-Each setting can also be given as a ScummVM config key of the same name in lower case, for example `neuro_idle_force_seconds`. The one exception is the server URL, whose key is `neuro_ws_url`. An environment variable wins over the config key.
+For engine settings, an environment variable takes precedence over the corresponding lowercase ScummVM config key (for example, `neuro_idle_force_seconds`). The URL uses `neuro_ws_url`. The shell launcher reads `NEURO_GAME`, `GAME_DIR`, `BUILD_DIR` and `NEURO_SAVE_DIR` itself.
 
 In the game window, Space pauses the game until it is pressed again.
 
@@ -106,7 +108,7 @@ Everything the module needs to know about a game is in a folder under [`neuro/ga
 | Games | State |
 |---|---|
 | The Secret of Monkey Island (Special Edition, classic mode) | Played from start to finish |
-| Monkey Island 2 (Special Edition, classic mode) | Starts and plays from its folder; its descriptions, goals and clues are not written |
+| Monkey Island 2 (Special Edition, classic mode) | Starts and plays with first-screen annotations. Most room descriptions, goals and clues still need writing |
 | Other games of SCUMM versions 4 and 5 (Monkey Island 1 on floppy or CD, Fate of Atlantis) | Same engine code; each needs a folder. Not tried |
 | Day of the Tentacle, Indiana Jones and the Last Crusade, Maniac Mansion, Zak McKracken | The differences known from reading the engine are handled. Never run |
 | Sam & Max, Loom, Full Throttle, The Dig, The Curse of Monkey Island, the Humongous Entertainment games | Not supported; the module stays off |
@@ -127,7 +129,7 @@ Outside the Neuro module there are fixes for the Special Edition's audio, and th
 
 Like ScummVM, this fork is licensed under the GNU General Public License, version 3 or later; see [COPYING](COPYING). ScummVM is the work of the ScummVM team. The Neuro SDK is by Vedal AI.
 
-The Neuro module was written with the help of an AI coding assistant (Claude Code), which is recorded in the commit history. It is not intended for submission to the ScummVM project.
+The Neuro module was developed with assistance from Claude Code and Codex. It is not intended for submission to the ScummVM project.
 
 ---
 

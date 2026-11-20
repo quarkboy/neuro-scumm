@@ -14,6 +14,10 @@ These are in `descriptions.ini` (`[game]`) and `game.json` (`verbs`), where the 
 the tools read them.
 
 
+### The general store
+
+The sword (388) and shovel (396) both run `pickupObject` unconditionally for verb 9. A second pickup on the carried object can create another inventory slot for the same ID. The game folder sets `pickup_verb = 9` so the bridge rejects that command. It preserves the actual inventory counts in older saves.
+
 ### The forest
 - It is 20 screens (pseudo-rooms 201 to 220 of room 58) joined by a fixed table; nothing is random. Each screen has up to three exits: the left edge, the right edge, and a gap in the trees at the back.
 - Going past the first screen needs the map in the inventory, the storekeeper walking ahead, or having been deeper once before.

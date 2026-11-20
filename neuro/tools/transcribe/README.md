@@ -52,13 +52,12 @@ instructions that carry text and knows nothing about when they run.
 python3 neuro/tools/transcribe/review.py ../extract/monkey1 neuro/games/monkey1/descriptions.ini
 ```
 
-Opens a page on http://127.0.0.1:8070/ with each room's picture, its objects outlined
-(hover a row to find it in the picture), and the description file's text for it. Edit
+Run the command from the repository root, then open http://127.0.0.1:8070/ in a browser. An optional third argument changes the port. The page shows the capture beside its editable description. Hover over an object row to highlight its outline in the picture. Edit
 the room name, description, object notes and actor names, set the review status
 (draft, needs work, checked), and save: the change goes straight into the description
 file, keeping its comments and everything the page does not edit.
 
-`status` and `review_note` are for reviewers only; the game ignores them.
+`status` and `review_note` are for reviewers. The bridge reads the description file when ScummVM starts, so restart the game to play with saved changes.
 
 ### Review a room in more than one state
 
@@ -85,6 +84,8 @@ making a new capture so the engine records the variable for preview and
 Choose **+ running script** to show a sentence while a game script is active.
 On the Mêlée Island map, `scenery.script.202` describes the roaming pirates.
 Captures made after saving the rule record whether the script was running.
+
+For a carried item, an inventory label applies across rooms and matches both the object ID and the current game name. For example, `[inventory]` with `name.164.cereal = box of cereal` labels the cereal while it has that name. Edit inventory labels in **Alerts and rules** or on a room row that offers the inventory label field.
 
 In a scrolling room, the capture selector shows which part of the room is in view.
 In room 39, compare **Crossing 1**, **Crossing 2**, and **Crossing 3** to follow
@@ -134,9 +135,7 @@ The page has four tabs:
 Every section has a box for its comment in the file. A comment saved from the page is
 written above the section.
 
-The page writes every kind of section and key the game reads (formats:
-`engines/scumm/neuro/journal.h` and `data.h`). It does not reorder the file, rename a
-section, or edit the headings between groups of sections.
+For the full INI format, see [data.h](../../../engines/scumm/neuro/data.h) and [journal.h](../../../engines/scumm/neuro/journal.h). Some engine settings, including `[game] pickup_verb`, are edited directly in the INI. Saving reviewer edits preserves those keys.
 
 ## Reading the game's logic: `disasm.py`
 

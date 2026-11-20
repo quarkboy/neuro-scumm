@@ -17,7 +17,8 @@ on one side, a column about what she is doing on the other.
 Savegames go to the "saves" folder here. Settings are kept in
 neuro\console\console.local.json.
 
-Without the console, the game can be started by hand: see README.md.
+Keep the matching game save and journal together when copying a save slot.
+For source builds and the bridge settings, see README.md.
 
 This is free software under the GNU General Public License, version 3 or
 later (COPYING). The source code for this build:

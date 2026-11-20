@@ -78,10 +78,12 @@ neuro/
   console/               the operator's web console
   tools/                 extraction, review page and test scripts
 ```
-Changes to existing ScummVM files are limited to short hooks behind `#ifdef ENABLE_NEURO`, plus a few fixes to the Special Edition's audio, so rebasing on upstream stays cheap.
+SCUMM engine hooks forward events such as an actor changing pose, a line ending, or a save being loaded to the bridge. The bridge reads the meaning of those events from the selected game’s annotations. For example, a moving-target encounter specifies its actor and scripts in the room’s `walk_encounter` rule. New puzzle cues belong in the game folder.
+
+The engine still needs version and platform checks to interpret SCUMM data, including the FM Towns Indy3 bit-variable format. Special Edition audio fixes live in the SCUMM audio code, and the stream panel uses the SDL software renderer.
 
 ### Actions
-Registered once at startup:
+The bridge registers these actions at startup. The offered verbs and the operator’s cutscene setting can change during play.
 
 | Action | What it does |
 |---|---|
@@ -108,10 +110,11 @@ How commands are carried out:
 
 ### The description file
 The game has object names but no text describing a room. The game's `descriptions.ini` (`neuro/games/monkey1/`) supplies:
-- `[room.*]`: a name and a few sentences per room, saying only what is visible on screen, plus names and notes for individual things where the picture carries meaning the name does not.
+- `[roomN]` (for example, `[room40]`) holds permanent scenery, room-specific labels and rules. Object states, variables and running scripts supply conditional descriptions. State-specific notes can appear directly beside a target in the Things list.
+- `[inventory]` can label a carried object by ID and its current in-game name. A later name change can therefore restore the game’s own label.
 - Names for characters the game leaves unnamed, and speaker overrides for lines that would otherwise be credited to the wrong voice.
 - `[goal.*]` and `[clue.*]`: journal entries, revealed by lines heard, items held and rooms entered. A clue records only what a character said or what she saw.
-- `[alert.*]`: timed questions (see below).
+- `[alert.*]` entries announce events or offer a timed action. They can depend on the current scene, including a combination of conditions.
 - `[watch.*]` and `[states]`: things whose change of look carries information, with a label per state.
 - `[game]` and `[synonyms]`: the game's name, who she plays, and what the module cannot work out about the game's screen (which verb slot is the sentence line, how the inventory's buttons are numbered, the verbs for walking, giving and opening).
 
@@ -124,7 +127,7 @@ Neuro reacts in a fraction of a second; a stand-in language model takes a few se
 - With remastered speech on, a line lasts as long as its audio.
 - She can act whenever the player has control. A force goes out at once for a dialogue choice, and after `NEURO_IDLE_FORCE_SECONDS` when nothing is happening.
 - The bridge owns one outstanding prompt and tracks the outcome of the action in progress. Reading the journal, adding a note, waiting, or sending an invalid answer leaves the prompt open. An accepted gameplay action settles it. Changing rooms or reaching the deadline withdraws it and releases any held timer.
-- The bridge withdraws the prompted action and registers it again when the prompt ends. The console uses that signal to clear the displayed question and its replay cache. Reconnecting the console to the upstream server replays the current prompt. Loading a save or losing the game's connection discards pending input.
+- An accepted dialogue choice normally leaves `choose_dialogue` registered. The console uses the action result to retire the answered prompt. When the bridge withdraws an outstanding prompt, it can unregister and restore the prompted action. The console replays an outstanding prompt after reconnecting. Loading a save or losing the game connection clears pending input.
 - A room change cancels clicks and follow-up movements tied to the old room. A named follow-up is resolved again when control returns in the new room.
 
 ## Risks

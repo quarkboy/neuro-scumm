@@ -4,8 +4,8 @@ Where the project stands and what is left. For how it is built, see [PLAN.md](PL
 
 ## Where it stands
 
-The module plays one game, *The Secret of Monkey Island*; how far that has got is in
-[games/monkey1/STATUS.md](games/monkey1/STATUS.md). Everything about that game is in its
+*The Secret of Monkey Island* has full-game playthrough coverage. See its
+[playtest and review status](games/monkey1/STATUS.md). Everything about that game is in its
 folder under [`games/`](games/README.md), and the module itself is meant to work for other
 SCUMM games given a folder of their own.
 
@@ -17,13 +17,13 @@ Built so far:
 
 ## Next
 
-1. **Other SCUMM games.** Checks for the versions of the engine that differ (Day of the Tentacle, Indiana Jones and the Last Crusade, Maniac Mansion, Zak McKracken), then a second game, Monkey Island 2, as the proof.
+1. **Other SCUMM games.** Monkey Island 2 already starts and plays. Its remaining work is room prose, journal content and testing. The other supported SCUMM versions still need playtests.
 2. **The console.** Still to come: pausing the game itself, acting on her behalf (answering a question, picking a line), and restarting the game if it crashes.
-3. **Review of Monkey Island's Parts Two, Three and Four**, and an unaided full run.
+3. **Monkey Island playtesting.** All four parts have been reviewed and completed. Future runs can exercise alternate routes, recovery from failed actions and the pacing of timed questions.
 
 ## Known gaps
 
-- She sometimes picks a line to say before the game has asked for one, in the silent gaps between spoken lines.
+- Stand-ins sometimes answer a dialogue menu after it has changed. The menu number prevents an old answer from selecting a new line.
 - The games without a verb bar (Full Throttle, The Curse of Monkey Island, Sam & Max, The Dig, Loom) need another way to act and are not planned yet.
 
 ## Ideas not started

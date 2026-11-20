@@ -1,27 +1,14 @@
 # The Secret of Monkey Island: status
 
-A stand-in language model has played the game from a new game to the end credits through
-the integration. That run needed stops for fixes along the way; an unaided run from start
-to finish has not been done yet.
+Stand-in models have reached the end credits. Terra completed an early run with stops for fixes. Neon completed all four parts without a puzzle hint. Neuro-sama has yet to play the game.
 
-## What is written
-- Descriptions for all 81 rooms. Part One has been reviewed by a person; Parts Two, Three
-  and Four are a first pass, and their descriptions and clues have not been checked
-  against the game by a person. Comments in `descriptions.ini` mark what is unverified.
-- Text that is only drawn on screen (the treasure map, the recipe, notes and signs) reaches
-  her as text.
-- Things whose look carries information are narrated as they change (the safe handle, the
-  log on the summit of Monkey Island, who is winning a sword fight).
-- The overhead maps, the forest, following the storekeeper, the catacombs and the ghost
-  ship are playable from what she is told.
-- Insult sword fighting: the lines to choose from come with a note of which insults she
-  has not yet heard the comeback to, and which ones only the Sword Master uses.
+## What has been reviewed
 
-## Known gaps
-- Some wording was written from the scripts and not checked against the picture: where the
-  stone flung from the summit lands, the totem gate, the left and right notes in the
-  catacombs.
-- Giving an item to someone who has no reaction scripted still reports "Done.".
-- The question about slipping past the cook goes by timing, not by where he is.
-- A few speakers in Parts Three and Four still come through as "Narrator" or "Stranger".
-- The end credits are sent as text on the screen, line by line.
+- All 85 numbered room sections in `descriptions.ini` are marked checked, including the four forest pseudo-rooms with their own sections. Other forest screens use the shared room resource.
+- Permanent scenery, current object states, inventory labels and cutscene cues are described separately. The pond, forest, catacombs, island maps and ghost ship have been exercised during play.
+- The treasure map, recipe, notes and signs reach the player as text. Sword fights use numbered dialogue menus and report how many insults and comebacks Guybrush has learned.
+- The journal tracks the trials, recruitment, voyage and rescue. Clues can be retired when later events make them obsolete.
+
+## Limits of testing
+
+The reviewer’s checked flag records an editorial pass. Individual capture and script observations still have qualifications in the room review notes. Full playthroughs cover winning routes; alternate puzzle solutions and unusual action sequences have less coverage. Most live testing has been on Linux under WSL.

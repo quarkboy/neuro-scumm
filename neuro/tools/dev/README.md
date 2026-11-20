@@ -26,5 +26,5 @@ are ignored by git.
 - `t.sh shot [NAME]` saves a screenshot as PNG; `t.sh log` prints new bridge traffic;
   `tr.sh` prints a condensed transcript of the whole run.
 - `t.sh stop` stops the game that `t.sh` started, and no other.
-- `goto.sh` has shell functions for walking somewhere and choosing dialogue; source it.
+- Source `goto.sh` to use `goto NAME` and `choose N`. `choose` reads the latest numbered menu from the driver log. When sending `choose_dialogue` directly, supply both fields, for example `{"menu":47,"option":2}` for option 2 on menu 47.
 - `mcp.sh TOOL 'JSON'` calls one of Gary's MCP tools.
