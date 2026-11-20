@@ -268,6 +268,7 @@ void NeuroBridge::updateInteraction() {
 		endPrompt();
 
 	if (_interaction.outcome.leftRoom(room)) {
+		_encounterScript = 0;
 		// Coordinates and in-flight clicks belonged to the old room. A named
 		// follow-up is resolved against the new room when control returns.
 		cancelClicks();
@@ -291,14 +292,18 @@ void NeuroBridge::endPrompt(bool notify) {
 }
 
 void NeuroBridge::cancelQueuedInput() {
+	_encounterScript = 0;
 	cancelClicks();
 	_interaction.queue.clear();
 }
 
 void NeuroBridge::resetInteraction() {
+	_encounterScript = 0;
 	endPrompt();
 	_interaction = NeuroInteraction();
 	_forcedDialogue.clear();
+	_menuLines.clear();
+	_chosenDialogue.clear();
 	_pendingAlert = -1;
 	_openedDoor.clear();
 	cancelClicks();
@@ -413,7 +418,7 @@ void NeuroBridge::sendForce(const Common::String &state, const Common::String &q
 	_interaction.prompt.open(actionName, _vm->_currentRoom, g_system->getMillis(), question);
 }
 
-void NeuroBridge::sendActionResult(const Common::String &id, bool success, const Common::String &message) {
+void NeuroBridge::sendActionResult(const Common::String &id, bool success, const Common::String &message, bool completesPrompt) {
 	// Keep what she is told in the order it happened
 	flushDialogue();
 
@@ -423,8 +428,11 @@ void NeuroBridge::sendActionResult(const Common::String &id, bool success, const
 	if (!message.empty())
 		data.setVal("message", new Common::JSONValue(message));
 	send("action/result", &data);
-	if (success && _interaction.prompt.answeredBy(_currentAction))
-		endPrompt();
+	if (success && completesPrompt && _interaction.prompt.answeredBy(_currentAction)) {
+		// A successful dialogue choice completes its force. Keep the reusable
+		// action registered. Only an unanswered, withdrawn force needs cancelling.
+		endPrompt(_interaction.prompt.action() != "choose_dialogue" || _currentAction != "choose_dialogue");
+	}
 }
 
 void NeuroBridge::handleMessage(const Common::String &text) {
@@ -493,12 +501,11 @@ void NeuroBridge::handleAction(const Common::String &id, const Common::String &r
 	_lastActionAt = _lastActivity;
 
 	const NeuroArgs args(data);
-	notePanelAction(name, args);
-
 	if (name == "choose_dialogue") {
 		actionChooseDialogue(id, args);
 		return;
 	}
+	notePanelAction(name, args);
 
 	if (name == "answer") {
 		actionAnswer(id, args);

@@ -54,6 +54,8 @@ struct NeuroThing {
 
 	int state = 0;
 	Common::String name;
+	// Inventory rules use the game's own name even when the displayed name differs.
+	Common::String inventoryGameName;
 
 	/** Extra words for the room listing; not part of the name. */
 	Common::String note;
@@ -116,6 +118,7 @@ struct NeuroInteraction {
 	struct Question {
 		Common::String command, thenCommand;
 		int holdVar = 0, holdValue = 0;
+		int readyAlert = -1;
 	};
 
 	class Prompt {
@@ -202,6 +205,7 @@ struct NeuroWorld {
 	/** Which part of the room the player's character is in, where the description file tells them apart. */
 	Common::String standing;
 	Common::StringArray scenery;
+	Common::HashMap<int, bool> readyAlerts;
 
 	/** The verb area shows lines to say instead of verbs. */
 	bool inDialogue = false;
@@ -294,7 +298,7 @@ private:
 
 	/** Takes ownership of the values in data. */
 	void send(const char *command, const Common::JSONObject *data = nullptr);
-	void sendActionResult(const Common::String &id, bool success, const Common::String &message = Common::String());
+	void sendActionResult(const Common::String &id, bool success, const Common::String &message = Common::String(), bool completesPrompt = true);
 	void sendForce(const Common::String &state, const Common::String &query, const char *actionName, const Common::String &priority = Common::String(),
 		const NeuroInteraction::Question &question = NeuroInteraction::Question());
 	void sendIntro();
@@ -366,6 +370,8 @@ private:
 	// she can carry on at once instead of waiting to be prompted.
 	/** The thing the last command walked to, if it was a walk. */
 	int _walkTarget = 0;
+	int _encounterScript = 0;
+	int _encounterRetries = 0;
 	// What her last action was aimed at; only these are worth a note when their look changes
 	int _lastTargets[2] = {0, 0};
 	void beginAction(const NeuroCommand &command = NeuroCommand());
@@ -376,6 +382,7 @@ private:
 	void actionChooseDialogue(const Common::String &id, const NeuroArgs &args);
 	/** Picks a line on screen; with a real click where the room reads the pointer to see which. */
 	void pickLine(int verb);
+	Common::String dialogueMenu(const Common::String &lines, int room);
 
 	// The game shows a long list of lines a few at a time, with arrows to
 	// scroll it. She is given the whole list, read by scrolling through it,
@@ -401,6 +408,11 @@ private:
 	uint32 _idleForceMs = 0;
 	/** The lines she was last asked to choose from. */
 	Common::String _forcedDialogue;
+	Common::String _menuLines;
+	int _menuRoom = -1;
+	uint32 _menuNumber = 0;
+	Common::String _chosenDialogue;
+	uint32 _chosenDialogueAt = 0;
 	// What she is answering when asked to pick a line
 	Common::String _lastHeard;
 	uint32 _lastHeardAt = 0;
@@ -409,7 +421,8 @@ private:
 	// --- Alerts and watched variables (alerts.cpp)
 
 	void checkAlerts(const NeuroWorld &before, const NeuroWorld &after);
-	void fireAlert(const NeuroData::Alert &alert, const NeuroWorld &world);
+	void collectReadyAlerts(NeuroWorld &world) const;
+	void fireAlert(int index, const NeuroWorld &world);
 	int _pendingAlert = -1;
 	uint32 _pendingAlertDue = 0;
 	// How long she takes from prompt to action; alerts are sent that much early
@@ -417,7 +430,7 @@ private:
 
 	// A yes/no question, and what saying yes does
 	void ask(const Common::String &state, const Common::String &query, const Common::String &command,
-		const Common::String &then, int holdVar = 0, const Common::String &priority = Common::String());
+		const Common::String &then, int holdVar = 0, const Common::String &priority = Common::String(), int readyAlert = -1);
 
 	// Game variables whose rise is worth a sentence, with the value last seen
 	Common::HashMap<int, int> _watched;
@@ -451,7 +464,7 @@ private:
 	// Clicks still to make for the command being carried out, one after another
 	Common::Array<NeuroClick> _clickQueue;
 	void clickAt(const NeuroClick &click);
-	void clickInRoom(int x, int y);
+	void clickInRoom(int x, int y, int follow = 0);
 	void updateClick();
 	/** Finds a point in room coordinates where a click lands on the given object or actor. */
 	bool findClickPoint(int thing, int &x, int &y) const;
@@ -507,7 +520,7 @@ private:
 		kRoomRevisit,    ///< just what is there
 		kRoomStatus      ///< what is there and what she carries, for a reminder
 	};
-	Common::String describeRoom(const NeuroWorld &world, RoomDetail detail) const;
+	Common::String describeRoom(const NeuroWorld &world, RoomDetail detail);
 	/** layoutChanged: things appeared or went. comings: characters arrived or left. */
 	Common::String describeChanges(const NeuroWorld &before, const NeuroWorld &after, bool &layoutChanged, bool &comings);
 	/** Per room: the traffic count when its full description was last sent. */

@@ -20,6 +20,7 @@ import json
 import os
 import re
 import sys
+from threading import Lock
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -30,7 +31,8 @@ PORT = int(sys.argv[3]) if len(sys.argv) > 3 else 8070
 SECTION = re.compile(r"^\s*\[([^\]]+)\]\s*$")
 KEY = re.compile(r"^\s*([^=;#\s][^=]*?)\s*=\s*(.*)$")
 # Sections that are one of a kind, and the prefixes of those that come in numbers
-SINGLE = ("states", "game", "actors", "synonyms")
+SINGLE = ("states", "game", "actors", "synonyms", "inventory")
+INI_LOCK = Lock()
 LISTS = {"goal": "goals", "clue": "clues", "line": "lines", "nudge": "nudges",
          "alert": "alerts", "watch": "watches", "linenote": "linenotes", "press": "presses"}
 SAFE_SECTION = re.compile(r"(room\d+|(%s)\.[\w-]+|%s)" % ("|".join(LISTS), "|".join(SINGLE)))
@@ -97,7 +99,7 @@ def kind_of(section):
     return "room" if re.fullmatch(r"room\d+", section) else section.split(".")[0]
 
 
-def update_section(section, changes, delete=False, blank=(), comment=None):
+def edit_section(blocks, section, changes, delete=False, blank=(), comment=None):
     """Sets keys of one section (None or "" removes one), creating it if needed; or deletes it.
 
     A key named in blank is written with an empty value instead of being removed.
@@ -113,7 +115,6 @@ def update_section(section, changes, delete=False, blank=(), comment=None):
         clean[key] = "" if (not value and key in blank) else (value or None)
     line_for = lambda key, value: f"{key} = {value}".rstrip()
 
-    blocks = read_ini()
     index = next((i for i, (name, _) in enumerate(blocks) if name == section), None)
     if index is None:
         if delete:
@@ -136,7 +137,6 @@ def update_section(section, changes, delete=False, blank=(), comment=None):
             rest = rest[1:]
         blocks[index - 1] = (blocks[index - 1][0], before + rest + tail)
         del blocks[index]
-        write_ini(blocks)
         return
     else:
         own, tail = split_tail(blocks[index])
@@ -165,7 +165,14 @@ def update_section(section, changes, delete=False, blank=(), comment=None):
         own, tail = split_tail(blocks[index])
         end = keys_end(own)
         blocks[index] = (section, [own[0]] + [line for line in own[1:end] if not is_comment(line)] + own[end:] + tail)
-    write_ini(blocks)
+
+def update_section(section, changes, delete=False, blank=(), comment=None, inventory=None):
+    with INI_LOCK:
+        blocks = read_ini()
+        edit_section(blocks, section, changes, delete, blank, comment)
+        if inventory:
+            edit_section(blocks, "inventory", inventory)
+        write_ini(blocks)
 
 
 def journal():
@@ -261,7 +268,7 @@ class Handler(BaseHTTPRequestHandler):
                 # {"section": "clue.flower", "set": {"goal": "idol", ...}, "blank": [...], "comment": "..."}
                 # or {"section": ..., "delete": true}
                 update_section(fields["section"], fields.get("set") or {}, bool(fields.get("delete")),
-                               fields.get("blank") or (), fields.get("comment"))
+                               fields.get("blank") or (), fields.get("comment"), fields.get("inventory"))
             else:
                 self._send(404, b"not found", "text/plain")
                 return

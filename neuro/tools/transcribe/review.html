@@ -164,7 +164,8 @@ const STATUSES = ["", "draft", "needs-work", "checked"];
 const STATUS_LABEL = { "": "not written", draft: "draft", "needs-work": "needs work", checked: "checked" };
 const EGA = ["#000000", "#0000aa", "#00aa00", "#00aaaa", "#aa0000", "#aa00aa", "#aa5500", "#aaaaaa", "#555555", "#5555ff", "#55ff55", "#55ffff", "#ff5555", "#ff55ff", "#ffff55", "#ffffff"];
 const EMPTY_JOURNAL = { goals: [], clues: [], lines: [], nudges: [], alerts: [], watches: [], linenotes: [], rooms: {},
-	states: { keys: {}, comment: "" }, game: { keys: {}, comment: "" }, actors: { keys: {}, comment: "" } };
+	states: { keys: {}, comment: "" }, game: { keys: {}, comment: "" }, actors: { keys: {}, comment: "" },
+	inventory: { keys: {}, comment: "" } };
 let rooms = [], roomById = new Map(), lineRooms = {}, lines = [], journal = EMPTY_JOURNAL;
 let roomIds = [], current = 0, filter = "all", zoom = "fit", showHidden = false, view = "room";
 let lineFilter = { search: "", kind: "say", unattributed: false, marked: false }, openLine = null;
@@ -201,7 +202,7 @@ function flash(text) {
 }
 
 /** A room's section, sorted into the kinds of key the page edits. */
-const ROOM_PLAIN = ["name", "description", "status", "review_note", "prompt", "prompt_script", "layout", "relative", "comings", "passages", "emerge_at", "ground_between", "back_within", "announce_on_show"];
+const ROOM_PLAIN = ["name", "description", "status", "review_note", "prompt", "prompt_script", "layout", "relative", "comings", "passages", "walk_encounter", "emerge_at", "ground_between", "back_within", "announce_on_show"];
 function parseRoom({ keys, comment }) {
 	const ini = { keys, comment, objects: {}, names: {}, actors: {}, scenery: [], voices: [], spots: [], standing: [], other: {} };
 	for (const key of ROOM_PLAIN) ini[key] = keys[key] || "";
@@ -240,6 +241,7 @@ function roomExtras(keys) {
 	add(count(k => k.startsWith("spot.")), "1 place to walk to", "places to walk to");
 	add(count(k => k.startsWith("standing.")), "1 standing place", "standing places");
 	if (keys.passages) out.push("passages");
+	if (keys.walk_encounter) out.push("moving encounter");
 	if (keys.announce_on_show === "yes") out.push("announced on display");
 	if (keys.emerge_at) out.push("same-room exits");
 	if (keys.prompt) out.push("own dialogue prompt");
@@ -536,17 +538,34 @@ function renderRoom() {
 
 	// Things: what the capture found, and anything else the file already mentions
 	const byId = new Map(r.captures.flatMap(c => c.objects.map(o => [String(o.id), o])));
+	const inventoryKeys = journal.inventory.keys;
+	function carriedFields(id) {
+		const prefix = `name.${id}.`;
+		const names = new Map();
+		for (const c of r.captures) {
+			const name = c.objects.find(o => String(o.id) === String(id))?.name;
+			if (name && !/[=\[\]#\r\n]/.test(name)) names.set(name.toLowerCase(), name);
+		}
+		for (const key of Object.keys(inventoryKeys)) {
+			if (key.toLowerCase().startsWith(prefix)) names.set(key.slice(prefix.length).toLowerCase(), key.slice(prefix.length));
+		}
+		return [...names.values()].map(name => {
+			const key = Object.keys(inventoryKeys).find(k => k.toLowerCase() === prefix + name.toLowerCase()) || prefix + name;
+			return el("label", {}, name, el("input", { "data-inventory-key": key, value: inventoryKeys[key] || "", placeholder: "same" }));
+		});
+	}
 	const objectRow = id => {
 		const o = byId.get(String(id)), hidden = ini.names[id] === "";
 		return el("tr", { "data-oid": id, ...rowEvents("o" + id) },
 			el("td", { class: "id" }, id),
 			el("td", { class: "name" }, o ? (o.name || "(no name)") + ` (state ${o.state})` : el("span", { class: "note" }, "not in the capture")),
 			el("td", {}, el("input", { class: "rename", value: ini.names[id] || "", placeholder: "same" })),
+			el("td", {}, ...carriedFields(id)),
 			el("td", { class: "tick" }, el("input", { type: "checkbox", class: "hide", checked: hidden, title: "Leave this thing out of what she is told" })),
 			el("td", {}, el("input", { id: "o" + id, class: "notefield", value: ini.objects[id] || "", placeholder: "note after the name" })));
 	};
 	const objectIds = [...new Set([...byId.keys(), ...Object.keys(ini.objects), ...Object.keys(ini.names)])].sort((a, b) => a - b);
-	const objectTable = el("table", {}, el("tr", {}, el("th", {}, "id"), el("th", {}, "in the game"), el("th", {}, "call it"), el("th", {}, "hide"), el("th", {}, "note")), ...objectIds.map(objectRow));
+	const objectTable = el("table", {}, el("tr", {}, el("th", {}, "id"), el("th", {}, "in the game"), el("th", {}, "call it"), el("th", {}, "Call it this while carried, in any room"), el("th", {}, "hide"), el("th", {}, "note")), ...objectIds.map(objectRow));
 	const captured = new Map(r.captures.flatMap(c => c.actors.map(a => [String(a.id), a])));
 	const actorRow = id => {
 		const a = captured.get(String(id)), hidden = id in ini.actors && ini.actors[id] === "";
@@ -614,7 +633,7 @@ function renderRoom() {
 		group("Voices", ini.voices.length, el("div", { class: "help" }, "Who is speaking when text of a colour appears: with no actor (a dog in the scenery, someone off screen), or from one actor who stands in for several people."), voices),
 		group("Places to walk to", ini.spots.length, el("div", { class: "help" }, "Places with no object that she can walk to by name. They show as green diamonds in the picture."), spots),
 		group("Where Guybrush stands", ini.standing.length, el("div", { class: "help" }, "For a room with parts that do not connect on foot. She is told the text while he stands in one of the walk boxes, and again when he reaches another part."), standing),
-		group("How the room behaves", (ini.prompt ? 1 : 0) + (ini.layout ? 1 : 0) + (ini.relative ? 1 : 0) + (ini.comings ? 1 : 0) + (ini.passages ? 1 : 0) + (ini.emerge_at ? 1 : 0) + (ini.ground_between ? 1 : 0) + (ini.announce_on_show === "yes" ? 1 : 0),
+		group("How the room behaves", (ini.prompt ? 1 : 0) + (ini.layout ? 1 : 0) + (ini.relative ? 1 : 0) + (ini.comings ? 1 : 0) + (ini.passages ? 1 : 0) + (ini.walk_encounter ? 1 : 0) + (ini.emerge_at ? 1 : 0) + (ini.ground_between ? 1 : 0) + (ini.announce_on_show === "yes" ? 1 : 0),
 			field("prompt", "What she is asked when picking a line here (blank: \"Pick a line to say.\")", "textarea", "short"),
 			field("prompt_script", "Use this prompt only while game script number (leave blank for all dialogue) is running"),
 			check("layout", "shifting", "The room is redrawn as a new place without being left; list it afresh when things change"),
@@ -622,7 +641,8 @@ function renderRoom() {
 			field("ground_between", "Offer walkable ground between adjacent things named"),
 			field("back_within", "Openings at the back (distance followed by object IDs)"),
 			field("emerge_at", "Report when the game places the player at one of these same-room exits (object IDs)"),
-			check("relative", "yes", "Label each thing as left or right of Guybrush. Label a listed opening as “back” when Guybrush is within the configured distance."),
+			field("walk_encounter", "Retry walking to a moving actor until the encounter starts (actor ID, input script, active script)"),
+			check("relative", "yes", "Label things and places to walk to by their position relative to Guybrush. Label a listed opening as “back” when Guybrush is within the configured distance."),
 			check("comings", "quiet", "Characters wander in and out all the time here; do not report each one"),
 			el("label", {}, "Passages: things that bring a part of a wide room into view when walked to", passages), passageHint),
 		alerts.length ? el("div", {}, el("h3", {}, "Alerts in this room"), ...alerts.map(a => el("div", { class: "roomrow", onclick: () => { openFolds.add("alert." + a.id); view = "other"; render(); } },
@@ -638,7 +658,8 @@ function renderRoom() {
 			row.classList.toggle("hidden", !!o?.untouchable);
 			row.cells[1].textContent = o ? (o.name || "(no name)") + ` (state ${o.state})` : "Absent from this capture";
 			row.hidden = !showHidden && !row.dataset.manual && !(o?.name && !o.untouchable || id in ini.objects || id in ini.names ||
-				row.querySelector(".rename").value || row.querySelector(".notefield").value || row.querySelector(".hide").checked);
+				row.querySelector(".rename").value || row.querySelector(".notefield").value || row.querySelector(".hide").checked ||
+				[...row.querySelectorAll("[data-inventory-key]")].some(input => input.value.trim()));
 		}
 		for (const row of actorTable.querySelectorAll("[data-aid]")) {
 			const a = c.actors.find(a => String(a.id) === row.dataset.aid);
@@ -670,6 +691,10 @@ function renderRoom() {
 		if (relative && c.ego_x == null) missing.push("This capture has no player position for left/right directions.");
 		const [backDistance, ...backObjects] = form.elements.back_within.value.trim().split(/[ ,]+/).map(Number);
 		const { things, people } = previewTargets(c, objectTable, actorTable, relative, backDistance, backObjects, rules);
+		const placeLabel = (name, x) => {
+			if (!relative || c.ego_x == null || x == null || x === "") return name;
+			return name + (Number(x) === c.ego_x ? " (level with Guybrush)" : Number(x) < c.ego_x ? " (to Guybrush's left)" : " (to Guybrush's right)");
+		};
 		const places = spots.read().filter(row => {
 			if (row.bit) {
 				const value = c.variables?.[0x8000 | Number(row.bit)];
@@ -679,13 +704,16 @@ function renderRoom() {
 			if (!row.script) return true;
 			if (c.scripts?.[row.script] == null) missing.push("Script " + row.script + " was not recorded for place " + row.name + ".");
 			return c.scripts?.[row.script] === true;
-		}).map(row => row.name).filter(Boolean);
+		}).filter(row => row.name).map(row => placeLabel(row.name, row.x));
 		const between = form.elements.ground_between.value.trim();
 		if (between) {
-			if (c.ground_between === between) places.push(...c.ground_places);
+			if (c.ground_between === between) {
+				places.push(...c.ground_places.map((name, i) => placeLabel(name, c.ground_places_x?.[i])));
+				if (relative && c.ground_places.length && !c.ground_places_x) missing.push("Capture this view again to preview directions for the ground between openings.");
+			}
 			else missing.push("Capture this view during play to preview its walkable ground targets.");
 		}
-		if (!things.length && !people.length && !places.length) places.push("away (stop looking at this)");
+		if (!things.length && !people.length && !places.length) places.push(placeLabel("away (stop looking at this)", c.width == null ? null : Math.floor(c.width / 2)));
 		const position = standing.read().find(row => row.boxes.split(/[ ,]+/).includes(String(c.walkbox)));
 		preview.textContent = [form.elements.name.value, form.elements.description.value, ...sentences, position?.text, "Things: " + (things.join(", ") || "nothing"),
 			people.length && "People: " + people.join(", "), places.length && "Places: " + places.join(", ")].filter(Boolean).join("\n\n");
@@ -699,7 +727,7 @@ function renderRoom() {
 async function saveRoom(form, parts) {
 	const r = roomById.get(current), ini = r.ini, set = {}, blank = [];
 	const data = Object.fromEntries(new FormData(form));
-	for (const key of ["name", "description", "status", "review_note", "prompt", "prompt_script", "passages", "emerge_at", "ground_between", "back_within"]) set[key] = (data[key] || "").trim() || null;
+	for (const key of ["name", "description", "status", "review_note", "prompt", "prompt_script", "passages", "walk_encounter", "emerge_at", "ground_between", "back_within"]) set[key] = (data[key] || "").trim() || null;
 	form.querySelectorAll("[data-switch]").forEach(box => {
 		// A value the page has no box for (written by hand) is left alone unless the box is ticked
 		const key = box.dataset.switch, known = !ini[key] || ini[key].toLowerCase() === box.dataset.on;
@@ -741,6 +769,12 @@ async function saveRoom(form, parts) {
 		seen.add(key); set[key] = rule.text;
 	}
 	const more = { blank };
+	const inventory = {};
+	for (const input of form.querySelectorAll("[data-inventory-key]")) {
+		const key = input.dataset.inventoryKey, label = input.value.trim();
+		if (label !== (journal.inventory.keys[key] || "")) inventory[key] = label || null;
+	}
+	if (Object.keys(inventory).length) more.inventory = inventory;
 	if (parts.comment.value.trim() !== ini.comment) more.comment = parts.comment.value;
 	if (!await saveSection(`room${r.room}`, set, more)) return;
 	const top = document.querySelector("main").scrollTop;
@@ -945,6 +979,8 @@ const TRIGGER_KINDS = [
 	["have", "she has an item whose name contains"],
 	["have=", "she has the item named exactly"],
 	["room", "she enters the room"],
+	["seen", "a thing is visible and usable in a room"],
+	["state", "a game object has this state"],
 	["goal", "this goal is finished"],
 ];
 /** One trigger as written in the file ("heard: =words") to [kind, value]; unknown kinds are kept as they are. */
@@ -980,7 +1016,7 @@ function triggerEditor(value) {
 			} else if (pick.value === "goal") {
 				input = el("select", {}, ...journal.goals.map(g => el("option", { value: g.id }, g.title ? `${g.id}: ${g.title}` : g.id)));
 			} else {
-				input = el("input", { placeholder: pick.value.startsWith("heard") ? "words from the line" : pick.value.startsWith("have") ? "item name" : "" });
+				input = el("input", { placeholder: pick.value.startsWith("heard") ? "words from the line" : pick.value.startsWith("have") ? "item name" : pick.value === "seen" ? "room number and object ID, e.g. 40 551" : pick.value === "state" ? "object ID and state, e.g. 546 1" : "" });
 			}
 			if (text) input.value = text;
 			const refresh = () => { text = input.value; note.textContent = pick.value.startsWith("heard") ? heardCount(pick.value, input.value.trim()) : ""; };
@@ -1034,7 +1070,7 @@ function searchBar(state, placeholder, draw, keys) {
 
 /* ---------- one section as a form ---------- */
 const ALERT_WHEN = [["arrived", "a character arrives, named"], ["left", "a character leaves, named"], ["appeared", "a thing appears, named"],
-	["disappeared", "a thing disappears, named"], ["gained", "she gains an item named"], ["lost", "she loses an item named"], ["costume", "a character takes a costume"], ["entered", "she walks into the room"]];
+	["disappeared", "a thing disappears, named"], ["gained", "she gains an item named"], ["lost", "she loses an item named"], ["costume", "a character takes a costume"], ["ready", "all listed requirements hold in the room"], ["entered", "she walks into the room"]];
 function roomOptions(first) {
 	return [el("option", { value: "" }, first), ...Object.entries(journal.rooms).sort((a, b) => a[0] - b[0]).map(([n, r]) => el("option", { value: n }, `${n} ${r.name || ""}`))];
 }
@@ -1050,7 +1086,7 @@ function control(kind, value, extra) {
 		pick.value = start;
 		const show = () => {
 			text.style.display = pick.value === "entered" ? "none" : "";
-			text.placeholder = pick.value === "costume" ? "actor number and costume number, separated by a space" : "part of the name; start with = for the exact name";
+			text.placeholder = pick.value === "ready" ? "object N, item N, bit N" : pick.value === "costume" ? "actor number and costume number, separated by a space" : "part of the name; start with = for the exact name";
 		};
 		pick.addEventListener("change", show); show();
 		return { node: el("div", { class: "pair" }, pick, text), get: () => pick.value === "entered" ? "entered" : pick.value === "other" ? text.value : text.value.trim() ? `${pick.value}: ${text.value.trim()}` : "" };
@@ -1170,7 +1206,7 @@ const KINDS = [
 		fresh: () => ({ when: "entered", say: "(what she is told)" }) },
 	{ list: "watches", prefix: "watch", title: "Watched variables and animations", add: "a watch",
 		help: "Enter a game variable to announce changes ({value} is the new value), or enter a room and animation to announce a visual cue.",
-		fields: [["var", "Game variable", "num"], ["change", "Variable changes", "select", [["", "when it goes up"], ["any", "on any change"]]], ["room", "Room for animation", "num"], ["animation", "Actor, costume and animation numbers (space-separated)"], ["say", "What she is told", "area"]],
+		fields: [["var", "Game variable", "num"], ["change", "Variable changes", "select", [["", "when it goes up"], ["any", "on any change"]]], ["room", "Room for animation", "num"], ["animation", "Actor, costume and animation numbers (space-separated)"], ["while", "Only during this script (optional for animation, e.g. script 111)"], ["say", "What she is told", "area"]],
 		summary: w => [what(w.id), tag(w.animation ? `room ${w.room}, animation ${w.animation}` : `variable ${w.var || "?"}`), gist(w.say)],
 		fresh: () => ({ say: "(what she is told)" }) },
 	{ list: "linenotes", prefix: "linenote", title: "Notes on dialogue choices", add: "a note on choices",
@@ -1204,7 +1240,7 @@ function pairsCard(section, data, keyLabel, valueLabel) {
 }
 function renderOther() {
 	const list = el("div");
-	const keys = () => [...KINDS.flatMap(k => journal[k.list].map(item => `${k.prefix}.${item.id}`)), "states", "actors", "synonyms", "game", "roomextras"];
+	const keys = () => [...KINDS.flatMap(k => journal[k.list].map(item => `${k.prefix}.${item.id}`)), "states", "actors", "synonyms", "inventory", "game", "roomextras"];
 	const bar = searchBar(otherSearch, "Search alerts and rules: any word in the text, a room number or an id", () => draw(), keys);
 	function draw() {
 		const q = otherSearch.q.trim().toLowerCase(), out = [];
@@ -1220,6 +1256,9 @@ function renderOther() {
 		if (!q) {
 			const special = Object.entries(journal.rooms).map(([n, keys]) => [n, keys, roomExtras(keys)]).filter(([, , extras]) => extras.length).sort((a, b) => a[0] - b[0]);
 			out.push(el("h3", {}, "For the whole game"),
+				fold("inventory", [what("Inventory labels"), tag(`${Object.keys(journal.inventory.keys).length}`)], () => [
+					el("div", { class: "help" }, "Use name.ID.current game name, for example name.164.cereal. The label applies while carried in any room."),
+					pairsCard("inventory", journal.inventory, "object and current name", "inventory label")]),
 				fold("states", [what("State labels"), gist(Object.keys(journal.states.keys).join(", ")), tag(`${Object.keys(journal.states.keys).length}`)], () => [
 					el("div", { class: "help" }, "For things whose look tells her something: a label for each state the game keeps for a thing of that name, in order from state 0 (door = closed, open)."),
 					pairsCard("states", journal.states, "thing's name", "labels, separated by commas")]),

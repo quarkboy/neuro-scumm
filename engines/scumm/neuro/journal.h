@@ -40,6 +40,8 @@ namespace Scumm {
  * A trigger is one of:
  *   heard: WORDS   a spoken line contains the words
  *   have: NAME     an inventory item's name contains the name
+ *   seen: ROOM OBJECT   the object is listed among the usable things in that room
+ *   state: OBJECT VALUE   the game object has this state
  *   room: N        she is in room N
  *   goal: ID       another goal was completed
  * Several triggers separated by " | " mean any of them. A name starting
@@ -71,6 +73,17 @@ public:
 	// What she hears and sees can start or finish a goal, or be a clue
 	void heard(const Common::String &line);
 	void observed(int room, const Common::StringArray &inventory);
+	void sawObject(int room, int object);
+	template<class ReadState>
+	void observeStates(ReadState readState) {
+		for (auto &entry : _objectStates) {
+			const int state = readState(entry._key);
+			if (state >= 0 && state != entry._value) {
+				entry._value = state;
+				fire("state", Common::String::format("%d %d", entry._key, state));
+			}
+		}
+	}
 	template<class BitSet>
 	void observeBits(BitSet bitSet) {
 		for (auto &clue : _clues) {
@@ -137,6 +150,8 @@ private:
 		bool found;
 	};
 	Common::Array<Clue> _clues;
+	Common::HashMap<int, int> _objectStates;
+	void trackStates(const Common::String &triggers);
 	bool listed(const Clue &clue) const;
 	void noteClue(Clue &clue);
 	Common::String goalTitle(const Common::String &id) const;

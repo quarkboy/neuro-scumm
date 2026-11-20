@@ -54,6 +54,7 @@ void NeuroData::load(const Common::String &path) {
 	_game.intro = get("game", "intro");
 	_game.egoName = get("game", "ego_name");
 	_game.walkVerb = get("game", "walk_verb");
+	_game.pickupVerb = atoi(get("game", "pickup_verb").c_str());
 	_game.giveVerb = get("game", "give_verb");
 	_game.openVerb = get("game", "open_verb");
 	_game.doorOpenState = get("game", "door_open_state");
@@ -107,6 +108,7 @@ void NeuroData::addWatch(const Common::String &section) {
 	if (!animation.empty()) {
 		AnimationWatch cue;
 		cue.room = atoi(get(section, "room").c_str());
+		cue.whileScript = scriptNumber(get(section, "while"));
 		cue.say = get(section, "say");
 		char extra;
 		if (sscanf(animation.c_str(), "%d %d %d %c", &cue.actor, &cue.costume, &cue.animation, &extra) == 3 &&
@@ -150,6 +152,32 @@ void NeuroData::addAlert(const Common::String &section) {
 		alert.name.trim();
 		alert.kind.toLowercase();
 		alert.name.toLowercase();
+		if (alert.kind == "ready") {
+			if (!alert.room || alert.name.empty()) {
+				warning("Neuro: Alert '%s' needs a room and readiness requirements", section.c_str());
+				return;
+			}
+			Common::StringTokenizer parts(alert.name, ",");
+			while (!parts.empty()) {
+				Common::String part = parts.nextToken();
+				part.trim();
+				char kind[16], extra;
+				int number;
+				if (sscanf(part.c_str(), "%15s %d %c", kind, &number, &extra) != 2 || number < 0 || number > 32767 ||
+					(strcmp(kind, "bit") && strcmp(kind, "item") && strcmp(kind, "object"))) {
+					warning("Neuro: Invalid requirement '%s' in '%s'", part.c_str(), section.c_str());
+					return;
+				}
+				Alert::Requirement::Kind type = Alert::Requirement::kObject;
+				if (!strcmp(kind, "bit"))
+					type = Alert::Requirement::kBit;
+				else if (!strcmp(kind, "item"))
+					type = Alert::Requirement::kItem;
+				alert.requirements.push_back({type, number});
+			}
+			if (alert.requirements.empty())
+				return;
+		}
 		if (alert.kind == "costume") {
 			char extra;
 			if (sscanf(alert.name.c_str(), "%d %d %c", &alert.actor, &alert.costume, &extra) != 2 || alert.actor <= 0 || alert.costume <= 0) {
@@ -235,6 +263,13 @@ int NeuroData::backDistance(int room, int object) const {
 
 Common::String NeuroData::roomPrompt(int room) const {
 	return roomGet(room, "prompt");
+}
+
+Common::String NeuroData::inventoryName(int object, const Common::String &gameName) const {
+	if (gameName.empty() || gameName.findFirstOf("[]=#\r\n") != Common::String::npos)
+		return gameName;
+	const Common::String label = get("inventory", Common::String::format("name.%d.", object) + gameName);
+	return label.empty() ? gameName : label;
 }
 
 int NeuroData::roomPromptScript(int room) const {

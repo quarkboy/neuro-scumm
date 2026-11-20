@@ -212,7 +212,7 @@ async def ws_connect(url):
 
 # --- The console ------------------------------------------------------------------------
 
-def describe_action(name, data, lines):
+def describe_action(name, data, lines, menu_state=""):
     """One line for the page and the stream column: what an action of hers does."""
     try:
         args = json.loads(data) if isinstance(data, str) and data else (data or {})
@@ -234,7 +234,7 @@ def describe_action(name, data, lines):
         if args.get("text"):
             return f"Says: “{args['text']}”"
         option = str(args.get("option", ""))
-        if option in lines:
+        if option in lines and f"Dialogue menu {args.get('menu')}:" in menu_state.splitlines():
             return f"Says: “{lines[option]}”"
         return f"Picks line {option}"
     if name == "answer":
@@ -273,7 +273,8 @@ class Console:
         self.game_name = ""
         self.startup = None         # the game's startup message, replayed on every server connection
         self.actions = {}           # her registered actions, by name
-        self.force = None           # kept until the game withdraws its prompted action
+        self.force = None
+        self.dialogue_requests = set()
         self.backlog = []           # context sent while no server was connected
         self.hold = False
 
@@ -502,6 +503,7 @@ class Console:
             self.game.close()
         self.game = ws
         self.actions, self.force, self.backlog, self.startup = {}, None, [], None
+        self.dialogue_requests.clear()
         self.view = self.empty_view()
         self.event("console", "link", "The game connected")
         poll = asyncio.ensure_future(self.poll_status(ws))
@@ -549,6 +551,7 @@ class Console:
             self.game_name = message.get("game", "")
             self.startup = message
             self.actions, self.force = {}, None
+            self.dialogue_requests.clear()
             view["state"], view["question"], view["lines"] = "idle", "", {}
         elif command == "actions/register":
             for action in data.get("actions", []):
@@ -556,10 +559,14 @@ class Console:
         elif command == "actions/unregister":
             for name in data.get("action_names", []):
                 self.actions.pop(name, None)
+                if name == "choose_dialogue":
+                    self.dialogue_requests.clear()
                 if self.force and name in self.force["data"]["action_names"]:
                     self.force = None
                     view["state"], view["question"], view["lines"] = "acting", "", {}
         elif command == "actions/force":
+            if self.force is not None:
+                self.dialogue_requests.clear()
             self.force = message
             view["state"] = "thinking"
             view["question"] = data.get("query", "")
@@ -578,6 +585,13 @@ class Console:
             view["speech"] = None
         elif command == "action/result":
             ok = bool(data.get("success"))
+            ident = data.get("id")
+            if ident in self.dialogue_requests:
+                self.dialogue_requests.discard(ident)
+                if ok and self.force and "choose_dialogue" in self.force["data"]["action_names"]:
+                    self.force = None
+                    self.dialogue_requests.clear()
+                    view["state"], view["question"], view["lines"] = "acting", "", {}
             self.event("to_neuro", "result", ("OK" if ok else "Refused") +
                        (": " + data["message"] if data.get("message") else ""), message)
 
@@ -648,7 +662,8 @@ class Console:
                 self.to_upstream({"command": "action/result", "game": self.game_name,
                                   "data": {"id": data.get("id", ""), "success": False, "message": "Unknown action."}})
                 return
-            said = describe_action(name, data.get("data"), self.view["lines"])
+            menu_state = self.force["data"].get("state", "") if self.force else ""
+            said = describe_action(name, data.get("data"), self.view["lines"], menu_state)
             self.event("from_neuro", "action", said, message)
             if self.hold:
                 self.to_upstream({"command": "action/result", "game": self.game_name,
@@ -656,6 +671,8 @@ class Console:
                                            "message": "The game is paused for a moment."}})
                 return
             self.view["now"] = said
+            if normalized == "choose_dialogue" and self.game is not None:
+                self.dialogue_requests.add(data.get("id"))
             if self.force is None:
                 self.view["state"] = "acting"
         if self.game is not None:

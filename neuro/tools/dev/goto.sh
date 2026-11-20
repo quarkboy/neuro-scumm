@@ -17,7 +17,10 @@ goto ()
 choose () 
 { 
     n=$(grep -ac "actions./force" $S/game.out);
-    $S/t.sh act choose_dialogue "{\"option\":$1}";
+    local menu
+    menu=$(grep -a 'actions./force.*Dialogue menu [0-9]' "$S/game.out" | tail -1 | sed -n 's/.*Dialogue menu \([0-9]*\):.*/\1/p')
+    [ -n "$menu" ] || { echo "No numbered dialogue menu found"; return 1; }
+    "$S/t.sh" act choose_dialogue "{\"menu\":$menu,\"option\":$1}";
     for i in $(seq 1 90);
     do
         [ $(grep -ac "actions./force" $S/game.out) -gt $n ] && break;

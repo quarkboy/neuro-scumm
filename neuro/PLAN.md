@@ -86,7 +86,7 @@ Registered once at startup:
 | Action | What it does |
 |---|---|
 | `interact` | Uses one of the game's verbs on a thing in the room or the inventory, optionally with a second thing ("Use X with Y", "Give X to Y"). "Walk to" is one of the verbs. Can carry a second step that runs the instant the first ends |
-| `choose_dialogue` | Picks a line to say, by number or by text. Asked for with a force whenever the game shows lines |
+| `choose_dialogue` | Picks a numbered line from the specified dialogue menu. Each prompt supplies its menu number so a delayed choice cannot select a different line. |
 | `answer` | Replies yes or no to a timed question |
 | `read_journal`, `add_note`, `edit_note`, `delete_note` | Her goals, each goal's clues, and her own notes in pages of ten |
 | `check_inventory` | Lists everything the current player character carries |

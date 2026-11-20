@@ -246,8 +246,9 @@ Common::String NeuroBridge::describeForPanel(const Common::String &name, const N
 		if (number > 0) {
 			NeuroWorld world;
 			collectWorld(world);
-			if (world.inDialogue && number <= (int)world.verbs.size())
-				choice = world.verbs[number - 1].name;
+			const NeuroThingList &lines = pagerCovers(world) ? _pagerLines : world.verbs;
+			if (world.inDialogue && number <= (int)lines.size())
+				choice = lines[number - 1].name;
 		}
 		return "Says: \"" + choice + "\"";
 	}

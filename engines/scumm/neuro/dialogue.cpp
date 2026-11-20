@@ -188,20 +188,49 @@ void NeuroBridge::updatePager() {
 	pressArrow(arrow, world);
 }
 
+Common::String NeuroBridge::dialogueMenu(const Common::String &lines, int room) {
+	if (room != _menuRoom || lines != _menuLines) {
+		++_menuNumber;
+		_menuRoom = room;
+		_menuLines = lines;
+	}
+	return Common::String::format("Dialogue menu %u:\n", _menuNumber) + lines;
+}
+
 void NeuroBridge::actionChooseDialogue(const Common::String &id, const NeuroArgs &args) {
 	NeuroWorld world;
 	collectWorld(world);
-	if (!playerHasControl() || !world.inDialogue || _pagerState != kPagerIdle) {
-		sendActionResult(id, false, "Nothing to choose now.");
+	if (!playerHasControl() || !world.inDialogue || _pagerState == kPagerSeek) {
+		if (_interaction.prompt.action() == "choose_dialogue")
+			endPrompt(false);
+		sendActionResult(id, true, "This dialogue menu is no longer available. No line was spoken.", false);
 		return;
 	}
 	// The whole list, where only part of it is on screen
 	int up, down;
 	scrollArrows(world, up, down);
 	const bool paged = (up || down) && pagerCovers(world);
+	if (_pagerState != kPagerIdle || ((up || down) && !paged)) {
+		sendActionResult(id, false, "Still reading the dialogue menu. Wait for the numbered choices.");
+		return;
+	}
 	if (paged)
 		world.verbs = _pagerLines;
+	const Common::String lines = listDialogue(world.verbs);
+	if (lines == _chosenDialogue && (_clickPhase != kClickIdle || g_system->getMillis() - _chosenDialogueAt < kSameLinesAgainMs)) {
+		sendActionResult(id, true, "A line was already chosen. No second choice was made.", false);
+		return;
+	}
 
+	const Common::String menu = dialogueMenu(lines, world.room);
+	const Common::String requestedMenu = args.get("menu");
+	if (requestedMenu != Common::String::format("%u", _menuNumber)) {
+		Common::String message;
+		if (!requestedMenu.empty())
+			message = "This dialogue menu is no longer available. ";
+		sendActionResult(id, false, message + "Choose from the current menu and include its menu number:\n" + menu);
+		return;
+	}
 	// A number, possibly dressed up ("option 3", "3."), or the line itself
 	const Common::String choice = args.get("option|choice|line|number|index|id|text", true);
 	// A line that has a number in it ("I have 2 questions") is still a line
@@ -224,10 +253,14 @@ void NeuroBridge::actionChooseDialogue(const Common::String &id, const NeuroArgs
 			option = atoi(choice.c_str() + i);
 	}
 	if (option < 1 || option > (int)world.verbs.size()) {
-		sendActionResult(id, false, "Pick a line by number:\n" + listDialogue(world.verbs));
+		sendActionResult(id, false, "Pick a line by number:\n" + menu);
 		return;
 	}
 
+	notePanelAction("choose_dialogue", args);
+	_chosenDialogue = lines;
+	_menuLines.clear(); // The next exchange needs its own number even if it offers the same lines.
+	_chosenDialogueAt = g_system->getMillis();
 	sendActionResult(id, true);
 	// What is said next is the reply to her line, not something to react to separately
 	cancelQueuedInput();
@@ -278,13 +311,13 @@ void NeuroBridge::updateForces(const NeuroWorld &world) {
 		// again while the one she picked is still on screen
 		if (_interaction.prompt.action() == "choose_dialogue" && lines != _forcedDialogue)
 			endPrompt();
-		const bool fresh = lines != _forcedDialogue || now - _lastActionAt > kSameLinesAgainMs;
+		const bool fresh = lines != _chosenDialogue || (_clickPhase == kClickIdle && now - _chosenDialogueAt >= kSameLinesAgainMs);
 		if (!_interaction.prompt.active() && fresh) {
 			_forcedDialogue = lines;
 			// The line she is answering goes with the choice, so it cannot be missed
-			Common::String state = lines;
+			Common::String state = dialogueMenu(lines, world.room);
 			if (!_lastHeard.empty() && now - _lastHeardAt < kLastHeardMs)
-				state = "Last said to you: " + _lastHeard + "\n\n" + lines;
+				state = "Last said to you: " + _lastHeard + "\n\n" + state;
 			const int promptScript = _data.roomPromptScript(world.room);
 			Common::String query;
 			if (!promptScript || _vm->isScriptRunning(promptScript))
@@ -298,6 +331,8 @@ void NeuroBridge::updateForces(const NeuroWorld &world) {
 	if (_interaction.prompt.action() == "choose_dialogue")
 		endPrompt();
 	_forcedDialogue.clear();
+	_menuLines.clear();
+	_chosenDialogue.clear();
 	_pagerLines.clear();
 
 	if (_idleForceMs && !_interaction.prompt.active() && now - _lastActivity > _idleForceMs) {

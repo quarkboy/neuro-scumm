@@ -36,7 +36,7 @@ static const uint32 kAlertLateMs = 1500;
 
 static bool containsName(const NeuroThingList &things, const Common::String &name) {
 	for (const auto &thing : things) {
-		Common::String candidate = thing.name;
+		Common::String candidate = thing.inventoryGameName.empty() ? thing.name : thing.inventoryGameName;
 		candidate.toLowercase();
 		// "=rock" is the rock itself, not the heap o' rocks beside it
 		if (name.hasPrefix("=") ? candidate == name.substr(1) : candidate.contains(name))
@@ -45,8 +45,37 @@ static bool containsName(const NeuroThingList &things, const Common::String &nam
 	return false;
 }
 
+void NeuroBridge::collectReadyAlerts(NeuroWorld &world) const {
+	const auto &alerts = _data.alerts();
+	for (uint i = 0; i < alerts.size(); ++i) {
+		const auto &alert = alerts[i];
+		if (alert.requirements.empty() || alert.room != world.room)
+			continue;
+		bool ready = true;
+		for (const auto &requirement : alert.requirements) {
+			if (requirement.kind == NeuroData::Alert::Requirement::kBit) {
+				ready = readDataVar(0x8000 | requirement.number) != 0;
+			} else {
+				const auto &things = requirement.kind == NeuroData::Alert::Requirement::kItem ? world.inventory : world.objects;
+				ready = false;
+				for (const auto &thing : things)
+					if (thing.id == requirement.number) {
+						ready = true;
+						break;
+					}
+			}
+			if (!ready)
+				break;
+		}
+		if (ready)
+			world.readyAlerts[i] = true;
+	}
+}
+
 /** Whether the situation an alert is about holds in the given world. */
-static bool alertHolds(const NeuroData::Alert &alert, const NeuroWorld &world) {
+static bool alertHolds(int index, const NeuroData::Alert &alert, const NeuroWorld &world) {
+	if (alert.kind == "ready")
+		return world.readyAlerts.contains(index);
 	if (alert.kind == "costume")
 		return world.visibleCostumes.contains(alert.actor) && world.visibleCostumes[alert.actor] == alert.costume;
 	if (alert.kind == "arrived" || alert.kind == "left")
@@ -71,8 +100,8 @@ static bool fillExit(Common::String &text, const Common::String &exit) {
 	return true;
 }
 
-void NeuroBridge::fireAlert(const NeuroData::Alert &original, const NeuroWorld &world) {
-	NeuroData::Alert alert = original;
+void NeuroBridge::fireAlert(int index, const NeuroWorld &world) {
+	NeuroData::Alert alert = _data.alerts()[index];
 	alert.say = expandText(alert.say);
 	Common::String exit;
 	for (const auto &left : _leftAt) {
@@ -95,7 +124,7 @@ void NeuroBridge::fireAlert(const NeuroData::Alert &original, const NeuroWorld &
 	if (_interaction.prompt.active() || world.inDialogue) {
 		sendContext(alert.say + " " + alert.ask, false);
 	} else if (!alert.command.empty()) {
-		ask(alert.say, alert.ask, alert.command, alert.then, alert.holdVar, alert.priority);
+		ask(alert.say, alert.ask, alert.command, alert.then, alert.holdVar, alert.priority, alert.kind == "ready" ? index : -1);
 	} else {
 		sendForce(alert.say, alert.ask, "interact", alert.priority);
 		_lastActivity = g_system->getMillis();
@@ -104,11 +133,12 @@ void NeuroBridge::fireAlert(const NeuroData::Alert &original, const NeuroWorld &
 
 /** Asks a yes/no question; answering yes carries out the command, and then the second one. */
 void NeuroBridge::ask(const Common::String &state, const Common::String &query, const Common::String &command,
-		const Common::String &then, int holdVar, const Common::String &priority) {
+		const Common::String &then, int holdVar, const Common::String &priority, int readyAlert) {
 	NeuroInteraction::Question question;
 	question.command = command;
 	question.thenCommand = then;
 	question.holdVar = holdVar;
+	question.readyAlert = readyAlert;
 	if (holdVar)
 		question.holdValue = readDataVar(holdVar);
 	sendForce(state, query, "answer", priority, question);
@@ -122,14 +152,15 @@ void NeuroBridge::checkAlerts(const NeuroWorld &before, const NeuroWorld &after)
 	// An alert waiting for its moment
 	if (_pendingAlert >= 0) {
 		const NeuroData::Alert &alert = alerts[_pendingAlert];
-		if ((alert.room && alert.room != after.room) || !alertHolds(alert, after)) {
+		if ((alert.room && alert.room != after.room) || !alertHolds(_pendingAlert, alert, after)) {
 			_pendingAlert = -1;
 		} else if (now > _pendingAlertDue + kAlertLateMs) {
 			// She was busy when the moment came; a late prompt would only mislead
 			_pendingAlert = -1;
 		} else if (now >= _pendingAlertDue) {
+			const int index = _pendingAlert;
 			_pendingAlert = -1;
-			fireAlert(alert, after);
+			fireAlert(index, after);
 		}
 		return;
 	}
@@ -141,7 +172,10 @@ void NeuroBridge::checkAlerts(const NeuroWorld &before, const NeuroWorld &after)
 		if (alert.whileScript && !_vm->isScriptRunning(alert.whileScript))
 			continue;
 		// It has to have just become true
-		if (alert.kind == "entered") {
+		if (alert.kind == "ready") {
+			if (!after.readyAlerts.contains(i) || before.readyAlerts.contains(i))
+				continue;
+		} else if (alert.kind == "entered") {
 			if (before.room == after.room)
 				continue;
 		} else if (alert.kind == "left") {
@@ -150,7 +184,7 @@ void NeuroBridge::checkAlerts(const NeuroWorld &before, const NeuroWorld &after)
 				left |= who._key.contains(alert.name);
 			if (!left)
 				continue;
-		} else if (before.room != after.room || alertHolds(alert, before) || !alertHolds(alert, after)) {
+		} else if (before.room != after.room || alertHolds(i, alert, before) || !alertHolds(i, alert, after)) {
 			continue;
 		}
 
@@ -158,7 +192,7 @@ void NeuroBridge::checkAlerts(const NeuroWorld &before, const NeuroWorld &after)
 			_pendingAlert = i;
 			_pendingAlertDue = now + alert.leadMs - _reactionMs;
 		} else {
-			fireAlert(alert, after);
+			fireAlert(i, after);
 		}
 		return;
 	}
@@ -238,9 +272,11 @@ void NeuroBridge::onActorAnimation(int actor, int costume, int animation) {
 	if (!_ws.isConnected() || _extract.phase != kExtractOff)
 		return;
 	for (const auto &cue : _data.animationWatches()) {
-		if (cue.room == _vm->_currentRoom && cue.actor == actor && cue.costume == costume && cue.animation == animation) {
+		if (cue.room == _vm->_currentRoom && cue.actor == actor && cue.costume == costume && cue.animation == animation &&
+				(!cue.whileScript || _vm->isScriptRunning(cue.whileScript))) {
 			flushDialogue();
 			sendContext(expandText(cue.say), false);
+			_interaction.outcome.report();
 		}
 	}
 }

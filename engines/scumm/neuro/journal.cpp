@@ -22,6 +22,7 @@
 #include "scumm/neuro/journal.h"
 
 #include "common/savefile.h"
+#include "common/tokenizer.h"
 #include "common/system.h"
 
 namespace Scumm {
@@ -38,7 +39,21 @@ static int readBit(const Common::INIFile::Section &section, const char *key) {
 	return end != kv->value.c_str() && !*end && bit >= 0 && bit <= 0x7fff ? bit : -1;
 }
 
+void NeuroJournal::trackStates(const Common::String &triggers) {
+	Common::StringTokenizer parts(triggers, "|");
+	while (!parts.empty()) {
+		Common::String part = parts.nextToken();
+		part.trim();
+		part.toLowercase();
+		int object, state;
+		char extra;
+		if (sscanf(part.c_str(), "state: %d %d %c", &object, &state, &extra) == 2 && object > 0 && state >= 0)
+			_objectStates[object] = -1;
+	}
+}
+
 void NeuroJournal::loadGoals(const Common::INIFile &ini) {
+	_objectStates.clear();
 	_goals.clear();
 	_clues.clear();
 	for (const auto &section : ini.getSections()) {
@@ -92,10 +107,20 @@ void NeuroJournal::loadGoals(const Common::INIFile &ini) {
 		goal.state = kHidden;
 		_goals.push_back(goal);
 	}
+	for (const auto &goal : _goals) {
+		trackStates(goal.start);
+		trackStates(goal.done);
+	}
+	for (const auto &clue : _clues) {
+		trackStates(clue.when);
+		trackStates(clue.hideOnce);
+	}
 	reset();
 }
 
 void NeuroJournal::reset() {
+	for (auto &entry : _objectStates)
+		entry._value = -1;
 	for (auto &goal : _goals)
 		goal.state = (goal.start.empty() && !goal.nudge) ? kActive : kHidden;
 	for (auto &clue : _clues) {
@@ -143,7 +168,7 @@ static bool matchesOne(const Common::String &trigger, const Common::String &kind
 	if (!wantKind.equalsIgnoreCase(kind) || wantArgument.empty())
 		return false;
 
-	if (kind == "room" || kind == "goal")
+	if (kind == "room" || kind == "goal" || kind == "seen" || kind == "state")
 		return wantArgument.equalsIgnoreCase(argument);
 	if (wantArgument.hasPrefix("="))
 		return argument.equalsIgnoreCase(wantArgument.substr(1));
@@ -229,6 +254,10 @@ void NeuroJournal::observed(int room, const Common::StringArray &inventory) {
 	fire("room", Common::String::format("%d", room));
 	for (const auto &item : inventory)
 		fire("have", item);
+}
+
+void NeuroJournal::sawObject(int room, int object) {
+	fire("seen", Common::String::format("%d %d", room, object));
 }
 
 Common::String NeuroJournal::takeNews() {

@@ -129,7 +129,8 @@ void NeuroBridge::registerActions(const char *replace) {
 		option.setVal("minimum", new Common::JSONValue((long long int)1));
 		Common::JSONObject choose;
 		choose.setVal("option", new Common::JSONValue(option));
-		actions.push_back(actionDefinition("choose_dialogue", "In a conversation, say the line with this number.", objectSchema(choose, "option")));
+		choose.setVal("menu", typeSchema("integer"));
+		actions.push_back(actionDefinition("choose_dialogue", "Say a numbered line. Copy the menu number and option from the same dialogue menu.", objectSchema(choose, "option", "menu")));
 	}
 	if (only.empty()) {
 		actions.push_back(actionDefinition("check_inventory", "List everything you are carrying."));
@@ -193,6 +194,10 @@ const NeuroThing *NeuroBridge::findThing(const NeuroThingList &things, const Com
 		if (simplifyName(thing.name) == needle)
 			return &thing;
 	}
+	for (const auto &thing : things) {
+		if (!thing.inventoryGameName.empty() && simplifyName(thing.inventoryGameName) == needle)
+			return &thing;
+	}
 
 	// Accept a partial name as long as it is unambiguous
 	const NeuroThing *match = nullptr;
@@ -240,6 +245,12 @@ void NeuroBridge::actionSkipCutscene(const Common::String &id) {
 }
 
 void NeuroBridge::actionAnswer(const Common::String &id, const NeuroArgs &args) {
+	const Common::String command = _interaction.prompt.question().command;
+	const Common::String thenCommand = _interaction.prompt.question().thenCommand;
+	if (command.empty() || _interaction.prompt.expired(_vm->_currentRoom, g_system->getMillis())) {
+		sendActionResult(id, true, "No yes/no prompt is waiting. Nothing was done.");
+		return;
+	}
 	Common::String answer = args.get("answer|response|reply|value|choice", true);
 	answer.toLowercase();
 	if (answer == "y" || answer == "true" || answer == "1" || answer == "ok" || answer == "sure" || answer.hasPrefix("yes"))
@@ -251,13 +262,6 @@ void NeuroBridge::actionAnswer(const Common::String &id, const NeuroArgs &args) 
 		return;
 	}
 
-	const Common::String command = _interaction.prompt.question().command;
-	const Common::String thenCommand = _interaction.prompt.question().thenCommand;
-	// These questions are about a passing moment
-	if (command.empty() || _interaction.prompt.expired(_vm->_currentRoom, g_system->getMillis())) {
-		sendActionResult(id, false, "No yes/no prompt is waiting.");
-		return;
-	}
 	if (answer == "no") {
 		sendActionResult(id, true);
 		return;
@@ -266,9 +270,9 @@ void NeuroBridge::actionAnswer(const Common::String &id, const NeuroArgs &args) 
 	NeuroWorld world;
 	collectWorld(world);
 	NeuroCommand resolved;
-	if (!playerHasControl() || !resolvePreset(world, command, resolved)) {
-		sendActionResult(id, false, "Too late. The offer has ended.");
-		endPrompt();
+	const int readyAlert = _interaction.prompt.question().readyAlert;
+	if ((readyAlert >= 0 && !world.readyAlerts.contains(readyAlert)) || !playerHasControl() || !resolvePreset(world, command, resolved)) {
+		sendActionResult(id, true, "Too late. The offer has ended. Nothing was done.");
 		return;
 	}
 	sendActionResult(id, true);
@@ -338,6 +342,15 @@ bool NeuroBridge::resolveCommand(const NeuroWorld &world, const Common::String &
 		command.objects[i] = thing->id;
 	}
 
+	if (_data.game().pickupVerb && command.verb == _data.game().pickupVerb) {
+		for (const auto &item : world.inventory) {
+			if (item.id == command.objects[0]) {
+				error = "You are already carrying " + item.name + ".";
+				return false;
+			}
+		}
+	}
+
 	if (command.objects[0] < 0 || command.objects[1] < 0) {
 		if (!command.walk || command.objects[1]) {
 			error = "That is a place: you can only \"" + _walkVerb + "\" it.";
@@ -368,6 +381,7 @@ bool NeuroBridge::resolveCommand(const NeuroWorld &world, const Common::String &
 
 /** From here on, what happens is the outcome of her action, which she is told once it has played out. */
 void NeuroBridge::beginAction(const NeuroCommand &command) {
+	_encounterScript = 0;
 	_walkTarget = 0;
 	_lastTargets[0] = _lastTargets[1] = 0;
 	_interaction.outcome.begin(_vm->_currentRoom, g_system->getMillis(), command);
@@ -379,7 +393,15 @@ void NeuroBridge::runCommand(const NeuroCommand &command) {
 	_queueIdleSince = 0;
 	_walkTarget = command.walk ? command.objects[0] : 0;
 	if (command.walk) {
-		clickInRoom(command.x, command.y);
+		if (_walkTarget > 0 && _vm->objIsActor(_walkTarget)) {
+			const Common::Array<int> encounter = _data.roomObjects(_vm->_currentRoom, "walk_encounter");
+			if (encounter.size() == 3 && encounter[0] == _walkTarget && _vm->VAR_VERB_SCRIPT != 0xFF &&
+					_vm->VAR(_vm->VAR_VERB_SCRIPT) == encounter[1] && _vm->isScriptRunning(encounter[2])) {
+				_encounterScript = encounter[2];
+				_encounterRetries = 3;
+			}
+		}
+		clickInRoom(command.x, command.y, _encounterScript ? _walkTarget : 0);
 		return;
 	}
 	_lastTargets[0] = command.objects[0];
@@ -427,7 +449,7 @@ void NeuroBridge::dispatchSentence(int verb, int first, int second) {
 }
 
 void NeuroBridge::updateQueuedCommand() {
-	if (_interaction.queue.empty())
+	if (_interaction.queue.empty() && !_encounterScript)
 		return;
 
 	// A simulated click has not started anything yet
@@ -435,7 +457,7 @@ void NeuroBridge::updateQueuedCommand() {
 		return;
 
 	const uint32 elapsed = _interaction.outcome.age(g_system->getMillis());
-	if (elapsed > (_interaction.queue[0].afterPassage ? kPassageTimeoutMs : kStepTimeoutMs)) {
+	if (!_encounterScript && elapsed > (_interaction.queue[0].afterPassage ? kPassageTimeoutMs : kStepTimeoutMs)) {
 		const Common::String step = _interaction.queue[0].preset;
 		_interaction.queue.clear();
 		sendContext((step.empty() ? Common::String("The follow-up movement") : "The follow-up (" + step + ")") +
@@ -457,6 +479,29 @@ void NeuroBridge::updateQueuedCommand() {
 	}
 	if (!_queueIdleSince)
 		_queueIdleSince = now;
+	if (_encounterScript) {
+		if (now - _queueIdleSince < kSpotSettleMs)
+			return;
+		const Actor *actor = _vm->_actors[_vm->objToActor(_walkTarget)];
+		int x, y;
+		if (_encounterRetries && actor->isInCurrentRoom() && actor->_visible && !untouchable(_walkTarget) &&
+				_vm->isScriptRunning(_encounterScript) && findClickPoint(_walkTarget, x, y)) {
+			--_encounterRetries;
+			_queueIdleSince = 0;
+			_queueSawBusy = false;
+			_interaction.outcome.dispatchedAt(now);
+			debug(1, "Neuro: Retrying encounter walk to actor %d at %d,%d", _walkTarget, x, y);
+			clickInRoom(x, y, _walkTarget);
+			return;
+		}
+		_encounterScript = 0;
+		if (!_encounterRetries) {
+			sendContext("The walk ended without starting an encounter.", false);
+			_interaction.outcome.report();
+		}
+		if (_interaction.queue.empty())
+			return;
+	}
 	if (now - _queueIdleSince < _interaction.queue[0].settleMs)
 		return;
 
@@ -483,7 +528,7 @@ void NeuroBridge::finishAction(const NeuroWorld &world) {
 
 	// Still going: a click not yet made, steps queued, walking, the game's own script
 	// (what a click sets off takes a moment to show)
-	const bool busy = _clickPhase != kClickIdle || !_interaction.queue.empty() || !_clickQueue.empty() || _pagerState != kPagerIdle
+	const bool busy = _clickPhase != kClickIdle || _encounterScript || !_interaction.queue.empty() || !_clickQueue.empty() || _pagerState != kPagerIdle
 		|| g_system->getMillis() - _lastClickAt < kClickTakesMs
 		|| ego()->_moving || _vm->_sentenceNum > 0 || sentenceRunning();
 	if (busy || _interaction.outcome.age(g_system->getMillis()) < kCommandStartsMs)

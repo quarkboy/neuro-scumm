@@ -56,8 +56,8 @@ namespace Scumm {
  *   ground_between = NAME  offer reachable ground between adjacent objects with
  *                          this base name (for example, "cave" matches "cave 1"
  *                          and "cave 2").
- *   relative = yes         say whether each thing lies to the left or the right of
- *                          the player's character
+ *   relative = yes         describe things and places to walk to relative to
+ *                          the player's horizontal position
  *   back_within = DISTANCE OBJECT...   describe these openings as at the back
  *                          when within the given SCUMM interaction distance
  *   comings = quiet        characters wander in and out of sight all the time here;
@@ -81,6 +81,9 @@ namespace Scumm {
  *                          the character there by itself. A command aimed at something
  *                          out of view goes by way of the one in view, as a
  *                          player, who cannot click outside the picture, would.
+ *   walk_encounter = ACTOR INPUT_SCRIPT ACTIVE_SCRIPT
+ *                          follow the actor with the pointer and retry after a
+ *                          missed walk while the encounter is available.
  * A room that the game draws from another room's data uses that room's
  * section for whatever its own section does not say.
  * [alert.ID] sections turn a moment she must not miss into a prompt:
@@ -88,7 +91,9 @@ namespace Scumm {
  *   when      arrived: / left: (a character), appeared: / disappeared: (a
  *             thing), gained: / lost: (an inventory item), then part of a name;
  *             "costume: ACTOR COSTUME" when a visible actor takes that costume,
- *             or just "entered", for walking into the room
+ *             or just "entered", for walking into the room. "ready: object N,
+ *             item N, bit N" fires when all listed requirements first hold
+ *             in the specified room (usable objects, carried items, set bits).
  *   while     optional "script N": only while that game script is running
  *   lead      seconds after that moment at which her action should land;
  *             the prompt goes out early by her expected reaction time
@@ -109,7 +114,8 @@ namespace Scumm {
  *   change    "any" to speak whenever it changes, not only when it goes up
  *   say       what she is told; {value} is the new value
  * Alternatively, use room and animation (actor, costume and animation numbers)
- * to send say when the script starts that animation in that room.
+ * to send say when the script starts that animation in that room. An optional
+ * "while = script N" distinguishes scripts that use the same animation.
  * [press.ID] sections press a key for her, for a screen that only takes the
  * keyboard and that she is not meant to deal with (a copy protection question
  * the engine lets any answer pass):
@@ -128,6 +134,7 @@ namespace Scumm {
  *   intro                  a sentence for the opening explanation: who she plays
  *   ego_name               what the player's character is called in what she is told
  *   walk_verb              the name her interact action gives walking ("Walk to")
+ *   pickup_verb            id of the verb for picking up an object in the room
  *   give_verb              the verb whose second thing is given "to", not used "with"
  *   sentence_line_verb     id of a verb slot that is the sentence line, not a verb
  *   inventory_first_verb   id of the first inventory button, where the inventory is
@@ -169,6 +176,8 @@ public:
 	int backDistance(int room, int object) const;
 	Common::String groundBetween(int room) const { return roomGet(room, "ground_between"); }
 	Common::String roomPrompt(int room) const;
+	/** [inventory] name.ID.current game name labels a carried item in every room. */
+	Common::String inventoryName(int object, const Common::String &gameName) const;
 	int roomPromptScript(int room) const;
 
 	/** The [game] section. */
@@ -177,6 +186,7 @@ public:
 		bool doorQuestion = true;
 		int sentenceLineVerb = 0;
 		int inventoryFirstVerb = 0, inventorySlots = 0, inventorySlotVar = 0, inventoryUpVerb = 0, inventoryDownVerb = 0;
+		int pickupVerb = 0;
 	};
 	const Game &game() const { return _game; }
 
@@ -224,7 +234,7 @@ public:
 	Common::String standing(int room, int box) const;
 
 	/** Things that bring another part of the room into view when walked to. */
-	// Room options containing a list of object IDs (passages, emerge_at).
+	// Room options containing a list of integers (passages, emerge_at, walk_encounter).
 	Common::Array<int> roomObjects(int room, const char *key) const;
 
 	/** A word for the state an object is in, e.g. "open"; empty if unknown. */
@@ -233,6 +243,11 @@ public:
 	const Common::INIFile &ini() const { return _ini; }
 
 	struct Alert {
+		struct Requirement {
+			enum Kind { kObject, kItem, kBit } kind;
+			int number;
+		};
+		Common::Array<Requirement> requirements;
 		int room = 0;
 		int actor = 0, costume = 0;
 		uint32 leadMs = 0;
@@ -249,7 +264,7 @@ public:
 	};
 	const Common::Array<Watch> &watches() const { return _watches; }
 	struct AnimationWatch {
-		int room, actor, costume, animation;
+		int room, actor, costume, animation, whileScript;
 		Common::String say;
 	};
 	const Common::Array<AnimationWatch> &animationWatches() const { return _animationWatches; }

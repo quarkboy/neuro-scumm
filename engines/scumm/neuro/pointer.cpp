@@ -72,8 +72,9 @@ bool NeuroBridge::findClickPoint(int thing, int &x, int &y) const {
 	return false;
 }
 
-void NeuroBridge::clickInRoom(int x, int y) {
+void NeuroBridge::clickInRoom(int x, int y, int follow) {
 	NeuroClick click;
+	click.follow = follow;
 	click.x = x;
 	click.y = y;
 	clickAt(click);

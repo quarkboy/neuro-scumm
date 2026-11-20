@@ -224,10 +224,14 @@ bool NeuroBridge::writeRoomSnapshot(const Common::String &base, int room, int wi
 			NeuroWorld world;
 			collectWorld(world);
 			Common::JSONArray places;
-			for (uint i = world.authoredSpotCount; i < world.spots.size(); i++)
+			Common::JSONArray positions;
+			for (uint i = world.authoredSpotCount; i < world.spots.size(); i++) {
 				places.push_back(new Common::JSONValue(world.spots[i].name));
+				positions.push_back(new Common::JSONValue((long long int)world.spots[i].x));
+			}
 			root.setVal("ground_between", new Common::JSONValue(between));
 			root.setVal("ground_places", new Common::JSONValue(places));
+			root.setVal("ground_places_x", new Common::JSONValue(positions));
 		}
 		root.setVal("walkbox", new Common::JSONValue((long long int)ego()->_walkbox));
 		root.setVal("ego_x", new Common::JSONValue((long long int)ego()->getPos().x));

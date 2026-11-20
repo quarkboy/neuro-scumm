@@ -133,6 +133,7 @@ void NeuroBridge::collectWorld(NeuroWorld &world) {
 	});
 
 	collectSpots(world);
+	collectReadyAlerts(world);
 	noteLines(world);
 }
 
@@ -222,7 +223,8 @@ void NeuroBridge::collectInventory(NeuroWorld &world) {
 
 		NeuroThing thing;
 		thing.id = obj;
-		thing.name = cleanText(_vm->getObjOrActorName(obj), true);
+		thing.inventoryGameName = cleanText(_vm->getObjOrActorName(obj), true);
+		thing.name = _data.inventoryName(obj, thing.inventoryGameName);
 		if (!thing.name.empty())
 			world.inventory.push_back(thing);
 	}
@@ -458,7 +460,7 @@ Common::String neuroListNames(const NeuroThingList &a, const NeuroThingList &b) 
 	return result.empty() ? Common::String("nothing") : result;
 }
 
-Common::String NeuroBridge::describeRoom(const NeuroWorld &world, RoomDetail detail) const {
+Common::String NeuroBridge::describeRoom(const NeuroWorld &world, RoomDetail detail) {
 	Common::String name = _data.roomName(world.room);
 	if (name.empty())
 		name = Common::String::format("room %d", world.room);
@@ -476,8 +478,23 @@ Common::String NeuroBridge::describeRoom(const NeuroWorld &world, RoomDetail det
 	text += "- Things: " + joinDescribed(world.objects, _data) + "\n";
 	if (!world.actors.empty())
 		text += "- People: " + neuroListNames(world.actors) + "\n";
-	if (!world.spots.empty())
-		text += "- Places: " + neuroListNames(world.spots) + "\n";
+	if (!world.spots.empty()) {
+		text += "- Places: ";
+		const bool relative = _data.relativePlaces(world.room);
+		for (uint i = 0; i < world.spots.size(); ++i) {
+			if (i)
+				text += ", ";
+			text += world.spots[i].name;
+			if (relative) {
+				const int dx = world.spots[i].x - ego()->getPos().x;
+				if (dx == 0)
+					text += " (level with " + egoName() + ")";
+				else
+					text += " (to " + egoName() + (dx < 0 ? "'s left)" : "'s right)");
+			}
+		}
+		text += "\n";
+	}
 	// Inventory changes are announced as they happen
 	if (detail == kRoomStatus)
 		text += "- Inventory: " + neuroListNames(world.inventory) + "\n";
@@ -696,9 +713,13 @@ void NeuroBridge::pollWorld() {
 
 	Common::StringArray carried;
 	for (const auto &item : world.inventory)
-		carried.push_back(item.name);
+		carried.push_back(item.inventoryGameName);
 	_journal.observeBits([this](int bit) { return readDataVar(0x8000 | bit) != 0; });
+	_journal.observeStates([this](int object) { return object < _vm->_numGlobalObjects ? _vm->getState(object) : -1; });
 	_journal.observed(world.room, carried);
+	const auto &newObjects = _described.room == world.room ? difference(_described.objects, world.objects) : world.objects;
+	for (const auto &thing : newObjects)
+		_journal.sawObject(world.room, thing.id);
 	// Goals and nudges wait for a pause: the end of the conversation, or the
 	// moment she is asked to pick her next line (the prompt for that follows
 	// below), never between lines spoken one after another
