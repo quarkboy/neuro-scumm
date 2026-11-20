@@ -54,7 +54,7 @@ jobs:
           path: neuro-scumm-*-linux-x64.tar.gz
   windows:
     name: Windows
-    runs-on: windows-2025-vs2026
+    runs-on: windows-2022
     env:
       CONFIGURATION: Release
       PLATFORM: x64
