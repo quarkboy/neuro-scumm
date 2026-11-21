@@ -4,7 +4,7 @@ This is a fork of [ScummVM](https://www.scummvm.org/) that lets [Neuro-sama](htt
 
 It is an unofficial fan project. It is not affiliated with the ScummVM team, Vedal, or the owners of Monkey Island, and it contains no game data: you need your own copy of the game.
 
-**Release 0.9.3 is playable from the opening to the credits.** Stand-in models have completed all four parts, including a Gemini Neon run without puzzle hints. All 85 numbered room sections in the Monkey Island 1 annotations are marked checked. Neuro-sama herself has yet to play it. [Download the Windows or Linux release](https://github.com/quarkboy/neuro-scumm/releases/tag/neuro-v0.9.3).
+**Release 0.9.4 is playable from the opening to the credits.** Stand-in models have completed all four parts, including a Gemini Neon run without puzzle hints. All 85 numbered room sections in the Monkey Island 1 annotations are marked checked. Neuro-sama herself has yet to play it. [Download the Windows or Linux release](https://github.com/quarkboy/neuro-scumm/releases/tag/neuro-v0.9.4).
 
 **Other games.** Monkey Island 2 starts and plays using its own game folder. Its first screen has annotations, and most of its rooms still need writing. See [Other SCUMM games](#other-scumm-games) for the supported engine versions and tested games.
 
